@@ -7,6 +7,7 @@ local Config = require("game/Config")
 local Physics = require("game/Physics")
 local Skin = require("game/Skin")
 local Art = require("game/Art")
+local Machine3D = require("game/Machine3D")
 
 local S = Config.STAGE
 local W, H = Config.WORLD_W, Config.WORLD_H
@@ -52,8 +53,10 @@ end
 
 function Stage:Render(nvg)
     local g = self.game
-    if not g or not g.run then return end
-    local run, fx = g.run, g.fx
+    if not g then return end
+    local run = g.tycoon or g.run
+    if not run then return end
+    local fx = g.fx
     local phys = run.physics
     local l = self:GetAbsoluteLayout()
     if l.w <= 0 or l.h <= 0 then return end
@@ -65,27 +68,31 @@ function Stage:Render(nvg)
     local oy = l.y + (l.h - vh) * 0.5 + (fx.shakeY or 0)
     self.ox_, self.oy_, self.s_ = ox, oy, scale
 
-    local actCfg = Config.ACTS[run.act] or Config.ACTS[1]
+    local themeIdx = min(3, max(1, run.stageTheme or run.act or 1))
+    local actCfg = Config.ACTS[themeIdx] or Config.ACTS[1]
     local accent = actCfg.accent or C.cyan
     local trim = actCfg.trim or C.magenta
     local t = g.time or 0
+    local boostOn = (run.adBoostLeft or 0) > 0
+    local is3D = Machine3D.IsActive()
 
-    nvgSave(nvg)
-    nvgTranslate(nvg, ox, oy)
-    nvgScale(nvg, scale, scale)
+    if not is3D then
+        nvgSave(nvg)
+        nvgTranslate(nvg, ox, oy)
+        nvgScale(nvg, scale, scale)
 
-    -- 1. 街机机台背景外壳 + 跑马灯
-    nvgBeginPath(nvg)
-    nvgRoundedRect(nvg, 10, 6, W - 20, H - 12, 16)
-    nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, 6, 0, H - 6, Col({ 18, 22, 46 }, 250), Col({ 9, 11, 24 }, 255)))
-    nvgFill(nvg)
-    nvgStrokeColor(nvg, Col(run.feverActive and C.gold or accent, 220))
-    nvgStrokeWidth(nvg, 2.5)
-    nvgStroke(nvg)
+        -- 1. 街机机台背景外壳 + 跑马灯（纯 2D 兜底模式）
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, 10, 6, W - 20, H - 12, 16)
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, 6, 0, H - 6, Col({ 18, 22, 46 }, 250), Col({ 9, 11, 24 }, 255)))
+        nvgFill(nvg)
+        nvgStrokeColor(nvg, Col((run.feverActive or boostOn) and C.gold or accent, 220))
+        nvgStrokeWidth(nvg, 2.5)
+        nvgStroke(nvg)
 
-    -- 上部落币槽背板（支持贴图替换）
+    -- 上部落币槽背板（随富豪头衔自动晋升 3 幕机台皮肤）
     local slotX, slotW = S.SLOT_LEFT, S.SLOT_RIGHT - S.SLOT_LEFT
-    local bgKey = "backdrop_act" .. tostring(min(3, run.act))
+    local bgKey = "backdrop_act" .. tostring(themeIdx)
     if not Art.DrawSprite(nvg, bgKey, slotX, S.SLOT_TOP, slotW, S.DECK_TOP_Y - S.SLOT_TOP, 0.85) then
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, slotX, S.SLOT_TOP, slotW, S.DECK_TOP_Y - S.SLOT_TOP + 6, 10)
@@ -319,6 +326,21 @@ function Stage:Render(nvg)
         end
     end
 
+        -- 2D 世界特效
+        fx:RenderWorld(nvg, g.font)
+    else
+        -- 3D 模式下先将世界坐标特效/暴击飘字精准投影至真 3D 机台对应屏幕坐标
+        local uiW = UI.GetWidth and UI.GetWidth() or l.w
+        local uiH = UI.GetHeight and UI.GetHeight() or (l.y + l.h)
+        fx:RenderWorld(nvg, g.font, function(lx, ly)
+            local zone = (ly <= S.DECK_TOP_Y) and "slot" or ((ly > S.DECK_BOT_Y) and "dropping" or "deck")
+            return Machine3D.WorldToUi(lx, ly, zone, 0, uiW, uiH)
+        end)
+        nvgSave(nvg)
+        nvgTranslate(nvg, ox, oy)
+        nvgScale(nvg, scale, scale)
+    end
+
     -- 8. 狂欢槽进度侧条（舞台左侧内缘）
     local barX, barY, barW, barH = 20, 250, 12, 270
     nvgBeginPath(nvg)
@@ -366,26 +388,43 @@ function Stage:Render(nvg)
         nvgRestore(nvg)
     end
 
-    -- 10. 首次点按引导（前2发之前）
+    -- 10. 首次点按引导（前3次点击内）
     if g.showTapHint and g.showTapHint() then
         local pulse = 0.5 + 0.5 * sin(t * 5.5)
         local hy = 415 + pulse * 10
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, 110, hy - 16, 140, 32, 16)
-        nvgFillColor(nvg, Col(C.bgInset, 210))
+        nvgRoundedRect(nvg, 100, hy - 16, 160, 32, 16)
+        nvgFillColor(nvg, Col(C.bgInset, 215))
         nvgFill(nvg)
         nvgStrokeColor(nvg, Col(C.gold, 230))
         nvgStrokeWidth(nvg, 1.8)
         nvgStroke(nvg)
         nvgFontFace(nvg, g.font or "sans")
-        nvgFontSize(nvg, 14)
+        nvgFontSize(nvg, 13)
         nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
         nvgFillColor(nvg, Col(C.gold, 255))
-        nvgText(nvg, 180, hy, "点击任意处投币")
+        nvgText(nvg, 180, hy, "点按推台 狂暴加投!")
     end
 
-    -- 11. 世界坐标特效与满屏暴击飘字
-    fx:RenderWorld(nvg, g.font)
+    if boostOn then
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, 18, 16, 74, 22, 8)
+        nvgFillColor(nvg, Col(C.magDark, 230))
+        nvgFill(nvg)
+        nvgStrokeColor(nvg, Col(C.magenta, 230))
+        nvgStrokeWidth(nvg, 1.4)
+        nvgStroke(nvg)
+        nvgFontFace(nvg, g.font or "sans")
+        nvgFontSize(nvg, 11)
+        nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(nvg, Col(C.gold, 255))
+        nvgText(nvg, 55, 27, "×3 印钞中")
+    end
+
+    -- 11. 狂欢边缘流光与横幅叠层（3D 特效已经在上面 RenderWorld 投射）
+    if not is3D then
+        -- 保持 2D 模式一致调用顺序
+    end
     fx:RenderOverlay(nvg, W, H, g.font, run)
 
     nvgRestore(nvg)

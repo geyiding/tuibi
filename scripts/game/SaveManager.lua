@@ -17,7 +17,7 @@ local KEY_HAS   = "carnival_has_save"
 local KEY_META  = "carnival_save_meta"
 local KEY_DATA  = "carnival_save_data"
 
-local VERSION = 1
+local VERSION = 2
 local LOCAL_INTERVAL = 30
 local CLOUD_INTERVAL = 120
 local CLOUD_WATCHDOG_SEC = 10
@@ -72,11 +72,12 @@ function SaveManager.DefaultData()
         difficulty = 1,
         unlockedDifficulty = 1,
         records = { runs = 0, wins = 0, bestScore = 0, bestHit = 0, maxCombo = 0 },
-        discovered = { coins = { gold = true, emerald = true, split = true, thunder = true, bomb = true, heavy = true }, relics = {}, recipes = {}, bosses = {} },
+        discovered = { coins = { gold = true }, relics = {}, recipes = {}, bosses = {} },
         disabled = {},
         redeemedCodes = {},
         daily = {},
         activeRun = nil,
+        tycoon = nil,
     }
 end
 
@@ -118,6 +119,7 @@ local function SanitizeData(raw)
     end
     if type(raw.daily) == "table" then d.daily = raw.daily end
     if type(raw.activeRun) == "table" then d.activeRun = raw.activeRun end
+    if type(raw.tycoon) == "table" then d.tycoon = raw.tycoon end
     return d
 end
 
@@ -204,6 +206,12 @@ end
 
 local function ComputeProgressScore(d)
     if type(d) ~= "table" then return 0 end
+    if type(d.tycoon) == "table" then
+        local t = d.tycoon
+        local life = tonumber(t.lifetimeCash) or 0
+        local logScore = (life > 1) and math.log(life + 1, 10) * 100 or 0
+        return logScore + (tonumber(t.totalPrestiges) or 0) * 5000 + (tonumber(t.rankIdx) or 1) * 50
+    end
     local rec = d.records or {}
     return (rec.wins or 0) * 1000 + (rec.runs or 0) * 10 + (d.unlockedDifficulty or 1) * 50
 end

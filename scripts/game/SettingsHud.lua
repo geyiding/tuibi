@@ -86,7 +86,7 @@ local function BuildSettingsModal(cb)
 
     -- 3. 兑换码区
     r.codeField = UI.TextField {
-        placeholder = "输入兑换码 (如 CARNIVAL2026)", flexGrow = 1, flexBasis = 0, height = 40, fontSize = 13,
+        placeholder = "输入兑换码 (如 RICH2026)", flexGrow = 1, flexBasis = 0, height = 40, fontSize = 13,
         onChange = function(_, v) st.codeText = v or "" end,
     }
     r.redeemBtn = NeoButton {
@@ -95,7 +95,7 @@ local function BuildSettingsModal(cb)
             if cb.OnRedeemCode then cb.OnRedeemCode(st.codeText) end
         end,
     }
-    r.redeemStatus = UI.Label { text = "输入礼包码领取金券与特殊币", fontSize = 12, fontColor = U.textDim, maxLines = 1 }
+    r.redeemStatus = UI.Label { text = "兑换码: CARNIVAL2026 / COIN888 / RICH2026", fontSize = 12, fontColor = U.textDim, maxLines = 1 }
     local codeCard = NeoFrame {
         style = "card", width = "100%", padding = 10, gap = 6,
         flexDirection = "column",
@@ -105,9 +105,9 @@ local function BuildSettingsModal(cb)
         },
     }
 
-    -- 4. 旅程控制
+    -- 4. 一键存档返回
     r.quitRunBtn = NeoButton {
-        text = "保存回标题", variant = "dark", width = "54%", minWidth = 148, minHeight = 44, alignSelf = "center",
+        text = "保存并继续", variant = "dark", width = "54%", minWidth = 148, minHeight = 44, alignSelf = "center",
         onClick = function() if cb.OnSaveAndQuitRun then cb.OnSaveAndQuitRun() end end,
     }
 

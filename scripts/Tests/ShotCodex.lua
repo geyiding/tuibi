@@ -2,6 +2,6 @@ require("main")
 local orig = Start
 function Start()
     orig()
-    _G.__ENTER_PLAY(false)
-    _G.__CALLBACKS.OnOpenCodex()
+    _G.__GAME.tycoon.cash = 50000
+    _G.__OPEN_MODAL("coins")
 end

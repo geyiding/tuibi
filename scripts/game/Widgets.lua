@@ -7,6 +7,7 @@ local okIC, ImageCache = pcall(require, "urhox-libs/UI/Core/ImageCache")
 local Config = require("game/Config")
 local Skin = require("game/Skin")
 local Art = require("game/Art")
+local AvatarArt = require("game/AvatarArt")
 local Number = require("game/Number")
 
 local Widgets = {}
@@ -130,6 +131,14 @@ function NeoFrame:Render(nvg)
             nvgStrokeColor(nvg, Skin.Col(C.gold, 255))
             nvgStrokeWidth(nvg, 2.5)
             nvgStroke(nvg)
+        elseif self.skin_.afford then
+            local l = self:GetAbsoluteLayout()
+            local r = self.skin_.radius or 10
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, l.x + 1.5, l.y + 1.5, l.w - 3, l.h - 3, r)
+            nvgStrokeColor(nvg, Skin.Col(C.cyan, 235))
+            nvgStrokeWidth(nvg, 2.0)
+            nvgStroke(nvg)
         end
         return
     end
@@ -201,9 +210,10 @@ end
 function NeoButton:SetVariant(v)
     if self.skin_.variant ~= v then
         self.skin_.variant = v
-        local darkText = (v == "primary" or v == "cyan" or v == "green")
+        local isBtn = (self.skinStyle_ == "button")
+        local darkText = isBtn and (v == "primary" or v == "cyan" or v == "green")
         self.btnLabel_:SetStyle({ fontColor = darkText and { 14, 16, 32, 255 } or U.text })
-        if self.useTexture_ then
+        if self.useTexture_ and isBtn then
             local tex = Skin.TEXTURES["button_" .. tostring(v)] or Skin.TEXTURES.button
             if tex then
                 self:SetStyle({ backgroundImage = tex.image, backgroundFit = "sliced", backgroundSlice = tex.slice })
@@ -266,6 +276,11 @@ function NeoIcon:Render(nvg)
         if not Art.DrawSprite(nvg, sp, x, y, s, s, 1) then
             local bDef = Config.BOSSES[self.iconKey_]
             Art.DrawIcon(nvg, (bDef and bDef.icon) or "crown", x, y, s, self.iconTint_)
+        end
+    elseif self.iconKind_ == "event" then
+        local sp = "event_" .. tostring(self.iconKey_)
+        if not Art.DrawSprite(nvg, sp, l.x, l.y, l.w, l.h, 1) then
+            Art.DrawIcon(nvg, "chest", x, y, s, self.iconTint_)
         end
     else
         Art.DrawIcon(nvg, self.iconKey_, x, y, s, self.iconTint_)
@@ -330,6 +345,44 @@ function NeoBar:Render(nvg)
         nvgFillColor(nvg, Skin.Col(C.white, 255))
         nvgText(nvg, tx, ty, self.barText_)
     end
+end
+
+-- ----------------------------------------------------------------------------
+-- AvatarIcon：世界富豪程序化漫画圆章头像（支持增量刷新）
+-- ----------------------------------------------------------------------------
+local AvatarIcon = UI.Widget:Extend("AvatarIcon")
+Widgets.AvatarIcon = AvatarIcon
+
+function AvatarIcon:Init(props)
+    props = props or {}
+    local sz = props.size or 48
+    props.width = props.width or sz
+    props.height = props.height or sz
+    props.pointerEvents = props.pointerEvents or "none"
+    self.entry_ = props.entry
+    self.shocked_ = (props.shocked == true)
+    self.surpassed_ = (props.surpassed == true)
+    self.t_ = 0
+    props.entry, props.shocked, props.surpassed, props.size = nil, nil, nil, nil
+    UI.Widget.Init(self, props)
+end
+
+function AvatarIcon:SetEntry(entry, shocked, surpassed)
+    self.entry_ = entry
+    self.shocked_ = (shocked == true)
+    self.surpassed_ = (surpassed == true)
+end
+
+function AvatarIcon:Render(nvg)
+    local l = self:GetAbsoluteLayout()
+    local s = min(l.w, l.h)
+    if s <= 0 then return end
+    self.t_ = self.t_ + 0.016
+    AvatarArt.Draw(nvg, self.entry_, l.x + l.w * 0.5, l.y + l.h * 0.5, s * 0.44, {
+        shocked = self.shocked_,
+        surpassed = self.surpassed_,
+        time = self.t_,
+    })
 end
 
 Widgets.FormatNum = Number.FormatNum

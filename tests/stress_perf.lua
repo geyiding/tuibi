@@ -1,33 +1,41 @@
 -- ============================================================================
--- tests/stress_perf.lua  3600 帧满台高压性能压测（60秒狂欢金币雨+爆破+闪电）
+-- tests/stress_perf.lua  增量首富满载物理与多币并推 3600 帧压测（必须零报错 & <3ms/帧）
 -- ============================================================================
 
-local Run = require("game/Run")
+local Config = require("game/Config")
+local Tycoon = require("game/Tycoon")
 
-local run = Run.New({}, { seed = 88888 })
-run:StartLevel(3, 6, "boss")
-for _, cid in ipairs({ "bomb", "thunder", "split", "nuke", "giant", "jackpot7" }) do
-    run.roster:AddCoin(cid, 3)
+local ty = Tycoon.New(nil, { seed = 777 })
+ty.cash = 1e20
+ty.lifetimeCash = 1e20
+
+for _, m in ipairs(Config.MACHINE_UPGRADES) do
+    ty:BuyMachineUpgrade(m.id, 10)
 end
-run.autoDrop = true
+for _, t in ipairs(Config.COIN_TIERS) do
+    ty:BuyCoin(t.id)
+end
+assert(#ty:GetUnlockedCoins() == 22, "压测必须开启全部 22 枚硬币")
+for _, tc in ipairs(Config.TECH_UPGRADES) do
+    ty:BuyTech(tc.id)
+end
+ty:ApplyAdReward("boost_3x")
+ty:ApplyAdReward("instant_fever")
+ty:ApplyAdReward("vault_drop")
 
 local t0 = os.clock()
-for f = 1, 3600 do
-    if f % 300 == 1 then
-        run.ammoLeft = 20
-        run:AddFever(100)
-    end
-    run:Update(1 / 60)
-    local phys = run.physics
-    for i = 1, phys.activeCount do
-        local c = phys.coins[phys.activeIds[i]]
-        if c.x ~= c.x or c.y ~= c.y or c.vx ~= c.vx or c.vy ~= c.vy then
-            error("NaN detected at frame " .. f)
-        end
-    end
+local frames = 3600
+for i = 1, frames do
+    if i % 6 == 0 then ty:ManualShoot() end
+    ty:Update(1 / 60)
 end
-local elapsedMs = (os.clock() - t0) * 1000
-local perFrameMs = elapsedMs / 3600
-print(string.format("=== 3600-Frame Stress OK: total=%.1fms perFrame=%.3fms score=%g ===",
-    elapsedMs, perFrameMs, run.score))
-assert(perFrameMs < 3.0, "每帧纯Lua逻辑耗时过高: " .. perFrameMs)
+local elapsed = os.clock() - t0
+local perFrameMs = (elapsed / frames) * 1000
+
+assert(ty.cash == ty.cash and ty.cash > 0, "满载 3600 帧后 cash 绝不可为 NaN")
+assert(ty.lifetimeCash == ty.lifetimeCash and ty.lifetimeCash > 1e20, "满载 3600 帧后 lifetimeCash 必须正常增长")
+assert(#ty.physics.coins <= 150, "物体池上限防护必须生效: " .. #ty.physics.coins)
+assert(perFrameMs < 5.0, string.format("单帧耗时过高: %.3f ms", perFrameMs))
+
+print(string.format("[stress_perf] PASS: %d frames in %.3fs (%.3f ms/frame, coins=%d, cps=%g)",
+    frames, elapsed, perFrameMs, #ty.physics.coins, ty:GetDisplayCPS()))

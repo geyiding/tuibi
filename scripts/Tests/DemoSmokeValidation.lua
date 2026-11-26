@@ -1,5 +1,5 @@
 -- ============================================================================
--- scripts/Tests/DemoSmokeValidation.lua  Stage 3 真机引擎实测验收脚本
+-- scripts/Tests/DemoSmokeValidation.lua  世界首富增量版冒烟验证脚本
 -- ============================================================================
 
 require("main")
@@ -10,28 +10,25 @@ function Start()
     origStart()
     local game = _G.__GAME
     assert(game ~= nil, "全局 __GAME 必须存在")
-    _G.__ENTER_PLAY(false)
-    local run = game.run
-    assert(run ~= nil, "进入玩法后 run 必须就绪")
-    run.autoDrop = true
-    -- 注入足够狂欢能量让截图期展示高潮金币雨 + 满屏数字爆分效果
-    run:AddFever(95)
+    local ty = game.tycoon
+    assert(ty ~= nil, "开屏即须就绪 tycoon 实例")
 
-    -- 推进 140 帧模拟真实物理和满屏飘字，确保画面丰富并检验零报错、安全区无溢出
-    for _ = 1, 140 do
+    -- 激活狂欢高潮并推进 180 帧自动推币与手动补充，验证爆分与掉落正常
+    ty:TriggerFever(true)
+    for i = 1, 180 do
+        if i % 15 == 1 then ty:ManualShoot() end
         game.time = game.time + (1 / 60)
         game.fx:Update(1 / 60)
-        run:Update(1 / 60)
-        if run.ammoLeft <= 2 then run.ammoLeft = 10 end
+        ty:Update(1 / 60)
     end
-    local Hud = require("game/Hud")
-    Hud.RefreshPlay(run)
+    local TycoonHud = require("game/TycoonHud")
+    TycoonHud.RefreshMain(ty)
     UI.Layout()
 
     local root = UI.GetRoot()
     assert(root ~= nil, "UI.GetRoot() 不可为空")
-    assert(run.score > 0, "140帧实战后得分必须大于 0, 实际=" .. tostring(run.score))
-    assert(run.coinsDropped > 0, "140帧实战后必有前沿掉落币, 实际=" .. tostring(run.coinsDropped))
-    print(string.format("[DemoSmoke] OK: score=%d dropped=%d fever=%s combo=%d",
-        run.score, run.coinsDropped, tostring(run.feverActive), run.combo))
+    assert(ty.cash > 0 and ty.lifetimeCash > 0, "180帧自动推币后现金必须大于 0")
+    assert(ty.totalDrops > 0, "180帧后必有前沿掉落币, 实际=" .. tostring(ty.totalDrops))
+    print(string.format("[DemoSmoke] OK: cash=%.0f drops=%d fever=%s combo=%d",
+        ty.cash, ty.totalDrops, tostring(ty.feverActive), ty.combo))
 end

@@ -201,20 +201,55 @@ function Fx:OnCoinLandDeck(coin)
     self:SpawnBurst(coin.x, coin.y, 5, C.white, 65, 2.0)
 end
 
-function Fx:OnScore(dmg, x, y, crit, combo, tag)
-    if tag == "peg" and dmg < 50 then
-        if random() < 0.28 then
-            self:SpawnPopup(x, y, "+" .. Number.FormatNum(dmg), 1, false)
+function Fx:OnScore(dmg, x, y, crit, combo, tag, refCps)
+    if tag == "peg" and dmg < max(35, (refCps or 12) * 0.04) then
+        if random() < 0.25 then
+            self:SpawnPopup(x, y, "+¥" .. Number.FormatNum(dmg), 1, false)
         end
         return
     end
-    local tier = Number.ScoreTier(dmg)
-    local prefix = crit and "暴击! +" or "+"
+    local tier = Number.ScoreTier(dmg, refCps)
+    local prefix = crit and "暴击! +¥" or "+¥"
     self:SpawnPopup(x, y, prefix .. Number.FormatNum(dmg), tier, crit)
     if crit then
-        self.trauma = min(1, self.trauma + 0.16)
+        self.trauma = min(1, self.trauma + 0.14)
         self:SpawnRing(x, y, 5, 36, C.gold, 0.26, 2.2)
     end
+end
+
+function Fx:OnRankUp(rank, themeChanged, info)
+    local noStr = rank.rank and ("No." .. tostring(rank.rank) .. " ") or ""
+    local msg = themeChanged and ("超越 " .. noStr .. rank.name .. " · 新机台解锁!") or ("超越 " .. noStr .. rank.name .. "!")
+    self:ShowBanner(msg, C.gold, 2.2)
+    self:SpawnBurst(180, 260, 36, C.gold, 250, 4.6)
+    self:SpawnBurst(180, 180, 24, C.magenta, 210, 4.0)
+    self:SpawnRing(180, 260, 12, 150, C.cyan, 0.48, 4.0)
+    self.flashA = 135
+    self.flashCol = C.gold
+    self.trauma = 0.50
+end
+
+function Fx:OnUnlockCoin(def)
+    local nm = (def and (def.name or def.short)) or "新内容"
+    self:ShowBanner("解锁! " .. nm, C.cyan, 1.6)
+    self:SpawnBurst(180, 140, 22, C.cyan, 190, 3.6)
+    self.flashA = max(self.flashA, 75)
+    self.flashCol = C.cyan
+end
+
+function Fx:OnPrestige(shares)
+    self:ShowBanner("IPO 上市成功! +" .. Number.FormatNum(shares) .. "股", C.magenta, 2.2)
+    self:SpawnBurst(180, 280, 36, C.magenta, 250, 4.5)
+    self.flashA = 140
+    self.flashCol = C.gold
+    self.trauma = 0.6
+end
+
+function Fx:OnAdReward(msg)
+    self:ShowBanner(msg or "福利激活!", C.gold, 1.8)
+    self:SpawnBurst(180, 220, 24, C.gold, 200, 3.8)
+    self.flashA = max(self.flashA, 90)
+    self.flashCol = C.gold
 end
 
 function Fx:OnFrontDrop(coin, dmg, crit)
@@ -337,16 +372,25 @@ function Fx:Update(dt)
     end
 end
 
-function Fx:RenderWorld(nvg, font)
+function Fx:RenderWorld(nvg, font, projectFn)
+    local function P(x, y)
+        if projectFn then
+            local sx, sy = projectFn(x, y)
+            if sx and sy then return sx, sy end
+        end
+        return x, y
+    end
+
     -- 冲击环
     for i = 1, MAX_RINGS do
         local r = self.rings[i]
         if r.life > 0 then
+            local px, py = P(r.x, r.y)
             local t = 1 - r.life / r.max
             local rad = r.r0 + (r.r1 - r.r0) * t
             local a = floor(220 * (1 - t))
             nvgBeginPath(nvg)
-            nvgCircle(nvg, r.x, r.y, rad)
+            nvgCircle(nvg, px, py, rad)
             nvgStrokeColor(nvg, Col(r.col, a))
             nvgStrokeWidth(nvg, r.w * (1 - t * 0.5))
             nvgStroke(nvg)
@@ -357,18 +401,21 @@ function Fx:RenderWorld(nvg, font)
     for i = 1, MAX_BOLTS do
         local b = self.bolts[i]
         if b.life > 0 then
+            local x1, y1 = P(b.x1, b.y1)
+            local mx, my = P(b.mx, b.my)
+            local x2, y2 = P(b.x2, b.y2)
             local a = floor(255 * (b.life / b.max))
             nvgBeginPath(nvg)
-            nvgMoveTo(nvg, b.x1, b.y1)
-            nvgLineTo(nvg, b.mx, b.my)
-            nvgLineTo(nvg, b.x2, b.y2)
+            nvgMoveTo(nvg, x1, y1)
+            nvgLineTo(nvg, mx, my)
+            nvgLineTo(nvg, x2, y2)
             nvgStrokeColor(nvg, Col(b.col, a))
             nvgStrokeWidth(nvg, 3.2)
             nvgStroke(nvg)
             nvgBeginPath(nvg)
-            nvgMoveTo(nvg, b.x1, b.y1)
-            nvgLineTo(nvg, b.mx, b.my)
-            nvgLineTo(nvg, b.x2, b.y2)
+            nvgMoveTo(nvg, x1, y1)
+            nvgLineTo(nvg, mx, my)
+            nvgLineTo(nvg, x2, y2)
             nvgStrokeColor(nvg, Col(C.white, a))
             nvgStrokeWidth(nvg, 1.3)
             nvgStroke(nvg)
@@ -379,10 +426,11 @@ function Fx:RenderWorld(nvg, font)
     for i = 1, MAX_PARTICLES do
         local life = self.pLife[i]
         if life > 0 then
+            local px, py = P(self.pX[i], self.pY[i])
             local f = life / self.pMax[i]
             local sz = self.pSize[i] * (0.4 + 0.6 * f)
             nvgBeginPath(nvg)
-            nvgCircle(nvg, self.pX[i], self.pY[i], sz)
+            nvgCircle(nvg, px, py, sz)
             nvgFillColor(nvg, Col(self.pCol[i], floor(240 * f)))
             nvgFill(nvg)
         end
@@ -394,18 +442,19 @@ function Fx:RenderWorld(nvg, font)
     for i = 1, MAX_POPS do
         local p = self.pops[i]
         if p.life > 0 then
+            local px, py = P(p.x, p.y)
             local f = min(1, (p.life / p.max) * 1.45)
             local a = floor(255 * f)
             nvgFontSize(nvg, floor(p.size * p.scale))
             -- 描边阴影层
             nvgFillColor(nvg, Col(OUTLINE_COL, a))
-            nvgText(nvg, p.x - 1.5, p.y, p.text)
-            nvgText(nvg, p.x + 1.5, p.y, p.text)
-            nvgText(nvg, p.x, p.y - 1.5, p.text)
-            nvgText(nvg, p.x, p.y + 1.5, p.text)
+            nvgText(nvg, px - 1.5, py, p.text)
+            nvgText(nvg, px + 1.5, py, p.text)
+            nvgText(nvg, px, py - 1.5, p.text)
+            nvgText(nvg, px, py + 1.5, p.text)
             -- 主字层
             nvgFillColor(nvg, Col(p.col, a))
-            nvgText(nvg, p.x, p.y, p.text)
+            nvgText(nvg, px, py, p.text)
         end
     end
 end

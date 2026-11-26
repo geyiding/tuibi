@@ -1,28 +1,29 @@
 -- ============================================================================
--- RedeemCodes.lua  兑换码配置表与防重领校验（纯数据分离，测试与运营可直扩）
+-- RedeemCodes.lua  兑换码配置表与防重领校验（适配增量首富模式）
 -- ============================================================================
 
 local RedeemCodes = {}
 
--- 不区分大小写；rewards 支持 tickets / heal / coin / prechargeFever
 RedeemCodes.CODES = {
     CARNIVAL2026 = {
-        label = "狂欢见面礼",
-        tickets = 50,
-        coin = "jackpot7",
-        desc = "50金券 + 777轮盘币",
+        label = "首富见面礼",
+        cashSeconds = 180,
+        minCash = 5000,
+        triggerFever = true,
+        desc = "180秒产值现金 + 满槽狂欢",
     },
     COIN888 = {
         label = "金币狂潮礼",
-        tickets = 88,
-        coin = "gold",
-        desc = "88金券 + 标准金币",
+        cashSeconds = 300,
+        minCash = 12000,
+        dropBonusCoins = 10,
+        desc = "300秒产值现金 + 10枚高阶金币雨",
     },
-    FEVER666 = {
-        label = "超频狂欢礼",
-        tickets = 40,
-        prechargeFever = true,
-        desc = "40金券 + 下局满狂欢开局",
+    RICH2026 = {
+        label = "IPO传奇股礼",
+        shares = 5,
+        boostSec = 180,
+        desc = "5股传奇声望股 + 3分钟×3印钞",
     },
 }
 

@@ -1,5 +1,5 @@
 -- ============================================================================
--- scripts/Tests/FullGameValidation.lua  真机引擎全链路 UI/逻辑/零跳动终验脚本
+-- scripts/Tests/FullGameValidation.lua  世界首富增量版全链路 UI/逻辑终验脚本
 -- ============================================================================
 
 require("main")
@@ -19,101 +19,79 @@ function Start()
     origStart()
     local game = _G.__GAME
     local cb = _G.__CALLBACKS
-    local Hud = require("game/Hud")
-    local CodexHud = require("game/CodexHud")
-    local SaveManager = require("game/SaveManager")
+    local TycoonHud = require("game/TycoonHud")
+    local ty = game.tycoon
+    assert(ty ~= nil, "开屏必须立即就绪增量首富实例")
 
-    -- 1. 验证主菜单布局
+    -- 1. 注入启动资金 + 模拟 150 帧自动永动推币 + 狂欢反馈
     UI.Layout()
-    local menuPage = Hud.GetPages().menu
-    assert(menuPage:IsVisible(), "开屏应显示主菜单")
-    AssertBoxInsideScreen(menuPage:GetChildAt(1), "主菜单卡片")
-
-    -- 2. 切入图鉴弹窗：验证 4 页签切换外框宽高 0 像素跳动
-    cb.OnOpenCodex()
-    UI.Layout()
-    local codexModal = Hud.GetModals().codex
-    local codexFrame = codexModal:GetChildAt(1)
-    local baseL = AssertBoxInsideScreen(codexFrame, "图鉴外框-币种")
-    for _, tabId in ipairs({ "recipes", "relics", "bosses", "coins" }) do
-        -- 通过直接切内部 tab 触发刷新并验证外框高度恒定
-        local tabRow = codexFrame:GetChildAt(2)
-        for ti = 1, tabRow:GetNumChildren() do
-            local btn = tabRow:GetChildAt(ti)
-            if btn.onPress_ then btn.onPress_(btn) end
-            UI.Layout()
-            local curL = codexFrame:GetAbsoluteLayout()
-            assert(math.abs(curL.w - baseL.w) < 0.5 and math.abs(curL.h - baseL.h) < 0.5,
-                string.format("图鉴切页签外框跳变! tab=%s base=%.1fx%.1f cur=%.1fx%.1f", tabId, baseL.w, baseL.h, curL.w, curL.h))
-        end
-    end
-    cb.OnCloseCodex()
-
-    -- 3. 切入设置弹窗并测试兑换码防重领
-    cb.OnOpenSettings()
-    UI.Layout()
-    local settingsFrame = Hud.GetModals().settings:GetChildAt(1)
-    AssertBoxInsideScreen(settingsFrame, "设置外框")
-    local beforeTickets = game.run.tickets
-    cb.OnRedeemCode("CARNIVAL2026")
-    assert(game.run.tickets == beforeTickets + 50, "兑换码应增加50金券")
-    cb.OnRedeemCode("carnival2026")
-    assert(game.run.tickets == beforeTickets + 50, "重复兑换码不可再次发奖")
-    cb.OnCloseSettings()
-
-    -- 4. 进入实战，检验 150 帧高潮狂欢 + 投币仓双页签 0 跳动
-    _G.__ENTER_PLAY(false)
-    local run = game.run
-    run.autoDrop = true
-    run:AddFever(95)
+    local root = UI.GetRoot()
+    assert(root ~= nil and root:GetNumChildren() >= 2, "根界面与弹窗层必须就绪")
+    ty:TriggerFever(true)
     for _ = 1, 150 do
         game.time = game.time + (1 / 60)
         game.fx:Update(1 / 60)
-        run:Update(1 / 60)
-        if run.ammoLeft <= 3 then run.ammoLeft = 10 end
+        ty:Update(1 / 60)
     end
-    Hud.RefreshPlay(run)
+    TycoonHud.RefreshMain(ty)
     UI.Layout()
-    assert(run.score > 0 and run.coinsDropped > 0, "实战必须产生得分与掉落")
-    if game.modal == "reward" then
-        AssertBoxInsideScreen(Hud.GetModals().reward:GetChildAt(1), "奖励三选一外框")
-        cb.OnPickReward(1)
-    elseif game.modal then
-        _G.__CLOSE_MODAL()
+    assert(ty.cash > 0 and ty.lifetimeCash > 0, "150帧自动推币必须产出正向现金流")
+
+    -- 2. 注入研发资金验证全养成弹窗边界与零报错刷新
+    ty.cash = ty.cash + 500000
+    ty.lifetimeCash = ty.lifetimeCash + 500000
+    assert(ty:BuyMachineUpgrade("auto_rate", 1), "机台自动速率升级必须成功")
+    assert(ty:BuyCoin("emerald"), "翡翠币解锁必须成功")
+    assert(ty:BuyTech("rail_guard"), "护栏黑科技解锁必须成功")
+
+    for _, modalName in ipairs({ "machine", "coins", "tech", "prestige", "welfare", "ranks", "formula" }) do
+        TycoonHud.OpenModal(modalName)
+        UI.Layout()
+        for i = 2, root:GetNumChildren() do
+            local layer = root:GetChildAt(i)
+            if layer:IsVisible() and layer:GetNumChildren() >= 1 then
+                AssertBoxInsideScreen(layer:GetChildAt(1), "弹窗-" .. modalName)
+            end
+        end
     end
+    TycoonHud.CloseModal()
 
-    -- 投币仓弹窗 2 页签 0 跳动校验
-    cb.OnOpenDeck()
+    -- 2.5 测试富豪超越即时漫画头像弹窗边界与正常收下
+    local Config = require("game/Config")
+    TycoonHud.ShowOvertake(Config.RANKS[100], { jumped = 1, bounty = Config.RANKS[100].bounty, wealthNow = Config.RANKS[100].target })
     UI.Layout()
-    local deckFrame = Hud.GetModals().deck:GetChildAt(1)
-    local d1 = AssertBoxInsideScreen(deckFrame, "投币仓外框")
-    local tabRow = deckFrame:GetChildAt(2)
-    tabRow:GetChildAt(2).onPress_(tabRow:GetChildAt(2))
-    UI.Layout()
-    local d2 = deckFrame:GetAbsoluteLayout()
-    assert(math.abs(d1.w - d2.w) < 0.5 and math.abs(d1.h - d2.h) < 0.5, "投币仓切页签不可跳动")
-    cb.OnCloseDeck()
+    TycoonHud.DismissOvertake()
 
-    -- 5. 验证商店/工坊/事件/宝箱/路线图均无报错且在安全区内
-    run:OpenShop()
-    _G.__SHOW_SCREEN("shop")
+    -- 3. 模拟激励广告播放完成回调（绝不触发外部 SDK）
+    cb.OnWatchAd("boost_3x")
+    assert(TycoonHud.GetCurModal() == "mockAd", "点击激励广告必须打开模拟广告弹窗")
     UI.Layout()
-    run.tickets = 500
-    assert(run:BuyShopItem(1), "商店购买成功")
-    _G.__SHOW_SCREEN("map")
-    UI.Layout()
+    cb.OnMockAdFinish()
+    assert(ty.adBoostLeft > 0, "模拟广告领奖必须激活 3 倍印钞")
 
-    -- 最后进入第 2 关并激活狂欢高潮，停留实战状态供截图验收
-    run:EnterNode(next(run.selectedNextIds))
-    _G.__SHOW_SCREEN("play")
-    run:AddFever(100)
-    for _ = 1, 90 do
+    -- 4. 设置与兑换码防重领
+    cb.OnOpenSettings()
+    UI.Layout()
+    local beforeCash = ty.cash
+    cb.OnRedeemCode("CARNIVAL2026")
+    assert(ty.cash > beforeCash, "兑换码 CARNIVAL2026 必须发奖")
+    local afterFirst = ty.cash
+    cb.OnRedeemCode("carnival2026")
+    assert(ty.cash == afterFirst, "重复兑换码不可再次发奖")
+    cb.OnCloseSettings()
+
+    -- 5. 验证 IPO 转生与重置重推
+    ty.runCash = 2500000
+    local gained = ty:DoPrestige(false)
+    assert(gained > 0 and ty.prestigeShares >= gained, "IPO 转生必须获得传奇股")
+    for _ = 1, 60 do
         game.time = game.time + (1 / 60)
         game.fx:Update(1 / 60)
-        run:Update(1 / 60)
+        ty:Update(1 / 60)
     end
-    Hud.RefreshPlay(run)
+    TycoonHud.RefreshMain(ty)
     UI.Layout()
-    print(string.format("[FullGameValidation] PASS: score=%d dropped=%d combo=%d",
-        run.score, run.coinsDropped, run.combo))
+
+    print(string.format("[FullGameValidation] PASS: cash=%.0f lifetime=%.0f shares=%d drops=%d",
+        ty.cash, ty.lifetimeCash, ty.prestigeShares, ty.totalDrops))
 end
