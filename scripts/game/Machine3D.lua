@@ -88,14 +88,25 @@ local function MakePBR(diffCol, metallic, roughness, emissiveCol, alpha)
     return mat
 end
 
--- 辅助：创建贴图无光照材质（硬币表面图案 / 背板霓虹图案）
-local function MakeTexturedUnlit(texPath, isAlpha, tintCol)
+-- 辅助：创建贴图无光照材质（硬币表面图案优先走 AlphaMask/不透明管线以支持合批，缺失时平滑退回 DiffUnlitAlpha）
+local function MakeTexturedUnlit(texPath, alphaMode, tintCol)
     if not cache or not texPath then return nil end
     if cache.Exists and not cache:Exists(texPath) then return nil end
     local tex = cache:GetResource("Texture2D", texPath)
     if not tex then return nil end
     local mat = Material:new()
-    local tech = isAlpha and "Techniques/DiffUnlitAlpha.xml" or "Techniques/DiffUnlit.xml"
+    local tech = "Techniques/DiffUnlit.xml"
+    if alphaMode == "alphamask" then
+        if cache.Exists and cache:Exists("Techniques/DiffUnlitAlphaMask.xml") then
+            tech = "Techniques/DiffUnlitAlphaMask.xml"
+        elseif cache.Exists and cache:Exists("Techniques/DiffAlphaMask.xml") then
+            tech = "Techniques/DiffAlphaMask.xml"
+        else
+            tech = "Techniques/DiffUnlitAlpha.xml"
+        end
+    elseif alphaMode == true then
+        tech = "Techniques/DiffUnlitAlpha.xml"
+    end
     mat:SetTechnique(0, cache:GetResource("Technique", tech))
     mat:SetTexture(TU_DIFFUSE, tex)
     local c = tintCol or { 1.0, 1.0, 1.0, 1.0 }
@@ -233,7 +244,7 @@ local function GetCoinMaterials(kind)
     )
 
     local spr = Skin.SPRITES["coin_" .. tostring(kind)]
-    local faceMat = spr and MakeTexturedUnlit(spr, true, { 0.86, 0.86, 0.86, 1.0 }) or nil
+    local faceMat = spr and MakeTexturedUnlit(spr, "alphamask", { 0.86, 0.86, 0.86, 1.0 }) or nil
     if not faceMat then
         faceMat = MakePBR({ r, g, b }, 0.85, 0.24, { r * 0.12, g * 0.12, b * 0.12 })
     end
@@ -547,6 +558,7 @@ function Machine3D.Init(tycoon)
         glass         = MakePBR({ 0.55, 0.86, 1.0 }, 0.1, 0.06, nil, 0.14),
     }
 
+    M.quatSlotBase = Quaternion(-90, Vector3.RIGHT)
     BuildCabinet()
     BuildAnimatedMechanisms()
     BuildCoinPool()
@@ -670,12 +682,11 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
     -- 6. 钉阵位置 & 撞击脉冲缩放（仅版本变化或闪光期提交）
     SyncPegs3D(phys)
 
-    -- 7. 90 枚 3D 金属贴图硬币池脏检查更新（静止硬币零矩阵写回）
-    local activeIds = phys.activeIds or {}
+    -- 7. 120 枚 3D 硬币池按 coin.id 1:1 映射 + 放宽静止阈值的脏检查（消减材质切换与冗余矩阵写回）
     local coins = phys.coins or {}
-    local cnt = min(#M.coinPool, phys.activeCount or #activeIds)
-    for i = 1, cnt do
-        local c = coins[activeIds[i]]
+    local poolCount = #M.coinPool
+    for i = 1, poolCount do
+        local c = coins[i]
         local slot = M.coinPool[i]
         if c and c.active then
             if not slot.enabled then
@@ -683,8 +694,10 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
                 slot.node:SetDeepEnabled(true)
             end
             local cx, cy, cz, czZone, cOnPush = c.x, c.y, c.z or 0, c.zone or "deck", c.onPusher == true
+            local isFall = (czZone == "falling" or czZone == "dropping")
+            local posThresh = isFall and 0.01 or 0.25
             if czZone ~= slot.lastZone or cOnPush ~= slot.lastOnPusher
-                or (cx - slot.lastX) * (cx - slot.lastX) + (cy - slot.lastY) * (cy - slot.lastY) + (cz - slot.lastZ) * (cz - slot.lastZ) > 0.01 then
+                or (cx - slot.lastX) * (cx - slot.lastX) + (cy - slot.lastY) * (cy - slot.lastY) + (cz - slot.lastZ) * (cz - slot.lastZ) > posThresh then
                 slot.lastX, slot.lastY, slot.lastZ = cx, cy, cz
                 slot.node.position = LogicToWorld3D(cx, cy, czZone, cz, cOnPush)
             end
@@ -698,12 +711,11 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
             end
 
             local crot = c.rot or 0
-            local isFall = (czZone == "falling" or czZone == "dropping")
-            if isFall or czZone ~= slot.lastZone or (crot - slot.lastRot) * (crot - slot.lastRot) > 0.0004 then
+            if isFall or czZone ~= slot.lastZone or (crot - slot.lastRot) * (crot - slot.lastRot) > 0.0025 then
                 slot.lastRot = crot
                 local rotDeg = math.deg(crot)
                 if czZone == "slot" then
-                    slot.node.rotation = Quaternion(-90, Vector3.RIGHT) * Quaternion(rotDeg, Vector3.UP)
+                    slot.node.rotation = M.quatSlotBase * Quaternion(rotDeg, Vector3.UP)
                 elseif isFall and cy >= S.DECK_BOT_Y - 1 then
                     -- 前沿坠落：向镜头方向翻倒滑入出币槽
                     local prog = max(0, min(1, (cy - S.DECK_BOT_Y) / max(1, S.DROP_END_Y - S.DECK_BOT_Y)))
@@ -733,13 +745,6 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
                 slot.enabled = false
                 slot.node:SetDeepEnabled(false)
             end
-        end
-    end
-    for i = cnt + 1, #M.coinPool do
-        local slot = M.coinPool[i]
-        if slot.enabled then
-            slot.enabled = false
-            slot.node:SetDeepEnabled(false)
         end
     end
 end

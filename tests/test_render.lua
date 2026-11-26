@@ -122,7 +122,7 @@ ty.slotQueue = 3
 ty.slotReels = { 1, 2, 3 }
 stg:Render("nvg_stub")
 
--- (c) 锁定第4~6符号 + 100倍大满贯狂潮倒计时条 + 连击 + Fever + 广告×3
+-- (c) 锁定第4~6符号 + 100倍大满贯狂潮倒计时条 + 连击 + Fever + 广告×3 + 手点金环
 ty.slotSpinning = false
 ty.slotReels = { 4, 5, 6 }
 ty.luckMult = 100
@@ -130,12 +130,21 @@ ty.luckTimer = 14.2
 ty.luckDur = 15
 ty.luckName = "777大满贯 ×100!!"
 ty.feverActive = true
+ty.feverDur = 10.0
 ty.feverTimer = 5.0
 ty.adBoostLeft = 90
 ty.combo = 35
 for i, tier in ipairs(Config.COIN_TIERS) do
-    ty.physics:SpawnCoin({ kind = tier.id, level = (i % 15) + 1, x = 80 + (i % 7) * 32, y = 340 + math.floor(i / 7) * 32, zone = "deck" })
+    ty.physics:SpawnCoin({ kind = tier.id, level = (i % 15) + 1, x = 80 + (i % 7) * 32, y = 340 + math.floor(i / 7) * 32, zone = "deck", fromManual = (i == 1) })
 end
+stg:Render("nvg_stub")
+-- (d) 狂欢冷却倒计时管 + 1.5x 小奖
+ty.feverActive = false
+ty.fever = 0
+ty.feverCd = 18.4
+ty.luckMult = 1.5
+ty.luckTimer = 6.2
+ty.luckDur = 8.0
 stg:Render("nvg_stub")
 
 -- 4. Fx 全回调与 2D / 3D 投射渲染路径校验
@@ -154,6 +163,7 @@ fx:OnExplosion(180, 400, 90)
 fx:OnBlackholeBurst(180, 380, 90)
 fx:OnJackpot777(180, 360)
 fx:OnFeverStart(ty)
+fx:OnComboWaveEnd(24, 1.4, 50000)
 for _, prize in pairs(Config.SLOT_PRIZES) do
     fx:OnSlotWin(prize)
 end

@@ -25,6 +25,8 @@ ty:ApplyAdReward("instant_fever")
 ty:ApplyAdReward("vault_drop")
 ty:QueueSlotSpin()
 
+collectgarbage("collect")
+local mBefore = collectgarbage("count")
 local t0 = os.clock()
 local frames = 3600
 for i = 1, frames do
@@ -33,11 +35,13 @@ for i = 1, frames do
 end
 local elapsed = os.clock() - t0
 local perFrameMs = (elapsed / frames) * 1000
+local gcKbPerSec = (collectgarbage("count") - mBefore) / 60.0
 
-assert(ty.cash == ty.cash and ty.cash > 0, "满载 3600 帧后 cash 绝不可为 NaN")
+assert(ty.cash == ty.cash and ty.cash > 1e20, "满载 3600 帧后 cash 绝不可为 NaN")
 assert(ty.lifetimeCash == ty.lifetimeCash and ty.lifetimeCash > 1e20, "满载 3600 帧后 lifetimeCash 必须正常增长")
-assert(#ty.physics.coins <= 95, "物体池上限防护必须生效: " .. #ty.physics.coins)
+assert(#ty.physics.coins <= 125, "物体池上限防护必须生效: " .. #ty.physics.coins)
 assert(perFrameMs < 2.0, string.format("单帧耗时过高: %.3f ms", perFrameMs))
+assert(gcKbPerSec < 50.0, string.format("GC 速率过高: %.2f KB/s", gcKbPerSec))
 
-print(string.format("[stress_perf] PASS: %d frames in %.3fs (%.3f ms/frame, coins=%d, cps=%g)",
-    frames, elapsed, perFrameMs, #ty.physics.coins, ty:GetDisplayCPS()))
+print(string.format("[stress_perf] PASS: %d frames in %.3fs (%.3f ms/frame, coins=%d, gc=%.2fKB/s, cps=%g)",
+    frames, elapsed, perFrameMs, #ty.physics.coins, gcKbPerSec, ty:GetDisplayCPS()))

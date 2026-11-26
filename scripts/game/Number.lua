@@ -1,33 +1,99 @@
 -- ============================================================================
--- Number.lua  共用大数字与现金格式化（支持 万/亿/万亿/京/垓/秭，无引擎依赖）
+-- Number.lua  共用大数字与现金格式化（单位表驱动、3位有效数字、不掩盖NaN/inf）
 -- ============================================================================
 
 local floor, max = math.floor, math.max
 
 local Number = {}
 
---- 格式化数值：950 -> "950", 1.2万, 1.23亿, 2.50万亿, 1.20京, 3.40垓, 5.60秭
+local UNITS = {
+    { sym = "万",   val = 1e4  },
+    { sym = "亿",   val = 1e8  },
+    { sym = "万亿", val = 1e12 },
+    { sym = "京",   val = 1e16 },
+    { sym = "垓",   val = 1e20 },
+    { sym = "秭",   val = 1e24 },
+    { sym = "穰",   val = 1e28 },
+    { sym = "沟",   val = 1e32 },
+    { sym = "涧",   val = 1e36 },
+    { sym = "正",   val = 1e40 },
+    { sym = "载",   val = 1e44 },
+    { sym = "极",   val = 1e48 },
+}
+
+local function FormatScaled3Sig(scaled)
+    if scaled < 10 then
+        local r = floor(scaled * 100 + 0.5) / 100
+        if r >= 10 then
+            return string.format("%.1f", r), false
+        end
+        return string.format("%.2f", r), false
+    elseif scaled < 100 then
+        local r = floor(scaled * 10 + 0.5) / 10
+        return string.format("%.1f", r), false
+    elseif scaled < 1000 then
+        local r = floor(scaled * 10 + 0.5) / 10
+        if r >= 1000 then return tostring(floor(r + 0.5)), false end
+        return string.format("%.1f", r), false
+    else
+        local r = floor(scaled + 0.5)
+        if r >= 10000 then return nil, true end
+        return tostring(r), false
+    end
+end
+
+--- 格式化数值：先按候选单位舍入并检查进位（9999.5 -> "1.0万", 99999999 -> "1.00亿"）
 function Number.FormatNum(n)
-    n = tonumber(n) or 0
-    if n ~= n or n == math.huge or n == -math.huge then return "0" end
+    if n == nil then return "0" end
+    n = tonumber(n)
+    if not n then return "0" end
+    if n ~= n then
+        print("[Number][WARN] non-finite value:", n)
+        return "NaN"
+    end
+    if n == math.huge then
+        print("[Number][WARN] non-finite value: inf")
+        return "∞"
+    elseif n == -math.huge then
+        print("[Number][WARN] non-finite value: -inf")
+        return "-∞"
+    end
+
     local neg = ""
     if n < 0 then neg = "-"; n = -n end
-    if n >= 1e28 then
-        return neg .. string.format("%.2e", n)
-    elseif n >= 1e24 then
-        return neg .. string.format("%.2f秭", n / 1e24)
-    elseif n >= 1e20 then
-        return neg .. string.format("%.2f垓", n / 1e20)
-    elseif n >= 1e16 then
-        return neg .. string.format("%.2f京", n / 1e16)
-    elseif n >= 1e12 then
-        return neg .. string.format("%.2f万亿", n / 1e12)
-    elseif n >= 1e8 then
-        return neg .. string.format("%.2f亿", n / 1e8)
-    elseif n >= 1e4 then
-        return neg .. string.format("%.1f万", n / 1e4)
+    if n < 10000 then
+        local r = floor(n + 0.5)
+        if r >= 10000 then
+            return neg .. "1.0万"
+        end
+        return neg .. tostring(r)
     end
-    return neg .. tostring(floor(n + 0.5))
+
+    -- 挑选单位并统一检查四舍五入后是否触发向下一级进位
+    local idx = #UNITS
+    for i = 1, #UNITS do
+        if i == #UNITS or n < UNITS[i + 1].val then
+            idx = i
+            break
+        end
+    end
+
+    while idx <= #UNITS do
+        local u = UNITS[idx]
+        local scaled = n / u.val
+        local txt, carry = FormatScaled3Sig(scaled)
+        if not carry then
+            -- 兼容传统 1.5万 / 3.50亿 展示（<100 若为1位小数则是 x.x，仅 <10 按万/亿区分）
+            if u.sym == "万" and scaled < 10 then
+                local r1 = floor(scaled * 10 + 0.5) / 10
+                if r1 >= 10 then return neg .. string.format("%.1f", r1) .. u.sym end
+                return neg .. string.format("%.1f", r1) .. u.sym
+            end
+            return neg .. txt .. u.sym
+        end
+        idx = idx + 1
+    end
+    return neg .. string.format("%.2e", n)
 end
 
 --- 世界排名数字格式化（60.00亿 / 5800.0万 / 1.50万 / 850）
@@ -61,16 +127,24 @@ function Number.FormatCash(n)
     return "¥" .. Number.FormatNum(n)
 end
 
---- 倍率固定一位小数，如 "2.5"
+--- 倍率格式化（<100 保留1位小数，100..999 取整，>=1000 走中文单位）
 function Number.FormatMul(m)
     m = tonumber(m) or 1
-    if m >= 100 then return Number.FormatNum(m) end
+    if m ~= m or m == math.huge then return "∞" end
+    if m >= 1000 then return Number.FormatNum(m) end
+    if m >= 100 then return tostring(floor(m + 0.5)) end
     return string.format("%.1f", m)
 end
 
---- 倒计时 MM:SS（Lua 5.4 %d 必须传整数）
+--- 倒计时 MM:SS 或 H:MM:SS（>=3600s 自动转 H:MM:SS）
 function Number.FormatClock(sec)
     local s = max(0, floor((tonumber(sec) or 0) + 0.5))
+    if s >= 3600 then
+        local h = floor(s / 3600)
+        local m = floor((s % 3600) / 60)
+        local r = s % 60
+        return string.format("%d:%02d:%02d", h, m, r)
+    end
     local m = floor(s / 60)
     local r = s % 60
     return string.format("%02d:%02d", m, r)

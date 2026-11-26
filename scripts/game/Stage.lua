@@ -418,7 +418,15 @@ function Stage:DrawMachine2D(nvg, run, phys, t, accent, trim, themeIdx, boostOn,
         local c = coins[ord[i]]
         if c.active then
             local squash = (c.zone == "slot") and 0.96 or 0.84
-            Art.DrawCoin(nvg, c.kind, c.x, c.y - c.z * 0.65, c.r, c.level, squash, c.rot, c.frostT > 0, c.fuseT, c.isRain)
+            local syDraw = c.y - c.z * 0.65
+            if c.fromManual then
+                nvgBeginPath(nvg)
+                nvgCircle(nvg, c.x, syDraw, c.r * 1.18)
+                nvgStrokeColor(nvg, Col(C.gold, 195))
+                nvgStrokeWidth(nvg, 1.5)
+                nvgStroke(nvg)
+            end
+            Art.DrawCoin(nvg, c.kind, c.x, syDraw, c.r, c.level, squash, c.rot, c.frostT > 0, c.fuseT, c.isRain)
         end
     end
     nvgRestore(nvg)
@@ -729,7 +737,7 @@ function Stage:DrawSlotReels(nvg, run, cx, cy, u, t, font)
         nvgStrokeColor(nvg, Col(pCol, 255))
         nvgStrokeWidth(nvg, 1.3)
         nvgStroke(nvg)
-        local lk = floor(luckMult) * 1000 + math.ceil(run.luckTimer)
+        local lk = floor(luckMult * 10 + 0.5) * 1000 + math.ceil(run.luckTimer)
         if lk ~= self.luckKey_ then
             self.luckKey_ = lk
             self.luckTxt_ = "幸运 ×" .. Number.FormatMul(luckMult) .. " · " .. tostring(max(1, math.ceil(run.luckTimer))) .. "s"
@@ -748,8 +756,10 @@ function Stage:DrawFeverTube(nvg, run, x, y0, y1, u, t, font)
     local th = y1 - y0
     if th < 40 then return end
     local active = run.feverActive == true
-    local ratio = active and min(1, (run.feverTimer or 0) / max(1, Config.RULES.FEVER_DURATION)) or min(1, (run.fever or 0) / 100)
-    local col = active and Rainbow(t * 6) or C.magenta
+    local cdLeft = (not active) and max(0, run.feverCd or 0) or 0
+    local ratio = active and min(1, (run.feverTimer or 0) / max(1, run.feverDur or Config.RULES.FEVER_DURATION))
+        or min(1, (run.fever or 0) / 100)
+    local col = active and Rainbow(t * 6) or ((cdLeft > 0) and C.muted or C.magenta)
     -- 玻璃外壳
     nvgBeginPath(nvg)
     nvgRoundedRect(nvg, x - tw * 0.5, y0, tw, th, tw * 0.5)
@@ -791,17 +801,24 @@ function Stage:DrawFeverTube(nvg, run, x, y0, y1, u, t, font)
         nvgFill(nvg)
         SetAdditive(nvg, false)
     end
-    -- 顶部火焰图标 + 数值
-    local fk = active and (1000 + math.ceil(run.feverTimer or 0)) or floor(ratio * 100)
+    -- 顶部火焰图标 + 数值（冷却中显示倒计时）
+    local fk = active and (1000 + math.ceil(run.feverTimer or 0))
+        or (cdLeft > 0 and (2000 + math.ceil(cdLeft)) or floor(ratio * 100))
     if fk ~= self.feverKey_ then
         self.feverKey_ = fk
-        self.feverTxt_ = active and (tostring(math.ceil(run.feverTimer or 0)) .. "s") or (tostring(floor(ratio * 100)) .. "%")
+        if active then
+            self.feverTxt_ = tostring(math.ceil(run.feverTimer or 0)) .. "s"
+        elseif cdLeft > 0 then
+            self.feverTxt_ = "冷" .. tostring(math.ceil(cdLeft)) .. "s"
+        else
+            self.feverTxt_ = tostring(floor(ratio * 100)) .. "%"
+        end
     end
     nvgFontFace(nvg, font or "sans")
     nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFontSize(nvg, 12 * u)
-    OutlinedText(nvg, x, y0 - 9 * u, self.feverTxt_, active and C.gold or C.magenta, 255, 1.2)
-    OutlinedText(nvg, x, y1 + 10 * u, "狂欢", C.magenta, 255, 1.2)
+    OutlinedText(nvg, x, y0 - 9 * u, self.feverTxt_, active and C.gold or (cdLeft > 0 and C.muted or C.magenta), 255, 1.2)
+    OutlinedText(nvg, x, y1 + 10 * u, cdLeft > 0 and "冷却" or "狂欢", cdLeft > 0 and C.muted or C.magenta, 255, 1.2)
 end
 
 -- ----------------------------------------------------------------------------
@@ -934,7 +951,7 @@ function Stage:Render(nvg)
         local pulse = 0.5 + 0.5 * sin(t * 5.5)
         local hx, hy = l.x + l.w * 0.5, (dkTLy + dkBLy) * 0.5 + pulse * 8
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, hx - 82 * u, hy - 17 * u, 164 * u, 34 * u, 17 * u)
+        nvgRoundedRect(nvg, hx - 96 * u, hy - 17 * u, 192 * u, 34 * u, 17 * u)
         nvgFillColor(nvg, Col(INK, 220))
         nvgFill(nvg)
         nvgStrokeColor(nvg, Col(C.gold, 240))
@@ -944,7 +961,7 @@ function Stage:Render(nvg)
         nvgFontSize(nvg, 14 * u)
         nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
         nvgFillColor(nvg, Col(C.gold, 255))
-        nvgText(nvg, hx, hy, "点按推台 狂暴加投!")
+        nvgText(nvg, hx, hy, "点按或长按推台 狂暴连发!")
     end
 end
 

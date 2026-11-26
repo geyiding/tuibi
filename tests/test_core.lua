@@ -23,7 +23,11 @@ assert(Number.FormatNum(8.2e12) == "8.20万亿")
 assert(Number.FormatNum(4.1e16) == "4.10京")
 assert(Number.FormatNum(6.7e20) == "6.70垓")
 assert(Number.FormatNum(9.3e24) == "9.30秭")
-assert(Number.FormatNum(1.23e30):find("e%+?30"), "超高量级应切科学计数")
+assert(Number.FormatNum(9999.5) == "1.0万", "万位进位预舍入")
+assert(Number.FormatNum(99999999) == "1.00亿", "亿位进位预舍入")
+assert(Number.FormatNum(0 / 0) == "NaN")
+assert(Number.FormatNum(1 / 0) == "∞")
+assert(Number.FormatNum(1.23e54):find("e%+?54"), "超高量级应切科学计数")
 assert(Number.FormatCash(15000) == "¥1.5万")
 assert(Number.FormatWorldRank(6e9) == "60.00亿")
 assert(Number.FormatRankBadge(6e9) == "No.60.00亿")
@@ -32,6 +36,9 @@ assert(Number.FormatRankBadge(990) == "No.990")
 assert(Number.FormatClock(0) == "00:00")
 assert(Number.FormatClock(125.99) == "02:06", "小数秒绝不可触发 %d 运行时错误")
 assert(Number.FormatClock(125.4) == "02:05")
+assert(Number.FormatClock(28800) == "8:00:00", "超过1小时应展示 H:MM:SS")
+assert(Number.FormatMul(100) == "100")
+assert(Number.FormatMul(1.5) == "1.5")
 assert(Number.ScoreTier(1500, 100) == 4)
 assert(Number.ScoreTier(5000, 100) == 5)
 
@@ -152,6 +159,8 @@ end
 local multBefore = countMultPegs(ty.physics)
 assert(ty:BuyMachineUpgrade("peg_gold", 10))
 assert(countMultPegs(ty.physics) > multBefore, "黄金碰钉改造需转化更多金色倍增钉")
+assert(ty:BuyMachineUpgrade("peg_gold", 1) and ty.machineLv.peg_gold == 11, "黄金碰钉上限应为 11 级")
+assert(countMultPegs(ty.physics) == 13, "11级改造应将全部 11 颗普通钉转为金钉(含基础2颗=13)")
 
 local beforeSpMax = ty.skillPoints
 local costMax, cntMax = ty:GetMachineCost("pusher_turbo", 0)
@@ -265,26 +274,31 @@ assert(s2 == 6 and tIpo.ipoRound == 2 and tIpo.prestigeShares == 6)
 assert(tIpo:BuyPrestigeTalent("perpetual"), "应可用传奇股点亮永动超马达")
 assert(tIpo:BuyPrestigeTalent("tycoon_crit"), "应可用传奇股点亮首富暴击心")
 
--- 8.5 过门 3 轴抽奖老虎机 + 保底 + 全局倍率生效与自然倒计时归 1
+-- 8.5 过门 3 轴抽奖老虎机 + 9秒限流 + 保底 + 低奖不续命 + 自然到期归 1
 local tSlot = Tycoon.New(listener, { seed = 31415 })
-local sawBigMult = false
-local baseMult = tSlot:GetTotalMult()
-for spin = 1, 7 do
-    tSlot:QueueSlotSpin()
-    assert(tSlot.slotSpinning == true, "加入奖池队列应立即开转")
-    for _ = 1, 90 do
-        tSlot:Update(1 / 60)
-    end
-    if tSlot.luckMult >= 5 then
-        sawBigMult = true
-    end
+local sawLuckBuff = false
+assert(tSlot:QueueSlotSpin() == true and tSlot.slotSpinning == true, "首次过门应成功入队并开转")
+assert(tSlot:QueueSlotSpin() == false, "9秒限流期内连发过门应拒绝排队防止队列溢出")
+for _ = 1, 90 do tSlot:Update(1 / 60) end
+if tSlot.luckMult >= 2 then sawLuckBuff = true end
+for _ = 1, 8 do
+    tSlot.slotCd = 0
+    assert(tSlot:QueueSlotSpin() == true)
+    for _ = 1, 90 do tSlot:Update(1 / 60) end
+    if tSlot.luckMult >= 2 then sawLuckBuff = true end
 end
-assert(sawBigMult, "连续7次过门未中三连保底机制应必爆 >=5x 大奖")
-assert(tSlot:GetTotalMult() >= baseMult * tSlot.luckMult * 0.99, "老虎机中奖倍率必须实打实乘入总收益倍率")
-tSlot.HandleGateWin = function() end -- 暂停过门续期，单独验证倒计时自然归零
+assert(sawLuckBuff, "连续过门在8次保底机制下应触发 >=2x 幸运倍率")
+tSlot.luckMult = 100
+tSlot.luckTimer = 4.0
+tSlot.luckDur = 6.0
+local baseMult = tSlot:GetTotalMult() / 100
+assert(tSlot:GetTotalMult() >= baseMult * 100 * 0.99, "老虎机倍率必须乘入总收益倍率")
+tSlot:ResolveSlotSpin({ reels = { 1, 1, 2 }, prize = Config.SLOT_PRIZES.pair })
+assert(tSlot.luckMult == 100 and approxEq(tSlot.luckTimer, 4.0, 1e-4), "低档奖绝不可替100倍续命延长")
+tSlot.HandleGateWin = function() end
 tSlot.slotQueue = 0
 tSlot.slotSpinning = false
-for _ = 1, 1600 do
+for _ = 1, 600 do
     tSlot:Update(1 / 60)
 end
 assert(tSlot.luckTimer == 0 and tSlot.luckMult == 1, "倒计时结束后老虎机倍率应归回 1x")
@@ -351,6 +365,67 @@ assert(ty2.lastActiveAt == 999999)
 
 local saveData = SaveManager.DefaultData and SaveManager.DefaultData() or SaveManager.GetData()
 assert(saveData.version == 2, "SaveManager 版本号应升级为 2")
+
+-- 11. 2026-11 重构防崩溃/防膨胀全机制回归验证
+-- 11.1 P0 浮点溢出防线：超越 2^63 (9.22e18) 后继续推币不负、不NaN
+local tFloat = Tycoon.New(nil, { seed = 2027 })
+tFloat:AddWealth(1e20, true, 1.0)
+for _ = 1, 120 do tFloat:Update(1 / 60) end
+tFloat:AddWealth(5e19, true, 1.0)
+assert(tFloat.cash >= 1.49e20 and tFloat.cash == tFloat.cash and tFloat.cash < math.huge, "超过2^63后财富不得回绕成负数或NaN")
+local snapF = tFloat:ExportState(os.time())
+local tFloat2 = Tycoon.New(nil, { seed = 2028 })
+assert(tFloat2:ImportState(snapF) and tFloat2.cash > 1e20)
+
+-- 11.2 狂欢 25 秒冷却 + 结束重归0
+local tFev = Tycoon.New(nil, { seed = 2029 })
+tFev:TriggerFever(false)
+assert(tFev.feverActive and tFev.feverDur >= 8)
+for _ = 1, 600 do
+    tFev:Update(1 / 60)
+    if not tFev.feverActive then break end
+end
+assert(not tFev.feverActive and tFev.feverCd > 20, "狂欢结束后必须进入25秒冷静冷却")
+assert(tFev:AddFever(80) == 0 and tFev.fever == 0, "冷却期内不可充能狂欢")
+
+-- 11.3 撞钉限速(>=80) 与单币上限(<=3次) + 超频量子核未研发不发钱
+local tPeg = Tycoon.New(nil, { seed = 2030 })
+local dummyCoin = { id = 1, kind = "gold", level = 1, x = 180, y = 120, vx = 0, vy = 20, pegCashHits = 0, bounceCount = 0 }
+local dummyPeg = { x = 180, y = 120, kind = "normal" }
+local c0 = tPeg.cash
+tPeg:HandlePegHit(dummyCoin, dummyPeg, 40)
+assert(tPeg.cash == c0 and dummyCoin.pegCashHits == 0, "低于80px/s的擦碰抖动绝不可发撞钉现金")
+for _ = 1, 5 do tPeg:HandlePegHit(dummyCoin, dummyPeg, 140) end
+assert(dummyCoin.pegCashHits == 3, "每枚币撞钉发钱最多3次上限")
+local cBeforeOver = tPeg.cash
+tPeg:HandleOverclockCoin(dummyCoin)
+assert(tPeg.cash == cBeforeOver, "未研发超频量子核前满台回收不得发钱")
+tPeg.techOwned.overclock = true
+tPeg:HandleOverclockCoin(dummyCoin)
+assert(tPeg.cash > cBeforeOver, "研发超频量子核后应按0.2倍结算回收奖金")
+
+-- 11.4 常驻发射池 (最多6枚) 与序列化往返
+local tPin = Tycoon.New(nil, { seed = 2031 })
+tPin.skillPoints = 5000
+for i = 2, 8 do tPin:BuyCoin(Config.COIN_TIERS[i].id) end
+for i = 1, 6 do
+    local ok, on = tPin:TogglePinCoin(Config.COIN_TIERS[i].id)
+    assert(ok and on, "前6枚币设常驻必须成功")
+end
+assert(tPin:CountPinnedCoins() == 6)
+assert(not tPin:TogglePinCoin(Config.COIN_TIERS[7].id), "常驻发射组合最多选择6枚")
+local pinSnap = tPin:ExportState(os.time())
+local tPin2 = Tycoon.New(nil, { seed = 2032 })
+assert(tPin2:ImportState(pinSnap) and tPin2:CountPinnedCoins() == 6 and tPin2:IsCoinPinned("gold"))
+
+-- 11.5 二周目星际飞升 + 基准CPS离线/风投校验
+local tEra = Tycoon.New(nil, { seed = 2033 })
+tEra:AddWealth(6.05e12, false)
+assert(tEra:CanAscendEra(), "登顶世界第1后应解锁星际飞升")
+local shEra, spEra = tEra:DoGalacticAscend()
+assert(shEra == 25 and spEra == 40 and tEra.era == 1)
+assert(not tEra:CanAscendEra(), "星际飞升第2重需10倍身价门槛")
+assert(tEra:GetEraTitle() == Config.GALACTIC_TITLES[1])
 
 print(string.format("[test_core] ALL PASS! prestiges=%d ranks=%d unlocks=%d slotWins=%d spGains=%d ads=%d",
     tIpo.totalPrestiges, #events.ranks, #events.unlocks, #events.slotWins, events.spGains, ty.adWatchCount))

@@ -1,81 +1,43 @@
 # 推币机的狂欢（COIN CARNIVAL）
 
-> **手机竖屏 · 2.5D 霓虹街机风 · 推币物理 × 满屏数字肉鸽**
-> 基于 UrhoX（Lua 5.4 + `urhox-libs/UI` + NanoVG + 自研零 GC 对象池 2.5D 物理）打造。
+> **手机竖屏 · 3D 混合街机增量大亨（Incremental Tycoon） · 推币物理 × 全球富豪榜 × 5~8 小时节奏**
+> 基于 UrhoX（Lua 5.4 + `urhox-libs/UI` + UrhoX 3D 机台 + NanoVG 屏幕空间特效 + 零 GC 对象池 2.5D 物理）打造。
 
 ---
 
 ## 核心特色与玩法
 
-1. **真实街机推币手感 + 零卡顿物理**：
-   - 上部摆动落币口 + 错位双排霓虹钉阵 + 锁相同步移动中奖门；下层梯形 2.5D 往复推台与双侧侧漏缝。
-   - **140 枚同屏硬币对象池上限**，满台溢出触发**超频回收集分**；卡死保险丝防止重币死卡弹珠钉阵；内置 60 FPS 全特效压测均值约 `1.575 ms/帧`（PC 模拟环境下 3600 帧仅 `5671 ms`）。
-2. **双轴乘区 × 满屏暴击飙分**：
-   - 得分公式 `Chips × Mult × ComboMultiplier × CritMultiplier`，伴随分批爆音与暴击顿帧、屏幕微震及数字跳字。
-   - 蓄满 **狂欢槽（Fever）** 激活 8 秒+ 狂欢金币雨、双倍倍率与 `1.75x` 推板加速；支持一二三幕递增万/千万/亿级爆分与无尽波次挑战。
-3. **6 大家族 × 16 枚基础/进阶/传说币 × 6 种融合进化 × 20 件遗物**：
-   - 6 大家族（`财富`、`爆破`、`连锁`、`倾泻`、`聚能`、`狂欢`）均有 **2 / 4 / 6** 三档协同。
-   - 支持 **三合一升星**（Lv1 → Lv3）与整备工坊 **双币融合进化**（点金圣王、雷神之锤、超新星爆、无限分身、奇点涡轮、狂欢大满贯）。
-4. **3 幕分支战役 + 3 大机械 Boss + 20 档超频难度 + 每日挑战**：
-   - 含普通/精英战、霓虹商店、整备工坊、6 个奇遇事件、遗物宝箱与 3 位关底 Boss（`铁闸庄家`、`熔金巨轮`、`终极吞金兽`）。
-   - 支持局外图鉴与最多禁用 3 个冷门条目的图鉴禁用池，以及 20 档渐进超频难度。
-5. **程序音画完整兜底 + 美术零代码热替换**：
-   - 全部硬币、遗物、机台与 UI 默认均由 [`Skin.lua`](scripts/game/Skin.lua) 与 [`Art.lua`](scripts/game/Art.lua) 程序化矢量高光渲染；另附完整生成的 **20 个游戏音效 WAV + 4 组双音轨动态 BGM（基础 + 狂欢鼓点层）**。
-   - 后期如需换为成品美术贴图，可参照 [`docs/ASSET_PROMPTS.md`](docs/ASSET_PROMPTS.md) 生成 PNG 并直接放入 `assets/image/...`。
+1. **真机开屏即永动推币 · 3D/2D 无缝双模舞台**：
+   - 自动发射炮口与往复斜口中奖门同周期锁相摆动，下方 2.5D 梯形推台与侧漏缝实时挤推，**120 枚对象池上限**预留 50 槽给高频率手点与币雨。
+   - **长按推台狂暴连发**：手点/长按发射金边强化币，享受持续推落快感；3D 模式支持镜头冲击、彩虹跑马灯、事件点光闪烁与 1:1 币槽平滑旋转。
+2. **现金只涨不花 · 技能点 SP 驱动全部养成**：
+   - 玩家赚取的现金与总身价**只涨不扣**，专心用于从 **全球第 60 亿名起点** 依次冲破 22 档匿名阶层与 63 位 **全球前 1000 强真实富豪（直至 No.1 马斯克 ¥6.04 万亿）**！
+   - 全部 8 项机台改造、22 枚渐进币种（支持自选 **6 枚常驻发射池** + 30% 前期功能币抽取）、12 项黑科技均只消耗累计身价达标与排名超越发放的 **技能点 SP**。
+   - **方案 A 敲钟上市**：达标敲钟领传奇声望股与赠送技能点，绝不清空财富、机台与已解币种；登顶全球第 1 后解锁 **二周目星际飞升（Galactic Era）**！
+3. **稀缺高燃爆发 · 老虎机 + 冷却狂欢 + 波次连击**：
+   - 过中奖门激活 3 轴老虎机（9 秒限流、队列上限 2 轮，1.5×~100× 限时爆发与币雨/⚡/45× 金库巨币，低奖不替高倍续命）。
+   - **狂欢时刻（Fever）**：狂欢槽充能速率保护 + 结束后 **28 秒冷静冷却**，让每次狂欢爆发与 15 秒 **波次连击结算** 都极具节奏张力。
+4. **节制商业化激励 + 双端可靠存档**：
+   - 4 项常驻福利激励广告位（×3 印钞冷却 20 分钟上限 300s、超级狂欢、2 枚 45× 金库巨币、风投空投暴富 45 秒基准产值）+ 8 小时离线收益 + 双端本地/云端防覆盖存档。
 
 ---
 
-## 爽感特效系统（2026-11 重构）
+## 模块结构
 
-“看见增益 → 增益飞向目标 → 目标被砸响”三段式反馈，所有特效统一在屏幕空间绘制（3D / 2D 舞台共用）：
-
-| 模块 | 作用 |
+| 模块 | 职责说明 |
 |---|---|
-| [`Fx.lua`](scripts/game/Fx.lua) | 分级爆分飘字（近邻合并滚数、T4+ 合并为一个持续累加的大数字、×倍率戳、暴击角标）、火花/星光/翻转金币/彩纸粒子、三层锯齿闪电、中央重磅印章队列、飞币入账、倍率令牌、全屏闪光与狂欢暗角、镜头冲击与机台点光闪烁信号；`SetQuality(0.5)` 低画质档 |
-| [`Stage.lua`](scripts/game/Stage.lua) | 机台顶棚“总倍率”霓虹招牌（实时增益芯片：连击/狂欢/老虎机/印钞，点击查看公式）、真实滚动老虎机、狂欢能量玻璃管、连击计时光环、传说币闪烁星光；锚点取自 3D 投影，随屏幕比例自适应 |
-| [`JuiceWidgets.lua`](scripts/game/JuiceWidgets.lua) | `CashCounter` 顶栏滚动现金计数器（飞币砸中冲击 + 金光 + 产值上涨绿闪）；`FxLayer` 顶层特效层 |
-| [`Machine3D.lua`](scripts/game/Machine3D.lua) | 大事件 FOV 冲击、点光按事件变色闪烁、狂欢彩虹霓虹循环、热度驱动跑马灯速度、HUD 屏幕锚点 |
-
-飘字分级以**不含临时加成的基准产值**（`Tycoon:GetBaselineCPS()`）为参照：倍率越高，同一枚币爆出的字越大越炸，倍率加成可以被直接“看见”。
-
-## 目录结构
-
-```text
-推币机的狂欢/
-├── .project/                  # TapTap Maker 项目配置（竖屏、单机模式、资源索引）
-├── docs/
-│   ├── GDD.md                 # 完整策划与数值设计文档
-│   └── ASSET_PROMPTS.md       # 风格圣经 + 游戏内贴图 1:1 替换提示词 + 宣发三件套提示词
-├── scripts/
-│   ├── main.lua               # 入口（Start / HandleUpdate / SetGamePaused / Stop）
-│   ├── game/
-│   │   ├── Config.lua         # 全局数值、16+6+3 币种、20 遗物、6 事件、3 幕目标、20 难度
-│   │   ├── Number.lua         # 万/亿/兆中文大数字格式与平滑插值
-│   │   ├── Physics.lua        # 140 池位定制 2.5D 推台/钉阵/中奖门物理与卡死保险丝
-│   │   ├── Roster.lua         # 投币仓构筑、三合一、双币进化、2/4/6 协同与遗物查询
-│   │   ├── Route.lua          # 三幕 6 层分岔战役路线图生成
-│   │   ├── Run.lua            # 单局战役状态机、Boss 机制、经济与断点快照导出恢复
-│   │   ├── Skin.lua           # 霓虹配色、矢量控件皮肤与 assets/image 自动热替换探针
-│   │   ├── Art.lua            # 2.5D 硬币、钉子、图标矢量渲染与贴图优先绘制器
-│   │   ├── Fx.lua             # 爽感特效总线：分级合并飘字/倍率令牌/飞币入账/印章/粒子/闪电
-│   │   ├── JuiceWidgets.lua   # 滚动现金计数器 + 顶层特效层
-│   │   ├── Stage.lua          # 舞台自定义 Widget（机台/推台/防侧漏边栏/点击连发/引导）
-│   │   ├── Widgets.lua        # NeoFrame / NeoButton / NeoIcon / NeoBar 等封装组件
-│   │   ├── Hud.lua            # 主菜单 / 三段式战斗 HUD / 三选一弹窗 / 结算弹窗
-│   │   ├── CampaignHud.lua    # 分岔路线图 / 3 列商店 / 整备工坊 / 奇遇事件 / 宝箱页
-│   │   ├── CodexHud.lua       # 投币仓双页签 / 狂欢图鉴4页签+禁用池 / 20档难度弹窗
-│   │   ├── SettingsHud.lua    # 总设置（开关、双端保存时间与红字失败提示、兑换码、防覆盖框）
-│   │   ├── SaveManager.lua    # 原子本地档 + 云端 3 键分包（30s/120s 自动保存 + 换设备防覆盖）
-│   │   ├── RedeemCodes.lua    # 内置兑换码系统与防重领校验
-│   │   ├── Sfx.lua            # 16 通道音效池、45ms 同音节流与左右声道平移
-│   │   └── Music.lua          # 双音轨动态 BGM（连击/狂欢渐入鼓点 + 弹窗 0.4x 压低）
-│   └── Tests/                 # 真机 UrhoXRuntime 自动化与多界面截图验收脚本
-├── assets/
-│   └── audio/                 # 20 个 WAV 音效与 8 个双音轨 BGM 音频
-├── devtools/
-│   └── gen_audio.js           # 程序合成 16-bit WAV 音效与双轨 BGM 生成器
-└── tests/                     # 独立 Lua 5.4（lupa）单测、3600 帧压测与平衡模拟脚本
-```
+| [`scripts/main.lua`](scripts/main.lua) | 入口 (`Start` / `HandleUpdate` / `SetGamePaused` / `Stop`)，音效与 BGM 节流联动、3 秒急购写盘防抖 |
+| [`scripts/game/Config.lua`](scripts/game/Config.lua) | 全局数值：120 池物理配置、8 机台改造、22 币阶梯与进化配方、12 黑科技、12 轮 IPO、老虎机、广告位 |
+| [`scripts/game/Billionaires.lua`](scripts/game/Billionaires.lua) | 60 亿名起点 → 22 档匿名阶层 → 63 位前 1000 强真实富豪榜与实时排名曲线 |
+| [`scripts/game/Tycoon.lua`](scripts/game/Tycoon.lua) | 增量核心（浮点财富防 2⁶³ 溢出、9 秒限流老虎机、25 秒冷却狂欢、波次连击、6 常驻发射池、5 分钟去噪长期 CPS、星际飞升） |
+| [`scripts/game/Physics.lua`](scripts/game/Physics.lua) | 零 GC 空间哈希 2.5D 物理（3 迭代早退分离、`crowdBoost`、`magLip` 磁吸、滞留防卡死、11 颗倍增金钉） |
+| [`scripts/game/Machine3D.lua`](scripts/game/Machine3D.lua) | UrhoX 3D 推币机台（1:1 币槽映射、AlphaMask 探针、四元数缓存、低端机脏阈值节流） |
+| [`scripts/game/Stage.lua`](scripts/game/Stage.lua) | NanoVG 顶棚总倍率牌、3 轴老虎机、带冷却倒计时的狂欢管、手点金环标注 |
+| [`scripts/game/Fx.lua`](scripts/game/Fx.lua) | SoA 零 GC 特效池（近邻合并飘字、波次连击印章、飞币/倍率令牌、`SetQuality(0.5)` 低画质） |
+| [`scripts/game/JuiceWidgets.lua`](scripts/game/JuiceWidgets.lua) | 滚动现金计数器 `CashCounter`（飞币砸击反馈）+ 顶层 `FxLayer` |
+| [`scripts/game/TycoonHud.lua`](scripts/game/TycoonHud.lua) | 顶部双行状态与榜条 + 5 底部红点弹窗（机台/币种常驻/科技/上市飞升/福利）+ 前1000名榜 + 超越炫耀卡片 |
+| [`scripts/game/Number.lua`](scripts/game/Number.lua) | 12 级中文大数字格式化（万..极、进位预舍入、`H:MM:SS` 时钟、`NaN`/`∞` 显式告警） |
+| [`scripts/game/SaveManager.lua`](scripts/game/SaveManager.lua) | 原子本地存档 + 云端 3 键分包 + 换设备云读失败防覆盖保护 |
 
 ---
 
@@ -85,32 +47,20 @@
 
 | 兑换码 | 奖励内容 |
 |---|---|
-| `CARNIVAL2026` | 50 金券 + 777 轮盘币 |
-| `COIN888` | 88 金券 + 标准金币 |
-| `FEVER666` | 40 金券 + 下一局满狂欢开局 |
+| `RICH2026` | 当前基准产值现金礼包 + 5 传奇股 + 启动资金 |
+| `CARNIVAL2026` | 满槽超级狂欢 + 限时 ×3 印钞 + 最高阶币雨 |
+| `COIN888` | 8 传奇股 + 8 枚高阶硬币空投 |
 
 ---
 
-## 本地测试与真机预览验证命令
+## 本地测试命令（`lupa` / Lua 5.4）
 
-> 以下命令全部于本地环境执行，不触发任何云端构建或仓库推送。
+> 以下命令仅在本地环境跑通单测、渲染冒烟、3600 帧压测与 10 小时宏观数值校准：
 
-### 1. 运行核心单元测试与 3600 帧性能压测（`lupa` / Lua 5.4）
 ```powershell
-$PY = "C:\Users\Administrator\.taptap-maker\python\uv\cpython-3.12-windows-x86_64-none\python.exe"
+$PY = "C:\Users\Administrator\.taptap-maker\lua-lsp-venv\Scripts\python.exe"
 & $PY "c:\Users\Administrator\Desktop\推币机的狂欢\tests\run_lua.py" "c:\Users\Administrator\Desktop\推币机的狂欢\tests\test_core.lua"
+& $PY "c:\Users\Administrator\Desktop\推币机的狂欢\tests\run_lua.py" "c:\Users\Administrator\Desktop\推币机的狂欢\tests\test_render.lua"
 & $PY "c:\Users\Administrator\Desktop\推币机的狂欢\tests\run_lua.py" "c:\Users\Administrator\Desktop\推币机的狂欢\tests\stress_perf.lua"
-& $PY "c:\Users\Administrator\Desktop\推币机的狂欢\tests\run_lua.py" "c:\Users\Administrator\Desktop\推币机的狂欢\tests\sim_balance.lua"
-```
-
-### 2. UrhoXRuntime 竖屏引擎验证与截图验收（支持 `--mode both`）
-```powershell
-$TM = "C:\Users\Administrator\AppData\Roaming\npm\node_modules\@taptap\maker\bin\taptap-maker"
-node $TM preview validate --target-dir "c:\Users\Administrator\Desktop\推币机的狂欢" --mode both --entry "main.lua" --validate-frames 180 --screenshot-frame 150 --width 450 --height 900 --nosound --output-dir "c:\Users\Administrator\Desktop\推币机的狂欢\validation\final_main" --json
-```
-同理可将 `--entry` 替换为 `Tests/FullGameValidation.lua`、`Tests/ShotMenu.lua`、`Tests/ShotMap.lua`、`Tests/ShotShop.lua`、`Tests/ShotCodex.lua`、`Tests/ShotSettings.lua` 检验对应页面。
-
-### 3. 启动本地交互预览窗口亲自试玩
-```powershell
-node $TM preview --target-dir "c:\Users\Administrator\Desktop\推币机的狂欢" --width 450 --height 900
+& $PY "c:\Users\Administrator\Desktop\推币机的狂欢\tests\run_lua.py" "c:\Users\Administrator\Desktop\推币机的狂欢\tests\sim_tycoon.lua"
 ```

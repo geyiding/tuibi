@@ -71,7 +71,7 @@ function SaveManager.DefaultData()
         saveSeq = 0,
         difficulty = 1,
         unlockedDifficulty = 1,
-        records = { runs = 0, wins = 0, bestScore = 0, bestHit = 0, maxCombo = 0 },
+        records = { runs = 0, wins = 0, bestScore = 0.0, bestHit = 0.0, maxCombo = 0 },
         discovered = { coins = { gold = true }, relics = {}, recipes = {}, bosses = {} },
         disabled = {},
         redeemedCodes = {},
@@ -91,7 +91,11 @@ local function SanitizeData(raw)
     d.difficulty = math.max(1, math.min(d.unlockedDifficulty, math.floor(tonumber(raw.difficulty) or 1)))
     if type(raw.records) == "table" then
         for k, v in pairs(d.records) do
-            d.records[k] = math.max(0, math.floor(tonumber(raw.records[k]) or v))
+            if k == "bestScore" or k == "bestHit" then
+                d.records[k] = math.max(0.0, (tonumber(raw.records[k]) or v) + 0.0)
+            else
+                d.records[k] = math.max(0, math.floor(tonumber(raw.records[k]) or v))
+            end
         end
     end
     if type(raw.discovered) == "table" then

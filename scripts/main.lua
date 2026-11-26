@@ -32,6 +32,8 @@ local game = {
     refreshAccum = 0,
     modalRefreshAccum = 0,
     snapshotAccum = 0,
+    saveDirty = false,
+    saveDirtyAccum = 0,
     _lastShootSfx = -1,
     _lastPegSfx = -1,
     _lastCritSfx = -1,
@@ -42,8 +44,8 @@ local function SyncDataSnapshot()
     if not game.tycoon then return end
     local d = SaveManager.GetData()
     d.tycoon = game.tycoon:ExportState(os.time())
-    d.records.bestScore = math.max(d.records.bestScore or 0, math.floor(game.tycoon.lifetimeCash))
-    d.records.bestHit = math.max(d.records.bestHit or 0, math.floor(game.tycoon.bestHit))
+    d.records.bestScore = math.max((tonumber(d.records.bestScore) or 0) + 0.0, math.floor(game.tycoon.lifetimeCash) + 0.0)
+    d.records.bestHit = math.max((tonumber(d.records.bestHit) or 0) + 0.0, math.floor(game.tycoon.bestHit) + 0.0)
     d.records.maxCombo = math.max(d.records.maxCombo or 0, math.floor(game.tycoon.maxCombo))
     for id, lv in pairs(game.tycoon.coinLv) do
         if lv > 0 then d.discovered.coins[id] = true end
@@ -51,6 +53,8 @@ local function SyncDataSnapshot()
 end
 
 local function PersistTycoon(saveCloudNow)
+    game.saveDirty = false
+    game.saveDirtyAccum = 0
     SyncDataSnapshot()
     SaveManager.SaveLocal()
     if saveCloudNow then
@@ -60,6 +64,11 @@ local function PersistTycoon(saveCloudNow)
             end
         end)
     end
+end
+
+local function MarkSaveDirty()
+    game.saveDirty = true
+    game.saveDirtyAccum = 0
 end
 
 local function MakeListener()
@@ -158,6 +167,11 @@ local function MakeListener()
         Sfx.Play("pick", 0.9)
         game.hudDirty = true
     end
+    function l:OnComboWaveEnd(combo, waveMult, bonus)
+        game.fx:OnComboWaveEnd(combo, waveMult, bonus)
+        Sfx.Play("coin", 0.72)
+        game.hudDirty = true
+    end
     function l:OnSlotWin(prize)
         game.fx:OnSlotWin(prize)
         if prize and prize.mult and prize.mult >= 10 then
@@ -199,7 +213,9 @@ end
 local callbacks = {
     OnTapStage = function()
         if game.tycoon and not TycoonHud.GetCurModal() then
-            game.tycoon:ManualShoot()
+            if not game.tycoon:ManualShoot() then
+                Sfx.Play("click", 0.35)
+            end
         end
     end,
     OnSetBuyMode = function(mode)
@@ -213,7 +229,7 @@ local callbacks = {
         if game.tycoon:BuyMachineUpgrade(id) then
             Sfx.Play("pick")
             PurchaseFx("Lv." .. tostring(game.tycoon.machineLv[id] or 0) .. "!", Skin.C.gold)
-            PersistTycoon(false)
+            MarkSaveDirty()
             game.hudDirty = true
             TycoonHud.RefreshMain(game.tycoon)
             TycoonHud.RefreshCurrentModal()
@@ -225,7 +241,19 @@ local callbacks = {
         if ok then
             Sfx.Play("coin")
             PurchaseFx(isUnlock and "解锁!" or ("Lv." .. tostring(game.tycoon.coinLv[id] or 0) .. "!"), Skin.C.cyan)
-            PersistTycoon(false)
+            MarkSaveDirty()
+            game.hudDirty = true
+            TycoonHud.RefreshMain(game.tycoon)
+            TycoonHud.RefreshCurrentModal()
+        end
+    end,
+    OnTogglePinCoin = function(id)
+        if not game.tycoon then return end
+        local ok, pinned = game.tycoon:TogglePinCoin(id)
+        Sfx.Play(ok and "pick" or "click")
+        if ok then
+            PurchaseFx(pinned and "★常驻!" or "取消常驻", Skin.C.cyan)
+            MarkSaveDirty()
             game.hudDirty = true
             TycoonHud.RefreshMain(game.tycoon)
             TycoonHud.RefreshCurrentModal()
@@ -236,7 +264,7 @@ local callbacks = {
         if game.tycoon:BuyTech(id) then
             Sfx.Play("win")
             PurchaseFx("研发成功!", Skin.C.green)
-            PersistTycoon(false)
+            MarkSaveDirty()
             game.hudDirty = true
             TycoonHud.RefreshMain(game.tycoon)
             TycoonHud.RefreshCurrentModal()
@@ -247,10 +275,24 @@ local callbacks = {
         if game.tycoon:BuyPrestigeTalent(id) then
             Sfx.Play("pick")
             PurchaseFx("Lv." .. tostring(game.tycoon.prestigeLv[id] or 0) .. "!", Skin.C.magenta)
-            PersistTycoon(false)
+            MarkSaveDirty()
             game.hudDirty = true
             TycoonHud.RefreshMain(game.tycoon)
             TycoonHud.RefreshCurrentModal()
+        end
+    end,
+    OnGalacticAscend = function()
+        if not game.tycoon then return end
+        if game.tycoon:CanAscendEra() then
+            local shares, bonusSp = game.tycoon:DoGalacticAscend()
+            Sfx.Play("jackpot", 1.0)
+            PurchaseFx("星际飞升!", Skin.C.magenta)
+            PersistTycoon(true)
+            game.hudDirty = true
+            TycoonHud.RefreshMain(game.tycoon)
+            TycoonHud.RefreshCurrentModal()
+        else
+            Sfx.Play("click")
         end
     end,
     OnConfirmPrestige = function(isDouble)
@@ -325,6 +367,11 @@ local callbacks = {
             TycoonHud.CloseModal()
             TycoonHud.RefreshMain(game.tycoon)
         else
+            if not MockAd.IsReady(game.tycoon, "airdrop_5x") then
+                Sfx.Play("click")
+                TycoonHud.RefreshAirdrop()
+                return
+            end
             Sfx.Play("click")
             MockAd.Show("airdrop_5x", nil, function()
                 if game.tycoon then
@@ -565,11 +612,17 @@ function HandleUpdate(eventType, eventData)
     Music.Update(dt)
     Widgets.Tick(dt)
 
-    -- 定期同步数据快照以供 SaveManager 自动本地/云端保存
+    -- 定期同步数据快照以供 SaveManager 自动本地/云端保存；急购防抖 3 秒落盘避免连续点击写盘卡顿
     game.snapshotAccum = game.snapshotAccum + dt
     if game.snapshotAccum >= 5.0 then
         game.snapshotAccum = 0
         SyncDataSnapshot()
+    end
+    if game.saveDirty then
+        game.saveDirtyAccum = game.saveDirtyAccum + dt
+        if game.saveDirtyAccum >= 3.0 then
+            PersistTycoon(false)
+        end
     end
     SaveManager.Tick(dt, true, game.paused)
 

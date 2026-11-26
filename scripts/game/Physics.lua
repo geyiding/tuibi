@@ -35,9 +35,14 @@ function Physics.New(callbacks)
     self.gateWidthScale = 1.0
     self.railGuard = 0        -- 0..0.7 侧漏护栏保护
     self.frontLipResist = 0.08
+    self.magLip = 0
+    self._stepping = false
+    self._needSync = false
+    self._spawnArg = {}
     self.gateClosed = false
     self.launchPhase = 0
-    self.gatePhase = 0
+    self.gatePhase = 0.31
+    self.slotCount = 0
     self.pusherPhase = 0.72   -- 起始靠近前推半程，首次投币很快响应
     self.pusherY = S.PUSHER_Y_MIN
     self.pusherPrevY = S.PUSHER_Y_MIN
@@ -77,6 +82,10 @@ function Physics.New(callbacks)
             isMini = false,
             isBonus = false,
             fromShot = false,
+            fromManual = false,
+            valueMul = 1.0,
+            pegCashHits = 0,
+            lastPegId = 0,
             spawnSeq = 0,
         }
     end
@@ -121,7 +130,7 @@ function Physics:BuildPegs(extraMultCount)
             }
         end
     end
-    -- 额外转化金色倍增钉（来自遗物）
+    -- 额外转化金色倍增钉（顺序遍历全部 11 颗普通钉位，保证 Lv1~Lv11 每级生效）
     local n = extraMultCount or 0
     local idx = 1
     while n > 0 and idx <= #pegs do
@@ -129,7 +138,7 @@ function Physics:BuildPegs(extraMultCount)
             pegs[idx].kind = "mult"
             n = n - 1
         end
-        idx = idx + 2
+        idx = idx + 1
     end
 end
 
@@ -142,9 +151,13 @@ function Physics:Reset(opts)
     self.gateWidthScale = opts.gateWidthScale or 1.0
     self.railGuard = opts.railGuard or 0
     self.frontLipResist = opts.frontLipResist or 0.08
+    self.magLip = opts.magLip or 0
+    self._stepping = false
+    self._needSync = false
     self.gateClosed = false
     self.launchPhase = 0
-    self.gatePhase = 0
+    self.gatePhase = 0.31
+    self.slotCount = 0
     self.pusherPhase = 0.72
     self.pusherY = self:CalcPusherY(self.pusherPhase)
     self.pusherPrevY = self.pusherY
@@ -167,23 +180,65 @@ function Physics:CalcPusherY(phase)
 end
 
 function Physics:SyncActiveList()
-    local cnt = 0
+    local cnt, sc = 0, 0
     local list = self.activeIds
     for i = 1, S.MAX_COINS do
-        if self.coins[i].active then
+        local c = self.coins[i]
+        if c.active then
             cnt = cnt + 1
             list[cnt] = i
+            if c.zone == "slot" then sc = sc + 1 end
         end
     end
     self.activeCount = cnt
+    self.slotCount = sc
 end
 
---- 释放第 idx 槽位并若超过上限优先超频回收最老的普通铺台币
+--- 推台群体前推脉冲：将前排/中排台面币向前沿加速挤压，防止后排新增直接淹没前排掉落
+function Physics:PulseDeckForward(strength, countLimit)
+    local touched = 0
+    local limit = countLimit or S.MAX_COINS
+    local coins = self.coins
+    local ids = self.activeIds
+    for idx = 1, self.activeCount do
+        local c = coins[ids[idx]]
+        if c and c.active and c.zone == "deck" and c.y >= 340 then
+            local factor = (c.y >= 460) and 1.25 or 0.75
+            c.vy = min(175, c.vy + strength * factor)
+            touched = touched + 1
+            if touched >= limit then break end
+        end
+    end
+end
+
+--- 释放槽位：优先复用已出界正在下落的币，其次清理中后排迷你子币，最后温和超频并向前推挤前排
 function Physics:AllocCoinSlot()
     for i = 1, S.MAX_COINS do
         if not self.coins[i].active then return self.coins[i] end
     end
-    -- 已满 MAX_COINS：保护前沿悬崖带 (y > 460)，优先超频回收后排/推板最老普通币
+    -- 1. 优先复用已计分离开台面正在悬崖下方坠落的币（零损失）
+    for i = 1, S.MAX_COINS do
+        local c = self.coins[i]
+        if c.active and c.zone == "falling" then
+            c.active = false
+            return c
+        end
+    end
+    -- 2. 其次回收中后排分裂子币
+    local pickMini, miniSeq = nil, math.huge
+    for i = 1, S.MAX_COINS do
+        local c = self.coins[i]
+        if c.active and c.zone == "deck" and c.isMini and c.y < 480 and c.spawnSeq < miniSeq then
+            miniSeq = c.spawnSeq
+            pickMini = c
+        end
+    end
+    if pickMini then
+        if self.cb.OnOverclockCoin then self.cb.OnOverclockCoin(pickMini) end
+        pickMini.active = false
+        return pickMini
+    end
+    -- 3. 保护前沿悬崖带 (y > 460)，回收到极限前先推动前排跌落再回收最老普通币
     local pick, bestScore = nil, math.huge
     for i = 1, S.MAX_COINS do
         local c = self.coins[i]
@@ -197,6 +252,7 @@ function Physics:AllocCoinSlot()
         end
     end
     if not pick then pick = self.coins[1] end
+    self:PulseDeckForward(36, 4)
     if self.cb.OnOverclockCoin then
         self.cb.OnOverclockCoin(pick)
     end
@@ -205,6 +261,13 @@ function Physics:AllocCoinSlot()
 end
 
 function Physics:SpawnCoin(params)
+    if params.isMini and self.activeCount >= S.MAX_COINS - 14 then
+        return nil
+    end
+    if params.isRain and self.activeCount >= S.MAX_COINS - 6 then
+        self:PulseDeckForward(45, 6)
+        return nil
+    end
     local c = self:AllocCoinSlot()
     local kind = params.kind or "gold"
     local def = Config.COINS[kind] or Config.COINS.gold
@@ -241,38 +304,70 @@ function Physics:SpawnCoin(params)
     c.isMini = params.isMini == true
     c.isBonus = params.isBonus == true
     c.fromShot = params.fromShot == true
+    c.fromManual = params.fromManual == true
+    c.valueMul = params.valueMul or 1.0
+    c.pegCashHits = 0
+    c.lastPegId = 0
     c.spawnSeq = self.nextSeq
-    self:SyncActiveList()
+    if self._stepping then
+        self._needSync = true
+    else
+        self:SyncActiveList()
+    end
     return c
 end
 
---- 顶部摆动炮发射硬币
-function Physics:LaunchFromTop(kind, level, offsetAngleDeg)
+--- 顶部摆动炮发射硬币（上槽 >=22 时合并为高倍叠币并前推台面，防止挤占 deck 池位）
+function Physics:LaunchFromTop(kind, level, offsetAngleDeg, fromManual)
+    if (self.slotCount or 0) >= 22 then
+        local newest, bestSeq = nil, -1
+        for i = 1, self.activeCount do
+            local c = self.coins[self.activeIds[i]]
+            if c and c.active and c.zone == "slot" and c.spawnSeq > bestSeq then
+                bestSeq = c.spawnSeq
+                newest = c
+            end
+        end
+        if newest then
+            newest.valueMul = min(6.0, (newest.valueMul or 1.0) + 1.0)
+            if fromManual then newest.fromManual = true end
+            self:PulseDeckForward(fromManual and 26 or 14, 10)
+            return newest
+        end
+    end
     local angDeg = self.launchAngleDeg + (offsetAngleDeg or 0)
     local rad = math.rad(angDeg)
     local spd = S.LAUNCH_SPEED
     local sx = S.LAUNCHER_X + sin(rad) * 14
     local sy = S.LAUNCHER_Y + cos(rad) * 14
-    return self:SpawnCoin({
-        kind = kind,
-        level = level or 1,
-        x = sx,
-        y = sy,
-        vx = sin(rad) * spd,
-        vy = cos(rad) * spd,
-        zone = "slot",
-        fromShot = true,
-        vrot = (angDeg >= 0) and 3.5 or -3.5,
-    })
+    local a = self._spawnArg
+    for k in pairs(a) do a[k] = nil end
+    a.kind = kind
+    a.level = level or 1
+    a.x = sx
+    a.y = sy
+    a.vx = sin(rad) * spd
+    a.vy = cos(rad) * spd
+    a.zone = "slot"
+    a.fromShot = true
+    a.fromManual = fromManual == true
+    a.vrot = (angDeg >= 0) and 3.5 or -3.5
+    local spawned = self:SpawnCoin(a)
+    if fromManual then
+        self:PulseDeckForward(14, 8)
+    end
+    return spawned
 end
 
---- 开局从推板前沿往悬崖铺满交错推台基础币（COIN_RADIUS=14.5 配合 72 枚刚性铺满整台，推币立即连环跌落）
-function Physics:SeedDeck(rng, poolKinds)
+--- 开局从推板前沿往悬崖铺满交错推台基础币（120 池中仅铺 70 枚，留 50 槽给高频率手点不爆池）
+function Physics:SeedDeck(rng, poolKinds, extraSeed)
     local kinds = poolKinds or { "gold", "gold", "gold", "emerald", "split", "thunder" }
+    local cap = min(S.MAX_COINS - 16, S.SEED_COUNT + (extraSeed or 0))
     local yStart, yEnd = 334, 536
     local rowStep = 26.8
     local rIdx = 0
     local ty = yStart
+    local a = self._spawnArg
     while ty <= yEnd do
         rIdx = rIdx + 1
         local halfW = Physics.TrapezoidHalfW(ty) - 15
@@ -287,18 +382,22 @@ function Physics:SeedDeck(rng, poolKinds)
             local y = min(S.FRONT_DROP_Y - 2.5, ty + jy)
             local pickKind = kinds[((rIdx * 7 + k) % #kinds) + 1]
             if ty >= 510 and (k % 2 == 0) then pickKind = "gold" end
-            if self.activeCount < S.MAX_COINS - 14 then
-                self:SpawnCoin({
-                    kind = pickKind,
-                    level = 1,
-                    x = x,
-                    y = y,
-                    zone = "deck",
-                    gateChecked = true,
-                })
+            if self.activeCount < cap then
+                for ak in pairs(a) do a[ak] = nil end
+                a.kind = pickKind
+                a.level = 1
+                a.x = x
+                a.y = y
+                a.zone = "deck"
+                a.gateChecked = true
+                self:SpawnCoin(a)
             end
         end
         ty = ty + rowStep
+    end
+    if self._needSync then
+        self._needSync = false
+        self:SyncActiveList()
     end
 end
 
@@ -368,10 +467,10 @@ function Physics:Step(dt)
     if dt > 0.05 then dt = 0.05 end
     self.time = self.time + dt
 
-    -- 1. 机械周期更新（同频摆动发射口 + 往复中奖门 + 机械推板）
+    -- 1. 机械周期更新（摆动发射口 + 独立扫掠中奖门 + 机械推板）
     local gRate = (1 / S.GATE_CYCLE) * self.gateCycleScale
     self.launchPhase = (self.launchPhase + dt * gRate) % 1
-    self.gatePhase = self.launchPhase
+    self.gatePhase = (self.gatePhase + dt * (1 / (S.GATE_CYCLE * 1.37)) * self.gateCycleScale) % 1
     self.launchAngleDeg = sin(self.launchPhase * TWO_PI) * S.LAUNCH_SWING_DEG
     self.gateX = S.LAUNCHER_X + sin(self.gatePhase * TWO_PI) * S.GATE_TRAVEL
 
@@ -394,12 +493,19 @@ function Physics:Step(dt)
     local pusherLeft = 180 - S.DECK_TOP_HALF + 4
     local pusherRight = 180 + S.DECK_TOP_HALF - 4
 
-    -- 2. 单币积分、槽内碰撞与推台边界
+    -- 2. 单币积分、槽内碰撞与推台边界（遍历期间新增币延迟同步 activeIds）
     local cb = self.cb
     local needSync = false
-    for i = 1, self.activeCount do
+    self._stepping = true
+    self._needSync = false
+    local stepCount = self.activeCount
+    local crowdBoost = 1.0
+    if stepCount > S.MAX_COINS * 0.78 then
+        crowdBoost = 1.0 + 0.35 * ((stepCount / S.MAX_COINS - 0.78) / 0.22)
+    end
+    for i = 1, stepCount do
         local c = self.coins[self.activeIds[i]]
-        if c.active then
+        if c and c.active then
             c.age = c.age + dt
             c.rot = c.rot + c.vrot * dt
             if c.frostT > 0 then c.frostT = max(0, c.frostT - dt) end
@@ -426,7 +532,7 @@ function Physics:Step(dt)
                     c.vx = -abs(c.vx) * 0.72
                 end
 
-                -- 钉阵圆形碰撞（幽灵初期穿透）
+                -- 钉阵圆形碰撞（幽灵初期穿透，记录入钉前速度供真实撞钉限流）
                 if c.ghostTimer <= 0 then
                     local pegs = self.pegs
                     for p = 1, #pegs do
@@ -442,6 +548,7 @@ function Physics:Step(dt)
                             c.y = peg.y + ny * minD
                             local vn = c.vx * nx + c.vy * ny
                             if vn < 0 then
+                                local hitSpd = sqrt(c.vx * c.vx + c.vy * c.vy)
                                 local imp = -(1 + c.rest) * vn
                                 c.vx = c.vx + nx * imp
                                 c.vy = c.vy + ny * imp
@@ -452,7 +559,12 @@ function Physics:Step(dt)
                                 c.vrot = (c.vx >= 0) and 4 or -4
                                 c.bounceCount = c.bounceCount + 1
                                 peg.flash = 1.0
-                                if cb.OnPegHit then cb.OnPegHit(c, peg) end
+                                if cb.OnPegHit and c.lastPegId ~= p then
+                                    c.lastPegId = p
+                                    cb.OnPegHit(c, peg, hitSpd)
+                                elseif cb.OnPegHit and hitSpd >= 120 then
+                                    cb.OnPegHit(c, peg, hitSpd)
+                                end
                             end
                         end
                     end
@@ -553,10 +665,10 @@ function Physics:Step(dt)
                     c.vy = c.vy * damp
                     c.vrot = c.vrot * damp
 
-                    -- 推板互动：上层乘板或前缘推挤
+                    -- 推板互动：上层乘板或前缘推挤（拥挤满台时小幅增大前推速度，让狂点看得见掉币）
                     if c.onPusher then
                         if self.pusherVelY > 0 then
-                            c.y = c.y + self.pusherVelY * 0.85 * dt
+                            c.y = c.y + self.pusherVelY * 0.85 * crowdBoost * dt
                         end
                         if c.y >= pusherFront - c.r * 0.1 then
                             c.onPusher = false
@@ -566,10 +678,15 @@ function Physics:Step(dt)
                         if c.x >= pusherLeft and c.x <= pusherRight and c.y - c.r < pusherFront then
                             c.y = pusherFront + c.r
                             if self.pusherVelY > 0 then
-                                local pushV = max(40, self.pusherVelY * self.pusherForceScale * 1.2)
+                                local pushV = max(40, self.pusherVelY * self.pusherForceScale * 1.2 * crowdBoost)
                                 if c.vy < pushV then c.vy = pushV end
                             end
                         end
+                    end
+
+                    -- 磁力集束唇：前沿 36px 额外前拉跌落
+                    if self.magLip > 0 and c.y >= S.DECK_BOT_Y - 36 and c.y < S.FRONT_DROP_Y then
+                        c.vy = c.vy + 22 * self.magLip * dt
                     end
 
                     -- 推进积分
@@ -635,13 +752,17 @@ function Physics:Step(dt)
         end
     end
 
-    if needSync then self:SyncActiveList() end
+    self._stepping = false
+    if needSync or self._needSync then
+        self._needSync = false
+        self:SyncActiveList()
+    end
 
-    -- 3. 推台币-币 5 迭代位置分离与前向动量传导（空间网格加速，零内存分配）
-    self:ResolveDeckCollisions()
+    -- 3. 推台币-币 3 迭代位置分离（带早停与静止Skip，空间网格零分配）
+    self:ResolveDeckCollisions(crowdBoost)
 end
 
-function Physics:ResolveDeckCollisions()
+function Physics:ResolveDeckCollisions(crowdBoost)
     local cnt = self.activeCount
     if cnt < 2 then return end
     local coins = self.coins
@@ -656,8 +777,10 @@ function Physics:ResolveDeckCollisions()
     local pusherFront = self.pusherY
     local pusherLeft = 180 - S.DECK_TOP_HALF + 4
     local pusherRight = 180 + S.DECK_TOP_HALF - 4
+    local pushGain = crowdBoost or 1.0
 
-    for _ = 1, 5 do
+    for iter = 1, 3 do
+        local maxOv = 0
         for k = 1, GRID_CELLS do gridHead[k] = 0 end
         -- 入格
         for idx = 1, cnt do
@@ -709,25 +832,30 @@ function Physics:ResolveDeckCollisions()
                                             d = 0.001
                                         end
                                         local overlap = minD - d
-                                        local wA = 1 / max(0.3, a.mass)
-                                        local wB = 1 / max(0.3, b.mass)
-                                        local wSum = wA + wB
-                                        local rA = wA / wSum
-                                        local rB = wB / wSum
-                                        a.x = a.x - ux * overlap * rA
-                                        a.y = a.y - uy * overlap * rA
-                                        b.x = b.x + ux * overlap * rB
-                                        b.y = b.y + uy * overlap * rB
-                                        -- 保持相对速度前推传递
-                                        local rvx = b.vx - a.vx
-                                        local rvy = b.vy - a.vy
-                                        local vn = rvx * ux + rvy * uy
-                                        if vn < 0 then
-                                            local j = -1.18 * vn / wSum
-                                            a.vx = a.vx - ux * j * wA
-                                            a.vy = a.vy - uy * j * wA
-                                            b.vx = b.vx + ux * j * wB
-                                            b.vy = b.vy + uy * j * wB
+                                        if overlap > maxOv then maxOv = overlap end
+                                        local moving = (abs(a.vx) + abs(a.vy) + abs(b.vx) + abs(b.vy)) >= 1.5
+                                        if moving or overlap > 0.2 then
+                                            local wA = 1 / max(0.3, a.mass)
+                                            local wB = 1 / max(0.3, b.mass)
+                                            local wSum = wA + wB
+                                            local rA = wA / wSum
+                                            local rB = wB / wSum
+                                            a.x = a.x - ux * overlap * rA
+                                            a.y = a.y - uy * overlap * rA
+                                            b.x = b.x + ux * overlap * rB
+                                            b.y = b.y + uy * overlap * rB
+                                            if moving then
+                                                local rvx = b.vx - a.vx
+                                                local rvy = b.vy - a.vy
+                                                local vn = rvx * ux + rvy * uy
+                                                if vn < 0 then
+                                                    local j = -1.18 * vn * pushGain / wSum
+                                                    a.vx = a.vx - ux * j * wA
+                                                    a.vy = a.vy - uy * j * wA
+                                                    b.vx = b.vx + ux * j * wB
+                                                    b.vy = b.vy + uy * j * wB
+                                                end
+                                            end
                                         end
                                     end
                                 end
@@ -748,6 +876,7 @@ function Physics:ResolveDeckCollisions()
                 end
             end
         end
+        if iter >= 2 and maxOv < 0.15 then break end
     end
 end
 

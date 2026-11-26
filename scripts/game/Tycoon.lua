@@ -36,21 +36,23 @@ function Tycoon.New(fxListener, opts)
     self.seed = opts.seed or os.time()
     self.rng = MakeRng(self.seed)
 
-    -- 核心资产与声望状态（钱只涨不跌专冲世界第一，升级全靠技能点 SP）
-    self.cash = 0
-    self.runCash = 0
-    self.lifetimeCash = 0
+    -- 核心资产与声望状态（全部浮点 0.0 杜绝 Lua 5.4 64位整数溢出；升级仅花技能点 SP）
+    self.cash = 0.0
+    self.runCash = 0.0
+    self.lifetimeCash = 0.0
     self.skillPoints = 0
     self.totalSkillPoints = 0
     self.spStep = 0
     self.ipoRound = 0
+    self.era = 0
     self.prestigeShares = 0
     self.totalPrestiges = 0
     self.rankIdx = 0      -- 0 = 第60亿名起点，依次冲破 22 档匿名阶层 -> 世界前 1000 真名榜
     self.stageTheme = 1
 
-    -- 街机三连老虎机（过中奖门转奖，限时爆发 2x~100x 全局掉落倍率）
+    -- 街机三连老虎机（过中奖门 9 秒限流转奖，稀缺爆发 1.5x~100x）
     self.slotQueue = 0
+    self.slotCd = 0
     self.slotSpinning = false
     self.slotSpinT = 0
     self.slotSpinDur = 0.85
@@ -63,22 +65,33 @@ function Tycoon.New(fxListener, opts)
     self.luckName = ""
     self.slotFlashT = 0
 
-    -- 四大养成线
+    -- 四大养成线 + 玩家常驻发射池配置
     self.machineLv = {}
     for _, m in ipairs(Config.MACHINE_UPGRADES) do self.machineLv[m.id] = 0 end
     self.coinLv = { gold = 1 } -- 渐进起点：开局仅解锁标准金币
+    self.pinnedCoins = {}
+    self._pinnedList = {}
+    self._unlockedList = { "gold" }
     self.techOwned = {}
     self.prestigeLv = {}
     for _, p in ipairs(Config.PRESTIGE_TALENTS) do self.prestigeLv[p.id] = 0 end
+    self._redDots = { machine = 0, coins = 0, tech = 0, prestige = 0, welfare = 0 }
 
     self.buyMode = 1 -- 1 | 10 | 0(MAX)
 
-    -- 推台实时反馈
+    -- 推台实时反馈（波次连击 + 冷却狂欢）
     self.combo = 0
     self.comboTimer = 0
+    self.comboWaveT = 0
+    self.comboWaveDur = 15.0
     self.fever = 0
     self.feverActive = false
     self.feverTimer = 0
+    self.feverDur = 8.0
+    self.feverCd = 0
+    self.feverExtended = false
+    self.feverChargeAcc = 0
+    self.feverChargeTick = 0
     self.feverRainLeft = 0
     self.feverRainTimer = 0
 
@@ -88,7 +101,7 @@ function Tycoon.New(fxListener, opts)
     self.shotsFired = 0
     self.totalClicks = 0
     self.totalDrops = 0
-    self.bestHit = 0
+    self.bestHit = 0.0
     self.maxCombo = 0
 
     -- 模拟广告与风投空投
@@ -98,19 +111,25 @@ function Tycoon.New(fxListener, opts)
     self.airdropTimer = 55
     self.activeAirdrop = nil
 
-    -- 收入统计（10秒滑动窗口 + 理论兜底估值）
+    -- 收入统计（10秒滑动窗口 + 5分钟去瞬时倍率长期基准线）
     self.cpsBuckets = {}
-    for i = 1, 10 do self.cpsBuckets[i] = 0 end
+    for i = 1, 10 do self.cpsBuckets[i] = 0.0 end
     self.cpsIdx = 1
-    self.cpsAcc = 0
+    self.cpsAcc = 0.0
     self.cpsTick = 0
-    self.cashPerSec = 0
+    self.cashPerSec = 0.0
+    self.baseRevBuckets = {}
+    for i = 1, 30 do self.baseRevBuckets[i] = 0.0 end
+    self.baseRevIdx = 1
+    self.baseRevAcc = 0.0
+    self.baseRevTick = 0
+    self.longTermBaseCps = 0.0
     self.interestTick = 0
     self.clock = 0
     self.lastActiveAt = 0
 
     self.physics = Physics.New({
-        OnPegHit = function(coin, peg) self:HandlePegHit(coin, peg) end,
+        OnPegHit = function(coin, peg, hitSpd) self:HandlePegHit(coin, peg, hitSpd) end,
         OnGateWin = function(coin) self:HandleGateWin(coin) end,
         OnGateBounce = function(coin) Emit(self.fx, "OnGateBounce", coin) end,
         OnEnterDeck = function(coin) self:HandleEnterDeck(coin) end,
@@ -121,6 +140,7 @@ function Tycoon.New(fxListener, opts)
         OnOverclockCoin = function(coin) self:HandleOverclockCoin(coin) end,
     })
 
+    self:RebuildCoinCache()
     self:ResetPhysics(true)
     return self
 end
@@ -132,41 +152,71 @@ function Tycoon:HasTech(id)
     return self.techOwned[id] == true
 end
 
-function Tycoon:GetUnlockedCoins()
-    local list = {}
+function Tycoon:RebuildCoinCache()
+    local u = {}
+    local p = {}
     for _, t in ipairs(Config.COIN_TIERS) do
         if (self.coinLv[t.id] or 0) > 0 then
-            list[#list + 1] = t.id
+            u[#u + 1] = t.id
+            if self.pinnedCoins and self.pinnedCoins[t.id] then
+                p[#p + 1] = t.id
+            end
+        elseif self.pinnedCoins then
+            self.pinnedCoins[t.id] = nil
         end
     end
-    if #list == 0 then list[1] = "gold" end
-    return list
+    if #u == 0 then u[1] = "gold" end
+    self._unlockedList = u
+    self._pinnedList = p
+    self:InvalidateCaches()
+end
+
+function Tycoon:GetUnlockedCoins()
+    return self._unlockedList or { "gold" }
+end
+
+function Tycoon:IsCoinPinned(id)
+    return self.pinnedCoins and self.pinnedCoins[id] == true
+end
+
+function Tycoon:CountPinnedCoins()
+    return self._pinnedList and #self._pinnedList or 0
+end
+
+function Tycoon:TogglePinCoin(id)
+    if (self.coinLv[id] or 0) <= 0 then return false end
+    self.pinnedCoins = self.pinnedCoins or {}
+    if self.pinnedCoins[id] then
+        self.pinnedCoins[id] = nil
+        self:RebuildCoinCache()
+        return true, false
+    end
+    if self:CountPinnedCoins() >= 6 then
+        return false, false
+    end
+    self.pinnedCoins[id] = true
+    self:RebuildCoinCache()
+    return true, true
 end
 
 function Tycoon:CountUnlockedCoins()
-    local n = 0
-    for _, t in ipairs(Config.COIN_TIERS) do
-        if (self.coinLv[t.id] or 0) > 0 then n = n + 1 end
-    end
-    return n
+    local u = self:GetUnlockedCoins()
+    return #u
 end
 
 function Tycoon:GetHighestUnlockedCoin()
-    local best = "gold"
-    for _, t in ipairs(Config.COIN_TIERS) do
-        if (self.coinLv[t.id] or 0) > 0 then best = t.id end
-    end
-    return best
+    local u = self:GetUnlockedCoins()
+    return u[#u] or "gold"
 end
 
 function Tycoon:GetCoinUnitValue(kind, lvOverride)
     local t = Config.COIN_TIER_BY_ID[kind]
     if not t then
-        -- 衍生/金库币映射到基准
+        -- 衍生/金库币映射到基准（统一 45x）
         if kind == "vault" then return self:GetCoinUnitValue(self:GetHighestUnlockedCoin()) * 45 end
         if kind == "slag" then return self:GetCoinUnitValue(self:GetHighestUnlockedCoin()) * 6 end
         if kind == "mini" then return self:GetCoinUnitValue("split") * 0.45 end
-        return 2.5
+        return 1.0
     end
     local lv = max(1, floor(lvOverride or self.coinLv[kind] or 1))
     local v = t.baseValue * pow(1.20, lv - 1)
@@ -187,7 +237,7 @@ function Tycoon:GetAvgUnlockedCoinValue()
         local cid = list[i]
         sum = sum + self:GetCoinUnitValue(cid, self.coinLv[cid])
     end
-    cached = max(2.5, sum / max(1, topN))
+    cached = max(1.0, sum / max(1, topN))
     self._avgVal = cached
     return cached
 end
@@ -196,14 +246,14 @@ function Tycoon:GetShareMult()
     return 1 + (self.prestigeShares or 0) * 0.09
 end
 
---- 永久乘区（机台印钞 × 黑科技 × 传奇股/黄金基因），帧内缓存
+--- 永久乘区（机台印钞 × 黑科技 × 传奇股/黄金基因 × 星际纪元），帧内缓存
 function Tycoon:GetPermParts()
-    local machine = pow(1.24, self.machineLv.global_mult or 0)
+    local machine = pow(1.0205, self.machineLv.global_mult or 0)
     local tech = 1.0
     for _, t in ipairs(Config.TECH_UPGRADES) do
         if self.techOwned[t.id] then tech = tech * t.mult end
     end
-    local prestige = self:GetShareMult() * pow(1.28, self.prestigeLv.golden_dna or 0)
+    local prestige = self:GetShareMult() * pow(1.28, self.prestigeLv.golden_dna or 0) * pow(3.0, self.era or 0)
     return machine, tech, prestige
 end
 
@@ -222,14 +272,20 @@ function Tycoon:InvalidateCaches()
     self._avgVal = nil
 end
 
---- 总倍率；wantBreakdown 为 true 时额外返回分项表（仅 UI 公式页使用，避免每次结算建表）
-function Tycoon:GetTotalMult(wantBreakdown)
+--- 临时爆发倍率（连击 × 狂欢 × 3x印钞 × 老虎机），供结算与长期CPS去噪共用
+function Tycoon:GetTempMult()
     local comboFactor = self:HasTech("metronome") and 0.012 or 0.008
     local comboM = 1 + min(100, self.combo) * comboFactor
     local feverM = self.feverActive and 2.2 or 1.0
     local adM = (self.adBoostLeft > 0) and 3.0 or 1.0
     local luckM = max(1, self.luckMult or 1)
-    local total = self:GetPermMult() * comboM * feverM * adM * luckM
+    return comboM * feverM * adM * luckM, comboM, feverM, adM, luckM
+end
+
+--- 总倍率；wantBreakdown 为 true 时额外返回分项表（仅 UI 公式页使用，避免每次结算建表）
+function Tycoon:GetTotalMult(wantBreakdown)
+    local tempM, comboM, feverM, adM, luckM = self:GetTempMult()
+    local total = self:GetPermMult() * tempM
     if not wantBreakdown then return total end
     local machine, tech, prestige = self:GetPermParts()
     return total, {
@@ -244,24 +300,22 @@ function Tycoon:GetTotalMult(wantBreakdown)
     }
 end
 
-function Tycoon:GetAutoRate()
-    local base = 0.95 + (self.machineLv.auto_rate or 0) * 0.18
+function Tycoon:GetAutoRate(ignoreFever)
+    local base = 0.75 + (self.machineLv.auto_rate or 0) * 0.14
     local perp = 1 + (self.prestigeLv.perpetual or 0) * 0.14
-    local fev = self.feverActive and 1.65 or 1.0
-    return min(12.0, base * perp * fev)
+    local fev = (not ignoreFever and self.feverActive) and 1.65 or 1.0
+    return min(9.0, base * perp * fev)
 end
 
 function Tycoon:GetEstimatedCPS()
-    local rate = self:GetAutoRate() * (1 + min(0.75, (self.machineLv.multi_shot or 0) * 0.05))
+    local rate = self:GetAutoRate(false) * (1 + min(0.75, (self.machineLv.multi_shot or 0) * 0.05))
     local mult = self:GetTotalMult()
     return rate * self:GetAvgUnlockedCoinValue() * mult * 0.92
 end
 
 --- 不含临时加成（连击/狂欢/老虎机/印钞）的基准产值：飘字分级参照，倍率越高字越大越炸
 function Tycoon:GetBaselineCPS()
-    local base = 0.95 + (self.machineLv.auto_rate or 0) * 0.18
-    local perp = 1 + (self.prestigeLv.perpetual or 0) * 0.14
-    local rate = min(12.0, base * perp) * (1 + min(0.75, (self.machineLv.multi_shot or 0) * 0.05))
+    local rate = self:GetAutoRate(true) * (1 + min(0.75, (self.machineLv.multi_shot or 0) * 0.05))
     return rate * self:GetAvgUnlockedCoinValue() * self:GetPermMult() * 0.92
 end
 
@@ -281,6 +335,7 @@ function Tycoon:SyncPhysicsMods()
     phys.gateWidthScale = min(2.2, 1.0 + (self.machineLv.gate_master or 0) * 0.035)
     phys.railGuard = self:HasTech("rail_guard") and 0.78 or 0.12
     phys.frontLipResist = 0.05
+    phys.magLip = self:HasTech("mag_lip") and 0.8 or 0
 end
 
 function Tycoon:ResetPhysics(clearCoins)
@@ -288,11 +343,13 @@ function Tycoon:ResetPhysics(clearCoins)
     self.physics:Reset({
         railGuard = self:HasTech("rail_guard") and 0.78 or 0.12,
         frontLipResist = 0.05,
-        extraMultPegs = min(14, extraPegs),
+        magLip = self:HasTech("mag_lip") and 0.8 or 0,
+        extraMultPegs = min(11, extraPegs),
     })
     self:SyncPhysicsMods()
     if clearCoins ~= false then
-        self.physics:SeedDeck(self.rng, self:GetUnlockedCoins())
+        local extraSeed = self:HasTech("big_pouch") and 6 or 0
+        self.physics:SeedDeck(self.rng, self:GetUnlockedCoins(), extraSeed)
     end
 end
 
@@ -384,14 +441,15 @@ function Tycoon:CheckRankUp()
     end
 end
 
-function Tycoon:AddWealth(amount, addToCps)
-    local amt = max(0, tonumber(amount) or 0)
-    if amt <= 0 then return 0 end
+function Tycoon:AddWealth(amount, addToCps, tempMul)
+    local amt = (tonumber(amount) or 0) + 0.0
+    if amt ~= amt or amt == math.huge or amt <= 0 then return 0.0 end
     self.cash = self.cash + amt
     self.runCash = self.runCash + amt
     self.lifetimeCash = self.lifetimeCash + amt
     if addToCps then
         self.cpsAcc = self.cpsAcc + amt
+        self.baseRevAcc = self.baseRevAcc + amt / max(1.0, (tonumber(tempMul) or 1.0))
     end
     self:CheckSpMilestones()
     self:CheckRankUp()
@@ -408,27 +466,52 @@ function Tycoon:ClaimOvertakeAdBonus(spBounty)
 end
 
 -- ----------------------------------------------------------------------------
--- 发币队列（权重偏向最新解锁高价币，每unlock立即出币爽感爆棚）
+-- 发币队列（支持自选常驻组合 + 全解锁池加权抽取，让早期功能币永不过时）
 -- ----------------------------------------------------------------------------
 function Tycoon:PickLaunchCoin()
     local list = self:GetUnlockedCoins()
     local n = #list
     if n <= 1 then return list[1], self.coinLv[list[1]] or 1 end
-    local start = max(1, n - 5)
+
+    -- 若玩家指定了常驻发射组合，75% 从常驻组合加权抽取，25% 从全池补充变化
+    local pinned = self._pinnedList
+    if pinned and #pinned > 0 and self.rng() < 0.75 then
+        local tw = 0
+        for i = 1, #pinned do
+            tw = tw + 1 + min(8, self.coinLv[pinned[i]] or 1)
+        end
+        local r = self.rng() * tw
+        local acc = 0
+        for i = 1, #pinned do
+            local cid = pinned[i]
+            acc = acc + 1 + min(8, self.coinLv[cid] or 1)
+            if r <= acc then return cid, self.coinLv[cid] or 1 end
+        end
+        local last = pinned[#pinned]
+        return last, self.coinLv[last] or 1
+    end
+
+    -- 30% 抽取前期功能币（1..n-6 按等级加权），70% 抽取前 6 高阶币
+    local start, stop
+    if n > 6 and self.rng() < 0.30 then
+        start, stop = 1, n - 6
+    else
+        start, stop = max(1, n - 5), n
+    end
     local totalW = 0
-    for i = start, n do
-        totalW = totalW + (i - start + 1) * 2
+    for i = start, stop do
+        totalW = totalW + (i - start + 1) * 2 + min(4, floor((self.coinLv[list[i]] or 1) * 0.4))
     end
     local r = self.rng() * totalW
     local acc = 0
-    for i = start, n do
-        acc = acc + (i - start + 1) * 2
+    for i = start, stop do
+        local cid = list[i]
+        acc = acc + (i - start + 1) * 2 + min(4, floor((self.coinLv[cid] or 1) * 0.4))
         if r <= acc then
-            local cid = list[i]
             return cid, self.coinLv[cid] or 1
         end
     end
-    local last = list[n]
+    local last = list[stop]
     return last, self.coinLv[last] or 1
 end
 
@@ -446,19 +529,17 @@ end
 
 function Tycoon:FireOneBurst(isManual)
     local cid, lv = self:PickLaunchCoin()
-    local mainCoin = self.physics:LaunchFromTop(cid, lv, 0)
+    local mainCoin = self.physics:LaunchFromTop(cid, lv, 0, isManual)
     self.shotsFired = self.shotsFired + 1
-    if mainCoin and isManual then mainCoin.fromManual = true end
 
     local multiLv = self.machineLv.multi_shot or 0
     local dblChance = min(0.85, multiLv * 0.045)
     if multiLv > 0 and self.rng() < dblChance then
         local cid2, lv2 = self:PickLaunchCoin()
-        local c2 = self.physics:LaunchFromTop(cid2, lv2, (self.shotsFired % 2 == 0) and 10 or -10)
-        if c2 and isManual then c2.fromManual = true end
+        self.physics:LaunchFromTop(cid2, lv2, (self.shotsFired % 2 == 0) and 10 or -10, isManual)
         if multiLv >= 10 and self.rng() < (dblChance * 0.45) then
             local cid3, lv3 = self:PickLaunchCoin()
-            self.physics:LaunchFromTop(cid3, lv3, (self.shotsFired % 2 == 0) and -16 or 16)
+            self.physics:LaunchFromTop(cid3, lv3, (self.shotsFired % 2 == 0) and -16 or 16, isManual)
         end
     end
     Emit(self.fx, "OnShoot", mainCoin, self)
@@ -467,10 +548,11 @@ end
 
 function Tycoon:ManualShoot()
     if self.manualCd > 0 then return false end
-    self.manualCd = self.feverActive and 0.08 or 0.11
+    self.manualCd = self.feverActive and 0.14 or 0.18
     self.totalClicks = self.totalClicks + 1
     self:FireOneBurst(true)
     self:AddFever(2.2)
+    self:RegisterCombo()
     return true
 end
 
@@ -478,7 +560,8 @@ end
 -- 现金结算与物理联动回调
 -- ----------------------------------------------------------------------------
 function Tycoon:AwardCash(baseVal, x, y, sourceTag, canCrit, extraMul)
-    local mult = self:GetTotalMult() * (extraMul or 1.0)
+    local tempMul = self:GetTempMult()
+    local mult = self:GetPermMult() * tempMul * (extraMul or 1.0)
     local crit = false
     if canCrit ~= false then
         local critChance = min(0.75, 0.10 + (self.machineLv.crit_power or 0) * 0.015 + ((sourceTag == "neon") and 0.25 or 0))
@@ -488,29 +571,40 @@ function Tycoon:AwardCash(baseVal, x, y, sourceTag, canCrit, extraMul)
             mult = mult * critMul
         end
     end
-    local dmg = max(1, floor(baseVal * mult + 0.5))
+    local dmg = max(1.0, floor(baseVal * mult + 0.5) + 0.0)
     if dmg > self.bestHit then self.bestHit = dmg end
-    self:AddWealth(dmg, true)
+    self:AddWealth(dmg, true, tempMul)
     Emit(self.fx, "OnScore", dmg, x, y, crit, self.combo, sourceTag, self:GetBaselineCPS(), mult)
     return dmg, crit
 end
 
 function Tycoon:AddFever(amt)
-    if self.feverActive then return end
-    local mul = 1 + (self.machineLv.fever_drive or 0) * 0.06
-    self.fever = min(100, self.fever + amt * mul)
+    if self.feverActive or (self.feverCd or 0) > 0 then return 0 end
+    local drive = self.machineLv.fever_drive or 0
+    local mul = 1 + drive * 0.06
+    local secCap = 5.0 + min(1.5, drive * 0.075)
+    local remain = max(0, secCap - (self.feverChargeAcc or 0))
+    if remain <= 0 then return 0 end
+    local gain = min(remain, amt * mul)
+    self.feverChargeAcc = (self.feverChargeAcc or 0) + gain
+    self.fever = min(100, self.fever + gain)
     if self.fever >= 100 then
         self:TriggerFever(false)
     end
+    return gain
 end
 
 function Tycoon:TriggerFever(isAdSuper)
     self.fever = 100
     self.feverActive = true
+    self.feverCd = 0
+    self.feverExtended = false
+    self.feverChargeAcc = 0
     local drive = self.machineLv.fever_drive or 0
-    local dur = (isAdSuper and 14 or 8) + min(10, drive * 0.25)
+    local dur = (isAdSuper and 14 or 8) + min(6, drive * 0.25)
+    self.feverDur = dur
     self.feverTimer = dur
-    self.feverRainLeft = (isAdSuper and 28 or 14) + floor(drive * 0.5)
+    self.feverRainLeft = (isAdSuper and 20 or 10) + floor(drive * 0.35)
     self.feverRainTimer = 0.04
     self:SyncPhysicsMods()
     Emit(self.fx, "OnFeverStart", self)
@@ -524,11 +618,17 @@ function Tycoon:RegisterCombo()
     Emit(self.fx, "OnCombo", self.combo)
 end
 
-function Tycoon:HandlePegHit(coin, peg)
+function Tycoon:HandlePegHit(coin, peg, hitSpd)
     local pDef = Config.PEG_TYPES[peg.kind] or Config.PEG_TYPES.normal
-    if pDef.fever then self:AddFever(pDef.fever * 0.5) end
-    local pegMul = (1 + (self.machineLv.peg_gold or 0) * 0.35) * ((peg.kind == "mult") and 2.0 or 1.0)
-    self:AwardCash(self:GetAvgUnlockedCoinValue() * 0.06 * pegMul, peg.x, peg.y, "peg", false)
+    local spd = hitSpd or 0
+    if spd >= 80 then
+        if pDef.fever then self:AddFever(pDef.fever * 0.45) end
+        if (coin.pegCashHits or 0) < 3 then
+            coin.pegCashHits = (coin.pegCashHits or 0) + 1
+            local pegMul = (1 + (self.machineLv.peg_gold or 0) * 0.05) * ((peg.kind == "mult") and 2.0 or 1.0)
+            self:AwardCash(self:GetAvgUnlockedCoinValue() * 0.015 * pegMul, peg.x, peg.y, "peg", false)
+        end
+    end
     Emit(self.fx, "OnPegHit", coin, peg)
 
     local cDef = Config.COINS[coin.kind]
@@ -545,7 +645,7 @@ function Tycoon:HandlePegHit(coin, peg)
             })
         end
         Emit(self.fx, "OnSplit", coin.x, coin.y, cnt)
-    elseif cDef and cDef.bounceSpawn and coin.bounceCount <= 2 then
+    elseif cDef and cDef.bounceSpawn and spd >= 70 and coin.bounceCount <= 2 then
         self.physics:SpawnCoin({
             kind = "mini", level = coin.level,
             x = coin.x, y = coin.y + 4,
@@ -561,7 +661,7 @@ function Tycoon:HandlePegHit(coin, peg)
             vx = -coin.vx * 0.7, vy = max(80, coin.vy),
             radiusMul = 0.72, isMini = true, splitDone = true,
         })
-    elseif peg.kind == "bolt" then
+    elseif peg.kind == "bolt" and spd >= 80 and (coin.pegCashHits or 0) <= 3 then
         self:TriggerLightning(peg.x, peg.y, 2, coin.level)
     end
 end
@@ -572,37 +672,38 @@ function Tycoon:RollSlotOutcome()
     local boost = (1 + gateLv * 0.08) * cloverMul
 
     local prizeId, reels
-    if self.slotPity >= 6 then
+    if self.slotPity >= 8 then
         self.slotPity = 0
         if self.rng() < 0.35 then
-            prizeId = "triple_gem"
-            reels = { 4, 4, 4 }
-        else
             prizeId = "triple_bolt"
             reels = { 3, 3, 3 }
-        end
-    else
-        local u = self.rng() * 100
-        local p100 = min(4.5, 0.8 * boost)
-        local p50  = min(7.0, 2.0 * boost)
-        local p25  = min(11.0, 4.0 * boost)
-        local p10  = min(16.0, 7.5 * boost)
-        local p5   = min(20.0, 14.0 * (1 + gateLv * 0.03))
-        local p2   = 32.0
-
-        if u < p100 then
-            prizeId = "jackpot_777"; reels = { 6, 6, 6 }
-        elseif u < p100 + p50 then
-            prizeId = "triple_crown"; reels = { 5, 5, 5 }
-        elseif u < p100 + p50 + p25 then
-            prizeId = "triple_gem"; reels = { 4, 4, 4 }
-        elseif u < p100 + p50 + p25 + p10 then
-            prizeId = "triple_bolt"; reels = { 3, 3, 3 }
-        elseif u < p100 + p50 + p25 + p10 + p5 then
+        else
             prizeId = "triple_low"
             local s = (self.rng() < 0.5) and 1 or 2
             reels = { s, s, s }
-        elseif u < p100 + p50 + p25 + p10 + p5 + p2 then
+        end
+    else
+        local u = self.rng() * 100
+        local p100 = min(0.6, 0.2 * boost)
+        local p10  = min(3.5, 1.5 * boost)
+        local p5   = min(7.0, 3.5 * boost)
+        local p3   = min(12.0, 7.0 * boost)
+        local p2   = min(18.0, 13.0 * (1 + gateLv * 0.02))
+        local p15  = 28.0
+
+        if u < p100 then
+            prizeId = "jackpot_777"; reels = { 6, 6, 6 }
+        elseif u < p100 + p10 then
+            prizeId = "triple_crown"; reels = { 5, 5, 5 }
+        elseif u < p100 + p10 + p5 then
+            prizeId = "triple_gem"; reels = { 4, 4, 4 }
+        elseif u < p100 + p10 + p5 + p3 then
+            prizeId = "triple_bolt"; reels = { 3, 3, 3 }
+        elseif u < p100 + p10 + p5 + p3 + p2 then
+            prizeId = "triple_low"
+            local s = (self.rng() < 0.5) and 1 or 2
+            reels = { s, s, s }
+        elseif u < p100 + p10 + p5 + p3 + p2 + p15 then
             prizeId = "pair"
             local s = floor(self.rng() * 5) + 1
             local o = (s % 6) + 1
@@ -636,10 +737,15 @@ function Tycoon:StartNextSlotSpin()
 end
 
 function Tycoon:QueueSlotSpin()
-    self.slotQueue = min(5, (self.slotQueue or 0) + 1)
+    if (self.slotCd or 0) > 0 or (self.slotQueue or 0) >= 2 then
+        return false
+    end
+    self.slotQueue = min(2, (self.slotQueue or 0) + 1)
+    self.slotCd = 9.0
     if not self.slotSpinning then
         self:StartNextSlotSpin()
     end
+    return true
 end
 
 function Tycoon:ResolveSlotSpin(pending)
@@ -647,21 +753,18 @@ function Tycoon:ResolveSlotSpin(pending)
     local prize = pending.prize
     self.slotFlashT = (prize.mult >= 10) and 1.2 or ((prize.mult > 1) and 0.7 or 0.35)
 
+    -- 高倍激活时：低奖不续命、同档仅重置至本档上限，绝不无限叠时常驻
     if prize.mult > (self.luckMult or 1) then
         self.luckMult = prize.mult
         self.luckTimer = prize.dur
         self.luckDur = prize.dur
         self.luckName = prize.label
     elseif prize.mult > 1 and prize.mult == (self.luckMult or 1) then
-        self.luckTimer = min(25, (self.luckTimer or 0) + prize.dur * 0.65)
-        self.luckDur = max(self.luckDur or prize.dur, self.luckTimer)
-    elseif prize.mult > 1 and (self.luckMult or 1) > prize.mult then
-        -- 高倍已激活时抽中小奖不降级，顺延 2 秒并额外掉币雨
-        self.luckTimer = min(25, (self.luckTimer or 0) + 2.0)
-        self.luckDur = max(self.luckDur or 15, self.luckTimer)
+        self.luckTimer = max(self.luckTimer or 0, prize.dur)
+        self.luckDur = max(self.luckDur or prize.dur, prize.dur)
     end
 
-    -- 老虎机奖励空投金币雨 / 闪电 / 金库巨币
+    -- 老虎机奖励空投金币雨 / 闪电 / 45倍金库巨币
     local rainCnt = prize.rain or 0
     local hi = self:GetHighestUnlockedCoin()
     for k = 1, rainCnt do
@@ -691,12 +794,11 @@ function Tycoon:ResolveSlotSpin(pending)
 end
 
 function Tycoon:HandleGateWin(coin)
-    self:AddFever(14)
+    self:AddFever(10)
     self:RegisterCombo()
     local gateLv = self.machineLv.gate_master or 0
-    local dropCnt = min(3, 1 + floor(gateLv / 6))
+    local dropCnt = min(2, 1 + floor(gateLv / 10)) + ((coin.kind == "emerald") and 1 or 0)
     local spawnKind = self:GetHighestUnlockedCoin()
-    local rewardName = string.format("过门 ×%d + 老虎机!", dropCnt)
     for k = 1, dropCnt do
         local useKind = (k == 1) and spawnKind or "gold"
         self.physics:SpawnCoin({
@@ -705,8 +807,9 @@ function Tycoon:HandleGateWin(coin)
             vx = ((k % 3) - 1) * 32, vy = 45, zone = "deck", gateChecked = true, isRain = true,
         })
     end
-    self:AwardCash(self:GetCoinUnitValue(coin.kind, coin.level) * (1.8 + gateLv * 0.35), coin.x, coin.y, "gate", true)
-    self:QueueSlotSpin()
+    self:AwardCash(self:GetCoinUnitValue(coin.kind, coin.level) * (0.18 + gateLv * 0.025), coin.x, coin.y, "gate", true)
+    local queued = self:QueueSlotSpin()
+    local rewardName = queued and string.format("过门 ×%d + 老虎机!", dropCnt) or string.format("过门落币 ×%d!", dropCnt)
     Emit(self.fx, "OnGateWin", coin, rewardName)
 end
 
@@ -771,21 +874,27 @@ function Tycoon:HandleBlackholeBurst(coin)
 end
 
 function Tycoon:HandleOverclockCoin(coin)
-    local val = self:GetCoinUnitValue(coin.kind, coin.level) * (self:HasTech("overclock") and 4.0 or 1.2)
+    if not self:HasTech("overclock") then return end
+    local val = self:GetCoinUnitValue(coin.kind, coin.level) * 0.20
     self:AwardCash(val, coin.x, coin.y, "overclock", false)
 end
 
 function Tycoon:HandleFrontDrop(coin)
     self.totalDrops = self.totalDrops + 1
-    local val = self:GetCoinUnitValue(coin.kind, coin.level)
+    local val = self:GetCoinUnitValue(coin.kind, coin.level) * (coin.valueMul or 1.0)
     local def = Config.COINS[coin.kind]
     if coin.frostT > 0 then val = val * 2.0 end
     if coin.kind == "giant" then val = val * 2.5 end
-    if coin.fromManual then val = val * 1.15 end
-    if coin.kind == "vault" then val = self:GetCoinUnitValue(self:GetHighestUnlockedCoin()) * 50 end
+    if coin.fromManual then
+        local manMul = min(1.25, 1.10 + 0.008 * self:CountUnlockedCoins())
+        val = val * manMul
+    end
+    if coin.kind == "vault" then val = self:GetCoinUnitValue(self:GetHighestUnlockedCoin()) * 45 end
 
-    if def and def.feverExtend and self.feverActive then
-        self.feverTimer = min(30, self.feverTimer + 2.0)
+    if def and def.feverExtend and self.feverActive and not self.feverExtended then
+        self.feverExtended = true
+        self.feverTimer = min(24, self.feverTimer + 2.0)
+        self.feverDur = max(self.feverDur or 8, self.feverTimer)
     end
     self:AddFever((def and def.feverGain or 6) * 0.65)
     self:RegisterCombo()
@@ -934,7 +1043,7 @@ function Tycoon:BuyCoin(id)
     self.skillPoints = self.skillPoints - cost
     local isUnlock = (cur == 0)
     self.coinLv[id] = cur + 1
-    self:InvalidateCaches()
+    self:RebuildCoinCache()
 
     -- 刚解锁或升星时立刻空投3枚对应炫酷硬币上台！
     for k = 1, 3 do
@@ -956,12 +1065,22 @@ function Tycoon:BuyTech(id)
     if self.skillPoints < t.costSp then return false end
     self.skillPoints = self.skillPoints - t.costSp
     self.techOwned[id] = true
+    if id == "big_pouch" then
+        local hi = self:GetHighestUnlockedCoin()
+        for k = 1, 4 do
+            self.physics:SpawnCoin({
+                kind = hi, level = self.coinLv[hi] or 1,
+                x = 108 + (k - 1) * 48, y = S.DECK_TOP_Y + 34,
+                vx = (k - 2.5) * 18, vy = 45, zone = "deck", gateChecked = true, isRain = true,
+            })
+        end
+    end
     self:SyncPhysicsMods()
     Emit(self.fx, "OnUnlockCoin", { name = t.name })
     return true
 end
 
--- 资本融资 / 敲钟上市公式（方案 A：达标敲钟领传奇股+技能点，绝不清空财富与进度！）
+-- 资本融资 / 敲钟上市公式（方案 A：不清空财富与进度！）
 function Tycoon:GetNextIpoInfo()
     return Config.GetIpoRound((self.ipoRound or 0) + 1)
 end
@@ -978,6 +1097,35 @@ end
 
 function Tycoon:GetNextPrestigeRequirement()
     return self:GetNextIpoInfo().targetWealth
+end
+
+function Tycoon:CanAscendEra()
+    return (self.rankIdx or 0) >= #Config.RANKS and self.lifetimeCash >= 6.041e12 * pow(10, self.era or 0)
+end
+
+function Tycoon:GetEraAscendTarget()
+    return 6.041e12 * pow(10, self.era or 0)
+end
+
+function Tycoon:GetEraTitle()
+    local e = self.era or 0
+    if e <= 0 then return nil end
+    local titles = Config.GALACTIC_TITLES or {}
+    return titles[min(e, #titles)] or ("宇宙财阀 Era " .. tostring(e + 1))
+end
+
+function Tycoon:DoGalacticAscend()
+    if not self:CanAscendEra() then return 0, 0 end
+    self.era = (self.era or 0) + 1
+    local shares = 25 * self.era
+    local bonusSp = 40 * self.era
+    self.prestigeShares = self.prestigeShares + shares
+    self.skillPoints = self.skillPoints + bonusSp
+    self.totalSkillPoints = self.totalSkillPoints + bonusSp
+    self:InvalidateCaches()
+    self:SyncPhysicsMods()
+    Emit(self.fx, "OnPrestige", shares, bonusSp, self:GetEraTitle() or "星际飞升")
+    return shares, bonusSp
 end
 
 function Tycoon:GetTalentCost(id)
@@ -1022,7 +1170,7 @@ end
 
 Tycoon.DoPrestige = Tycoon.DoCapitalIPO
 
--- 模拟广告与风投空投发奖
+-- 模拟广告与风投空投发奖（全部按去瞬时倍率的基准产值计算）
 function Tycoon:GetAdCooldown(id)
     return max(0, self.adCooldowns[id] or 0)
 end
@@ -1036,9 +1184,9 @@ function Tycoon:ApplyAdReward(placementId)
     end
 
     if placementId == "boost_3x" then
-        self.adBoostLeft = min(900, self.adBoostLeft + 180)
+        self.adBoostLeft = min(300, self.adBoostLeft + 180)
         Emit(self.fx, "OnAdReward", "超级印钞 ×3 激活!")
-        return true, "全场收益 ×3 生效 180 秒"
+        return true, "全场收益 ×3 生效 180 秒（上限 300 秒）"
     elseif placementId == "instant_fever" then
         self:TriggerFever(true)
         Emit(self.fx, "OnAdReward", "满槽超级狂欢!")
@@ -1052,10 +1200,10 @@ function Tycoon:ApplyAdReward(placementId)
                 zone = "deck", gateChecked = true,
             })
         end
-        Emit(self.fx, "OnAdReward", "2枚50倍金库币空投!")
-        return true, "2 枚 50 倍金库巨币已落台!"
+        Emit(self.fx, "OnAdReward", "2枚45倍金库币空投!")
+        return true, "2 枚 45 倍金库巨币已落台!"
     elseif placementId == "airdrop_5x" then
-        local amt = max(600, floor(self:GetDisplayCPS() * 120))
+        local amt = max(200.0, floor(self:GetBaselineCPS() * 45) + 0.0)
         self:AddWealth(amt, false)
         local hi = self:GetHighestUnlockedCoin()
         for k = 1, 10 do
@@ -1076,11 +1224,11 @@ function Tycoon:ClaimAirdrop(isAd)
     local air = self.activeAirdrop
     if not air then return 0 end
     if isAd then
-        local amt = max(600, floor(self:GetDisplayCPS() * 120))
+        local amt = max(200.0, floor(self:GetBaselineCPS() * 45) + 0.0)
         self:ApplyAdReward("airdrop_5x")
         return amt
     end
-    local amt = air.baseCash or max(120, floor(self:GetDisplayCPS() * 24))
+    local amt = (air.baseCash or max(30.0, floor(self:GetBaselineCPS() * 5) + 0.0)) + 0.0
     self:AddWealth(amt, false)
     self.activeAirdrop = nil
     Emit(self.fx, "OnAdReward", "风投补贴 +" .. Number.FormatCash(amt))
@@ -1088,17 +1236,18 @@ function Tycoon:ClaimAirdrop(isAd)
 end
 
 function Tycoon:CalcOfflineEarnings(nowTs)
-    if not self.lastActiveAt or self.lastActiveAt <= 0 then return 0, 0 end
+    if not self.lastActiveAt or self.lastActiveAt <= 0 then return 0.0, 0 end
     local elapsed = max(0, (nowTs or os.time()) - self.lastActiveAt)
-    if elapsed < 30 then return 0, elapsed end
+    if elapsed < 30 then return 0.0, elapsed end
     local capped = min(8 * 3600, elapsed)
-    local amt = max(50, floor(capped * self:GetDisplayCPS() * 0.65))
+    local rate = (self.longTermBaseCps and self.longTermBaseCps > 0) and self.longTermBaseCps or self:GetBaselineCPS()
+    local amt = max(50.0, floor(capped * rate * 0.65) + 0.0)
     return amt, elapsed
 end
 
 function Tycoon:ClaimOffline(amt, isDouble)
-    local gain = floor((amt or 0) * (isDouble and 2 or 1))
-    if gain <= 0 then return 0 end
+    local gain = floor((amt or 0) * (isDouble and 2 or 1)) + 0.0
+    if gain <= 0 then return 0.0 end
     if isDouble then self.adWatchCount = self.adWatchCount + 1 end
     self:AddWealth(gain, false)
     Emit(self.fx, "OnAdReward", "离线收益 +" .. Number.FormatCash(gain))
@@ -1109,7 +1258,7 @@ function Tycoon:ClaimRedeemCode(rawCode, redeemedMap)
     local ok, msg, def = RedeemCodes.Claim(rawCode, redeemedMap)
     if not ok then return false, msg end
     if def.cashSeconds then
-        local addCash = max(def.minCash or 0, floor(self:GetDisplayCPS() * def.cashSeconds))
+        local addCash = max(def.minCash or 0, floor(self:GetBaselineCPS() * def.cashSeconds) + 0.0)
         self:AddWealth(addCash, false)
     end
     if def.shares then
@@ -1117,7 +1266,7 @@ function Tycoon:ClaimRedeemCode(rawCode, redeemedMap)
         self:InvalidateCaches()
     end
     if def.boostSec then
-        self.adBoostLeft = min(900, self.adBoostLeft + def.boostSec)
+        self.adBoostLeft = min(300, self.adBoostLeft + def.boostSec)
     end
     if def.triggerFever then
         self:TriggerFever(true)
@@ -1138,7 +1287,7 @@ function Tycoon:ClaimRedeemCode(rawCode, redeemedMap)
 end
 
 -- ----------------------------------------------------------------------------
--- 「哪里亮点哪里」红点汇总（按可用技能点 SP / 上市条件 / 广告冷却点亮）
+-- 「哪里亮点哪里」红点汇总（复用缓冲表，零每帧GC分配）
 -- ----------------------------------------------------------------------------
 function Tycoon:GetRedDots()
     local machineN, coinsN, techN, prestigeN, welfareN = 0, 0, 0, 0, 0
@@ -1160,7 +1309,7 @@ function Tycoon:GetRedDots()
             techN = techN + 1
         end
     end
-    if self:CanDoIpo() then prestigeN = prestigeN + 1 end
+    if self:CanDoIpo() or self:CanAscendEra() then prestigeN = prestigeN + 1 end
     for _, p in ipairs(Config.PRESTIGE_TALENTS) do
         local cost, maxed = self:GetTalentCost(p.id)
         if (not maxed) and self.prestigeShares >= cost then
@@ -1173,13 +1322,13 @@ function Tycoon:GetRedDots()
         end
     end
 
-    return {
-        machine = machineN,
-        coins = coinsN,
-        tech = techN,
-        prestige = prestigeN,
-        welfare = welfareN,
-    }
+    local rd = self._redDots
+    rd.machine = machineN
+    rd.coins = coinsN
+    rd.tech = techN
+    rd.prestige = prestigeN
+    rd.welfare = welfareN
+    return rd
 end
 
 -- ----------------------------------------------------------------------------
@@ -1191,6 +1340,15 @@ function Tycoon:Update(dt)
     self._permMult = nil
     self._avgVal = nil
     if self.manualCd > 0 then self.manualCd = max(0, self.manualCd - dt) end
+    if (self.slotCd or 0) > 0 then self.slotCd = max(0, self.slotCd - dt) end
+    if not self.feverActive and (self.feverCd or 0) > 0 then
+        self.feverCd = max(0, self.feverCd - dt)
+    end
+    self.feverChargeTick = (self.feverChargeTick or 0) + dt
+    if self.feverChargeTick >= 1.0 then
+        self.feverChargeTick = self.feverChargeTick - 1.0
+        self.feverChargeAcc = 0
+    end
 
     -- 广告冷却与×3倒计时
     if self.adBoostLeft > 0 then
@@ -1234,25 +1392,36 @@ function Tycoon:Update(dt)
         self:StartNextSlotSpin()
     end
 
-    -- 滑动 10 秒 CPS 采样
+    -- 滑动 10 秒 CPS 采样 & 5 分钟去瞬时倍率长期基准线采样
     self.cpsTick = self.cpsTick + dt
     if self.cpsTick >= 1.0 then
         self.cpsTick = self.cpsTick - 1.0
         self.cpsBuckets[self.cpsIdx] = self.cpsAcc
-        self.cpsAcc = 0
+        self.cpsAcc = 0.0
         self.cpsIdx = (self.cpsIdx % 10) + 1
-        local sum = 0
+        local sum = 0.0
         for i = 1, 10 do sum = sum + self.cpsBuckets[i] end
-        self.cashPerSec = sum / 10
+        self.cashPerSec = sum / 10.0
+    end
+    self.baseRevTick = (self.baseRevTick or 0) + dt
+    if self.baseRevTick >= 10.0 then
+        self.baseRevTick = self.baseRevTick - 10.0
+        self.baseRevBuckets[self.baseRevIdx] = self.baseRevAcc or 0.0
+        self.baseRevAcc = 0.0
+        self.baseRevIdx = (self.baseRevIdx % 30) + 1
+        self._baseRevSamples = min(30, (self._baseRevSamples or 0) + 1)
+        local bSum = 0.0
+        for i = 1, 30 do bSum = bSum + self.baseRevBuckets[i] end
+        self.longTermBaseCps = bSum / max(10.0, self._baseRevSamples * 10.0)
     end
 
-    -- 复利金库锁被动吃利息（按产值派发，杜绝现金指数爆炸）
+    -- 复利金库锁被动吃利息（按基准产值派发 8%）
     if self:HasTech("bankbook") then
         self.interestTick = self.interestTick + dt
         if self.interestTick >= 1.0 then
             self.interestTick = self.interestTick - 1.0
-            local gain = max(1, floor(self:GetEstimatedCPS() * 0.14))
-            self:AddWealth(gain, true)
+            local gain = max(1.0, floor(self:GetBaselineCPS() * 0.08 + 0.0))
+            self:AddWealth(gain, true, 1.0)
         end
     end
 
@@ -1265,21 +1434,33 @@ function Tycoon:Update(dt)
             local evId = evList[(floor(self.clock * 13) % #evList) + 1] or "vault_crack"
             self.activeAirdrop = {
                 eventId = evId,
-                baseCash = max(150, floor(self:GetDisplayCPS() * 25)),
+                baseCash = max(30.0, floor(self:GetBaselineCPS() * 5) + 0.0),
             }
         end
     end
 
-    -- 连击衰减
+    -- 连击波次结算与超时衰减（每15秒波次结算防止连击数字无意义膨胀）
     if self.combo > 0 then
+        self.comboWaveT = (self.comboWaveT or 0) + dt
+        if self.comboWaveT >= (self.comboWaveDur or 15.0) then
+            self.comboWaveT = 0
+            if self.combo >= 8 then
+                local waveMult = min(1.5, 0.35 + self.combo * 0.015)
+                local bonus = max(10.0, floor(self:GetBaselineCPS() * waveMult + 0.0))
+                self:AddWealth(bonus, true, 1.0)
+                Emit(self.fx, "OnComboWaveEnd", self.combo, waveMult, bonus)
+            end
+            self.combo = floor(self.combo * 0.35)
+        end
         self.comboTimer = self.comboTimer - dt
         if self.comboTimer <= 0 then
             self.combo = 0
+            self.comboWaveT = 0
             Emit(self.fx, "OnComboBreak")
         end
     end
 
-    -- Fever 狂欢倒计时与金币雨
+    -- Fever 狂欢倒计时与金币雨（结束后 25 秒冷却）
     if self.feverActive then
         self.feverTimer = self.feverTimer - dt
         if self.feverRainLeft > 0 then
@@ -1299,6 +1480,9 @@ function Tycoon:Update(dt)
         if self.feverTimer <= 0 then
             self.feverActive = false
             self.fever = 0
+            self.feverCd = Config.RULES.FEVER_COOLDOWN or 28.0
+            self.feverExtended = false
+            self.feverChargeAcc = 0
             self:SyncPhysicsMods()
             Emit(self.fx, "OnFeverEnd", self)
         end
@@ -1317,18 +1501,28 @@ function Tycoon:Update(dt)
 end
 
 -- ----------------------------------------------------------------------------
--- 存档序列化 / 反序列化（纯整数+简单字典，兼容 JSON 无精度丢失）
+-- 存档序列化 / 反序列化（浮点财富防 2^63 溢出，保留常驻池/纪元/长期基准产值）
 -- ----------------------------------------------------------------------------
 function Tycoon:ExportState(nowTs)
     self.lastActiveAt = nowTs or os.time()
+    local cds = {}
+    for k, v in pairs(self.adCooldowns) do
+        if (v or 0) > 1 then cds[k] = floor(v) end
+    end
+    local pinned = {}
+    for k, v in pairs(self.pinnedCoins or {}) do
+        if v == true then pinned[k] = true end
+    end
+    local baseRate = (self.longTermBaseCps and self.longTermBaseCps > 0) and self.longTermBaseCps or self:GetBaselineCPS()
     return {
-        cash = self.cash,
-        runCash = self.runCash,
-        lifetimeCash = self.lifetimeCash,
+        cash = self.cash + 0.0,
+        runCash = self.runCash + 0.0,
+        lifetimeCash = self.lifetimeCash + 0.0,
         skillPoints = self.skillPoints,
         totalSkillPoints = self.totalSkillPoints,
         spStep = self.spStep,
         ipoRound = self.ipoRound,
+        era = self.era or 0,
         prestigeShares = self.prestigeShares,
         totalPrestiges = self.totalPrestiges,
         rankIdx = self.rankIdx,
@@ -1336,28 +1530,32 @@ function Tycoon:ExportState(nowTs)
         buyMode = self.buyMode,
         machineLv = self.machineLv,
         coinLv = self.coinLv,
+        pinnedCoins = pinned,
         techOwned = self.techOwned,
         prestigeLv = self.prestigeLv,
         adBoostLeft = floor(self.adBoostLeft),
+        adCooldowns = cds,
         adWatchCount = self.adWatchCount,
         totalClicks = self.totalClicks,
         totalDrops = self.totalDrops,
-        bestHit = self.bestHit,
+        bestHit = (self.bestHit or 0) + 0.0,
         maxCombo = self.maxCombo,
+        lastBaseCps = baseRate + 0.0,
         lastActiveAt = self.lastActiveAt,
     }
 end
 
 function Tycoon:ImportState(s)
     if type(s) ~= "table" then return false end
-    local c = max(0, tonumber(s.cash) or 0)
-    local rc = max(0, tonumber(s.runCash) or c)
-    self.lifetimeCash = max(c, rc, tonumber(s.lifetimeCash) or 0)
+    local c = max(0.0, (tonumber(s.cash) or 0) + 0.0)
+    local rc = max(0.0, (tonumber(s.runCash) or c) + 0.0)
+    self.lifetimeCash = max(c, rc, (tonumber(s.lifetimeCash) or 0) + 0.0) + 0.0
     self.cash = self.lifetimeCash
     self.runCash = self.lifetimeCash
     self.prestigeShares = max(0, floor(tonumber(s.prestigeShares) or 0))
     self.totalPrestiges = max(0, floor(tonumber(s.totalPrestiges) or 0))
     self.ipoRound = max(0, floor(tonumber(s.ipoRound) or self.totalPrestiges))
+    self.era = max(0, floor(tonumber(s.era) or 0))
     self.rankIdx = 0
     while self.rankIdx < #Config.RANKS and self.lifetimeCash >= Config.RANKS[self.rankIdx + 1].target do
         self.rankIdx = self.rankIdx + 1
@@ -1375,6 +1573,16 @@ function Tycoon:ImportState(s)
         for _, t in ipairs(Config.COIN_TIERS) do
             local v = floor(tonumber(s.coinLv[t.id]) or 0)
             if v > 0 then self.coinLv[t.id] = min(t.maxLv, v) end
+        end
+    end
+    self.pinnedCoins = {}
+    if type(s.pinnedCoins) == "table" then
+        local cnt = 0
+        for _, t in ipairs(Config.COIN_TIERS) do
+            if s.pinnedCoins[t.id] == true and (self.coinLv[t.id] or 0) > 0 and cnt < 6 then
+                self.pinnedCoins[t.id] = true
+                cnt = cnt + 1
+            end
         end
     end
     self.techOwned = {}
@@ -1411,14 +1619,29 @@ function Tycoon:ImportState(s)
         self.totalSkillPoints = migSp
     end
 
-    self.adBoostLeft = max(0, tonumber(s.adBoostLeft) or 0)
+    self.adBoostLeft = min(300, max(0, tonumber(s.adBoostLeft) or 0))
+    self.adCooldowns = {}
+    if type(s.adCooldowns) == "table" then
+        for pid, def in pairs(Config.AD_PLACEMENTS) do
+            local v = floor(tonumber(s.adCooldowns[pid]) or 0)
+            if v > 0 then self.adCooldowns[pid] = min(def.cooldown or 1800, v) end
+        end
+    end
     self.adWatchCount = max(0, floor(tonumber(s.adWatchCount) or 0))
     self.totalClicks = max(0, floor(tonumber(s.totalClicks) or 0))
     self.totalDrops = max(0, floor(tonumber(s.totalDrops) or 0))
-    self.bestHit = max(0, tonumber(s.bestHit) or 0)
+    self.bestHit = max(0.0, (tonumber(s.bestHit) or 0) + 0.0)
     self.maxCombo = max(0, floor(tonumber(s.maxCombo) or 0))
+    self.longTermBaseCps = max(0.0, (tonumber(s.lastBaseCps) or 0) + 0.0)
     self.lastActiveAt = max(0, floor(tonumber(s.lastActiveAt) or 0))
+    self.slotCd = 0
+    self.feverCd = 0
+    self.feverExtended = false
+    self.feverChargeAcc = 0
+    self.comboWaveT = 0
+    self._baseRevSamples = 0
 
+    self:RebuildCoinCache()
     self:CheckSpMilestones()
     self:CheckRankUp()
     self:SyncPhysicsMods()

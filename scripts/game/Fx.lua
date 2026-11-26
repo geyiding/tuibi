@@ -462,7 +462,7 @@ end
 -- 飘字（近邻合并 + ×倍率戳）
 -- ----------------------------------------------------------------------------
 local function CalcTier(dmg, refCps)
-    local base = max(5, tonumber(refCps) or 5)
+    local base = max(0.5, tonumber(refCps) or 1.0)
     local ratio = dmg / base
     if ratio >= 12 then return 5
     elseif ratio >= 4 then return 4
@@ -763,7 +763,7 @@ function Fx:OnGateWin(coin, rewardName)
     self:Ring(sx, sy, 8, 70, GOLD, 0.45, 4)
     self:Ring(sx, sy, 2, 40, HOT, 0.25, 0, true)
     self:Burst(sx, sy, 18, GOLD, 200, 3.2, 4)
-    self:UiPop(sx, sy - 18, "中奖门! 转老虎机", GOLD, 17)
+    self:UiPop(sx, sy - 18, rewardName or "中奖门!", GOLD, 17)
     self:AddTrauma(0.2)
     self.lightFlash = max(self.lightFlash, 0.6)
     self.lightCol = GOLD
@@ -909,11 +909,19 @@ function Fx:OnSlotWin(prize)
         self:AddFlash(95, col)
         self.lightFlash = 1.1
         self.lightCol = col
-    else
-        self:UiPop(sx, sy + 24, prize.label or ("×" .. tostring(m)), col, 19)
-        self:Burst(sx, sy, 12, col, 170, 2.8, 2)
-        self.lightFlash = max(self.lightFlash, 0.5)
+    elseif m >= 3 then
+        self:UiPop(sx, sy + 24, prize.label or ("×" .. tostring(m)), col, 20)
+        self:CoinFountain(sx, sy, 4, 0.8)
+        self:Burst(sx, sy, 16, col, 200, 3.0, 3)
+        self.lightFlash = max(self.lightFlash, 0.7)
         self.lightCol = col
+    elseif m > 1 then
+        self:UiPop(sx, sy + 24, prize.label or ("×" .. tostring(m)), col, 17)
+        self:Burst(sx, sy, 10, col, 160, 2.6, 2)
+        self.lightFlash = max(self.lightFlash, 0.4)
+        self.lightCol = col
+    else
+        self:UiPop(sx, sy + 24, prize.label or "差一点点", col, 15)
     end
 end
 
@@ -987,6 +995,12 @@ end
 function Fx:OnCombo(combo)
     -- 只在前 10 连与每 10 连时弹一下，事件密集时不再常驻放大
     if (combo or 0) < 10 or combo % 10 == 0 then self.comboPop = 1.0 end
+end
+
+function Fx:OnComboWaveEnd(combo, waveMult, bonus)
+    self.comboPop = 1.4
+    local msg = string.format("波次 %d连 · +%s", combo or 0, Number.FormatCash(bonus or 0))
+    self:UiPop(self.ancComboX - 42, self.ancComboY + 28, msg, GOLD, 16)
 end
 
 function Fx:OnComboBreak()

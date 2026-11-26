@@ -49,6 +49,10 @@ local function SetLbl(lbl, txt)
     if lbl and lbl.props.text ~= txt then lbl:SetText(txt) end
 end
 
+local function SetLblCol(lbl, col)
+    if lbl and col and lbl.props.fontColor ~= col then lbl:SetStyle({ fontColor = col }) end
+end
+
 local function SetCellVis(w, vis)
     if w and w.props.visible ~= vis then w:SetVisible(vis) end
 end
@@ -379,14 +383,23 @@ local function BuildCoinsModal(cb)
     local grid = MakeGrid(4, 5, cNodes)
 
     r.coinPageLbl = UI.Label { text = "1/2", fontSize = 13, fontColor = U.textDim }
+    r.coinPinBtn = NeoButton {
+        text = "设为常驻", variant = "dark", minHeight = 34, minWidth = 78, paddingHorizontal = 6, fontSize = 12,
+        onClick = function()
+            local idx = (st.coinPage - 1) * 12 + st.coinSel
+            local tier = Config.COIN_TIERS[idx]
+            if tier and cb.OnTogglePinCoin then cb.OnTogglePinCoin(tier.id) end
+        end,
+    }
     local pageRow = UI.Row {
-        width = "100%", height = 38, alignItems = "center", justifyContent = "center", gap = 12,
+        width = "100%", height = 38, alignItems = "center", justifyContent = "center", gap = 8,
         children = {
-            NeoButton { text = "上一页", variant = "dark", minHeight = 36, minWidth = 76, fontSize = 13,
+            NeoButton { text = "上一页", variant = "dark", minHeight = 34, minWidth = 64, fontSize = 12,
                 onClick = function() st.coinPage = 1; st.coinSel = 1; TycoonHud.RefreshCoins() end },
             r.coinPageLbl,
-            NeoButton { text = "下一页", variant = "dark", minHeight = 36, minWidth = 76, fontSize = 13,
+            NeoButton { text = "下一页", variant = "dark", minHeight = 34, minWidth = 64, fontSize = 12,
                 onClick = function() st.coinPage = 2; st.coinSel = 1; TycoonHud.RefreshCoins() end },
+            r.coinPinBtn,
         },
     }
 
@@ -458,11 +471,12 @@ end
 -- ----------------------------------------------------------------------------
 local function BuildPrestigeModal(cb)
     local r = st.refs
+    r.presEraLbl = UI.Label { text = "不清空财富", fontSize = 11, fontWeight = "bold", fontColor = U.green, maxLines = 1 }
     local header = UI.Row {
         width = "100%", height = 40, alignItems = "center", gap = 6,
         children = {
             UI.Label { text = "资本上市敲钟", fontSize = 17, fontWeight = "bold", fontColor = U.gold },
-            UI.Label { text = "不清空财富", fontSize = 11, fontWeight = "bold", fontColor = U.green, maxLines = 1 },
+            r.presEraLbl,
             UI.Spacer(), MakeCloseBtn(function() TycoonHud.CloseModal() end),
         },
     }
@@ -506,14 +520,18 @@ local function BuildPrestigeModal(cb)
     r.talDetIc, r.talDetTitle, r.talDetDesc, r.talDetBtn = detIc, detTitle, detDesc, detBtn
 
     r.presNormalBtn = NeoButton {
-        text = "敲钟上市", variant = "dark", flexGrow = 1, flexBasis = 0, minHeight = 46, fontSize = 14,
+        text = "敲钟上市", variant = "dark", flexGrow = 1, flexBasis = 0, minHeight = 46, fontSize = 13,
         onClick = function() if cb.OnConfirmPrestige then cb.OnConfirmPrestige(false) end end,
     }
     r.presAdBtn = NeoButton {
-        text = "广告×2上市", variant = "primary", flexGrow = 1, flexBasis = 0, minHeight = 46, fontSize = 14,
+        text = "广告×2", variant = "primary", flexGrow = 1, flexBasis = 0, minHeight = 46, fontSize = 13,
         onClick = function() if cb.OnConfirmPrestige then cb.OnConfirmPrestige(true) end end,
     }
-    local botRow = UI.Row { width = "100%", gap = 10, children = { r.presNormalBtn, r.presAdBtn } }
+    r.presAscendBtn = NeoButton {
+        text = "星际飞升", variant = "magenta", flexGrow = 1, flexBasis = 0, minHeight = 46, fontSize = 13, visible = false,
+        onClick = function() if cb.OnGalacticAscend then cb.OnGalacticAscend() end end,
+    }
+    local botRow = UI.Row { width = "100%", gap = 6, children = { r.presNormalBtn, r.presAdBtn, r.presAscendBtn } }
 
     local panel = NeoFrame {
         style = "panel", width = "92%", maxWidth = 390, height = 528, padding = 12, gap = 8,
@@ -698,6 +716,10 @@ local function BuildAirdropModal(cb)
     r.airArt = NeoIcon { kind = "event", key = "vault_crack", width = "100%", height = 184 }
     r.airTitle = UI.Label { text = "商业风投空投箱", fontSize = 20, fontWeight = "bold", fontColor = U.gold }
     r.airDesc = UI.Label { text = "", fontSize = 13, fontColor = U.textDim, whiteSpace = "normal", textAlign = "center", width = "100%" }
+    r.airDetAdBtn = NeoButton {
+        text = "广告×5暴富", variant = "primary", flexGrow = 1, flexBasis = 0, minHeight = 46,
+        onClick = function() if cb.OnClaimAirdrop then cb.OnClaimAirdrop(true) end end,
+    }
     local box = NeoFrame {
         style = "panel", width = "90%", maxWidth = 370, padding = 16, gap = 12,
         flexDirection = "column", alignItems = "center",
@@ -708,8 +730,7 @@ local function BuildAirdropModal(cb)
                 children = {
                     NeoButton { text = "免费领", variant = "dark", flexGrow = 1, flexBasis = 0, minHeight = 46,
                         onClick = function() if cb.OnClaimAirdrop then cb.OnClaimAirdrop(false) end end },
-                    NeoButton { text = "广告×5暴富", variant = "primary", flexGrow = 1, flexBasis = 0, minHeight = 46,
-                        onClick = function() if cb.OnClaimAirdrop then cb.OnClaimAirdrop(true) end end },
+                    r.airDetAdBtn,
                 },
             },
         },
@@ -735,8 +756,8 @@ local function BuildFormulaModal()
                 style = "card", width = "100%", padding = 10, flexDirection = "column", gap = 4,
                 children = {
                     UI.Label { text = "1. 钱只涨不花直冲世界第1！达标与排名跃升均赠技能点。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
-                    UI.Label { text = "2. 下方页签亮灯即点：用技能点升机台、解新币、研黑科技。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
-                    UI.Label { text = "3. 硬币进活动奖门触发3轴抽奖，最高爆100倍倍率与币雨；达标可敲钟上市不清空资产！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
+                    UI.Label { text = "2. 下方页签亮灯即点：用技能点升机台、解新币（可设6枚常驻）与黑科技。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
+                    UI.Label { text = "3. 硬币过奖门激活3轴老虎机（9秒限流爆发 1.5~100 倍）；长按推台可触发狂暴连发！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
                 },
             },
             NeoFrame {
@@ -1023,7 +1044,8 @@ function TycoonHud.RefreshMain(ty)
         barCol = C.cyan
     else
         barRatio = 1
-        barTxt = "★ No.1 超越马斯克 · " .. Number.FormatCash(ty.lifetimeCash)
+        local eraTtl = ty.GetEraTitle and ty:GetEraTitle() or nil
+        barTxt = "★ " .. (eraTtl or "No.1 超越马斯克") .. " · " .. Number.FormatCash(ty.lifetimeCash)
         barCol = C.gold
     end
     if sh.rankBarTxt ~= barTxt or sh.rankBarRatio ~= barRatio then
@@ -1103,7 +1125,10 @@ function TycoonHud.RefreshCoins()
     local ty = st.lastTycoon
     if not ty then return end
     local r = st.refs
-    SetLbl(r.coinCountLbl, string.format("%d/%d", ty:CountUnlockedCoins(), #Config.COIN_TIERS))
+    local pinnedN = ty:CountPinnedCoins()
+    SetLbl(r.coinCountLbl, (pinnedN > 0)
+        and string.format("%d/%d·常%d", ty:CountUnlockedCoins(), #Config.COIN_TIERS, pinnedN)
+        or string.format("%d/%d", ty:CountUnlockedCoins(), #Config.COIN_TIERS))
     SetLbl(r.coinSpLbl, string.format("技能点:%s (¥%s赠)", Number.FormatNum(ty.skillPoints or 0), Number.FormatNum(ty:GetNextSpThreshold())))
     SetLbl(r.coinPageLbl, st.coinPage .. "/2")
     for i = 1, 12 do
@@ -1114,12 +1139,13 @@ function TycoonHud.RefreshCoins()
             SetCellVis(slot.cell, true)
             local def = Config.COINS[tier.id]
             local lv = ty.coinLv[tier.id] or 0
+            local pinned = ty:IsCoinPinned(tier.id)
             local cost, maxed, locked = ty:GetCoinCost(tier.id)
             local canAff = (not maxed) and (not locked) and ((ty.skillPoints or 0) >= cost)
             slot.ic:SetIcon("coin", tier.id, max(1, min(3, floor(lv / 4) + 1)))
             SetLbl(slot.nm, (def and def.short) or tier.id)
-            SetLbl(slot.sub, (lv == 0) and (locked and "待前置" or "未解锁") or (maxed and "MAX" or ("Lv." .. lv)))
-            slot.sub:SetStyle({ fontColor = (lv == 0) and (canAff and U.gold or U.textDim) or U.cyan })
+            SetLbl(slot.sub, (lv == 0) and (locked and "待前置" or "未解锁") or ((pinned and "★" or "") .. (maxed and "MAX" or ("Lv." .. lv))))
+            SetLblCol(slot.sub, pinned and U.gold or ((lv == 0) and (canAff and U.gold or U.textDim) or U.cyan))
             slot.cell.skin_.selected = (i == st.coinSel)
             slot.cell.skin_.afford = canAff
             SetCellOp(slot.cell, (lv > 0 or canAff) and 1.0 or (locked and 0.36 or 0.54))
@@ -1132,10 +1158,11 @@ function TycoonHud.RefreshCoins()
     if tier then
         local def = Config.COINS[tier.id]
         local lv = ty.coinLv[tier.id] or 0
+        local pinned = ty:IsCoinPinned(tier.id)
         local cost, maxed, locked = ty:GetCoinCost(tier.id)
         local unitVal = ty:GetCoinUnitValue(tier.id, max(1, lv))
         r.coinDetIc:SetIcon("coin", tier.id, max(1, min(3, floor(lv / 4) + 1)))
-        SetLbl(r.coinDetTitle, string.format("%s (%s)", def and def.name or tier.id, lv == 0 and (locked and "需先解前一种币" or "未解锁") or ("Lv." .. lv)))
+        SetLbl(r.coinDetTitle, string.format("%s (%s)", def and def.name or tier.id, lv == 0 and (locked and "需先解前一种币" or "未解锁") or ("Lv." .. lv .. (pinned and "·常驻" or ""))))
         SetLbl(r.coinDetDesc, string.format("单枚基值 %s · %s", Number.FormatCash(unitVal), def and def.desc or ""))
         if maxed then
             r.coinDetBtn:SetText("已满级")
@@ -1146,6 +1173,11 @@ function TycoonHud.RefreshCoins()
         end
         r.coinDetBtn:SetVariant((lv == 0) and "cyan" or "primary")
         r.coinDetBtn:SetDisabled(maxed or locked or ((ty.skillPoints or 0) < cost))
+        if r.coinPinBtn then
+            r.coinPinBtn:SetText(pinned and "★已常驻" or "设为常驻")
+            r.coinPinBtn:SetVariant(pinned and "cyan" or "dark")
+            r.coinPinBtn:SetDisabled(lv <= 0 or ((not pinned) and pinnedN >= 6))
+        end
     end
 end
 
@@ -1163,7 +1195,7 @@ function TycoonHud.RefreshTech()
         if owned then ownedCnt = ownedCnt + 1 end
         local canAff = (not owned) and (sp >= t.costSp)
         SetLbl(slot.stLbl, owned and "已研" or (Number.FormatNum(t.costSp) .. "点"))
-        slot.stLbl:SetStyle({ fontColor = owned and U.green or (canAff and U.gold or U.textDim) })
+        SetLblCol(slot.stLbl, owned and U.green or (canAff and U.gold or U.textDim))
         slot.cell.skin_.selected = (i == st.techSel)
         slot.cell.skin_.afford = canAff
         SetCellOp(slot.cell, (owned or canAff) and 1.0 or 0.56)
@@ -1187,9 +1219,23 @@ function TycoonHud.RefreshPrestige()
     local info = ty:GetNextIpoInfo()
     local canIpo = ty:CanDoIpo()
     local curMul = ty:GetShareMult()
+    local eraTitle = ty.GetEraTitle and ty:GetEraTitle() or nil
+    SetLbl(r.presEraLbl, eraTitle and ("★ " .. eraTitle) or "不清空财富")
     SetLbl(r.presSharesLbl, string.format("持有传奇股：%s 股 (全局×%.2f)", Number.FormatNum(ty.prestigeShares), curMul))
     SetLbl(r.presPendLbl, string.format("本轮【%s】：+%s 股 · +%d 技能点", info.name, Number.FormatNum(info.shares), info.bonusSp or 0))
-    SetLbl(r.presNextLbl, canIpo and "★ 达标可敲钟！绝不清空财富与已解进度" or ("需总身价 " .. Number.FormatCash(info.targetWealth) .. " · 不清空资产"))
+    local inEndgame = (ty.rankIdx or 0) >= #Config.RANKS
+    if inEndgame then
+        local canAsc = ty:CanAscendEra()
+        SetLbl(r.presNextLbl, canAsc
+            and ("★ 可星际飞升! 永久全局×3 · +" .. tostring(40 * ((ty.era or 0) + 1)) .. " 技能点")
+            or ("星际飞升需总身价 " .. Number.FormatCash(ty:GetEraAscendTarget())))
+        SetCellVis(r.presAscendBtn, true)
+        r.presAscendBtn:SetDisabled(not canAsc)
+        r.presAscendBtn:SetText(canAsc and "星际飞升" or ("待" .. Number.FormatNum(ty:GetEraAscendTarget())))
+    else
+        SetCellVis(r.presAscendBtn, false)
+        SetLbl(r.presNextLbl, canIpo and "★ 达标可敲钟！绝不清空财富与已解进度" or ("需总身价 " .. Number.FormatCash(info.targetWealth) .. " · 不清空资产"))
+    end
     r.presNormalBtn:SetDisabled(not canIpo)
     r.presAdBtn:SetDisabled(not canIpo)
 
@@ -1225,7 +1271,7 @@ function TycoonHud.RefreshWelfare()
         local cd = ty:GetAdCooldown(pid)
         local c = r.adCards[i]
         SetLbl(c.cd, (cd > 0) and ("冷却 " .. Number.FormatClock(cd)) or "点击可领")
-        c.cd:SetStyle({ fontColor = (cd > 0) and U.textDim or U.green })
+        SetLblCol(c.cd, (cd > 0) and U.textDim or U.green)
         c.card.skin_.selected = (i == st.welfareSel)
         c.card.skin_.afford = (cd <= 0)
     end
@@ -1261,14 +1307,14 @@ function TycoonHud.RefreshRanks()
             local isCurrent = (idx == ty.rankIdx)
             slot.av:SetEntry(rk, isCurrent and (rk.isRealName == true), unlocked)
             SetLbl(slot.no, rk.isRealName and ("No." .. tostring(rk.rank)) or ("前" .. Number.FormatWorldRank(rk.rank)))
-            slot.no:SetStyle({ fontColor = (rk.rank <= 10) and U.gold or (rk.isRealName and U.cyan or U.textDim) })
+            SetLblCol(slot.no, (rk.rank <= 10) and U.gold or (rk.isRealName and U.cyan or U.textDim))
             SetLbl(slot.nm, rk.name)
             SetLbl(slot.ttl, rk.title or "")
             SetLbl(slot.tg, Number.FormatCash(rk.target))
             local statusStr = isCurrent and "★ 当前" or (unlocked and (rk.isRealName and "已超越" or "已突破") or (isNextTarget and "下一目标!" or "追赶中"))
             local statusCol = isCurrent and U.gold or (unlocked and U.green or (isNextTarget and U.magenta or U.muted))
             SetLbl(slot.stLbl, statusStr)
-            slot.stLbl:SetStyle({ fontColor = statusCol })
+            SetLblCol(slot.stLbl, statusCol)
             slot.cell.skin_.rarity = (rk.rank <= 10) and "legendary" or (rk.isRealName and "epic" or "common")
             slot.cell.skin_.selected = isCurrent or isNextTarget
             SetCellOp(slot.cell, unlocked and 1.0 or (isNextTarget and 0.92 or 0.65))
@@ -1297,25 +1343,34 @@ function TycoonHud.RefreshAirdrop()
     local r = st.refs
     local air = ty.activeAirdrop
     local ev = Config.EVENTS[air.eventId] or Config.EVENTS.vault_crack
+    local cd = ty:GetAdCooldown("airdrop_5x")
+    local baseCash = air.baseCash or max(30, floor(ty:GetBaselineCPS() * 5))
+    local adCash = max(200, floor(ty:GetBaselineCPS() * 45))
     r.airArt:SetIcon("event", ev.id, 1)
     SetLbl(r.airTitle, "风投空投 · " .. ev.name)
     SetLbl(r.airDesc, string.format(
-        "免费领 %s，或看广告立即暴富 5 倍（%s + 10 枚高阶币雨）！",
-        Number.FormatCash(air.baseCash), Number.FormatCash(max(600, ty:GetDisplayCPS() * 120))
+        "免费领 %s，或看广告立即暴富（%s + 10 枚高阶币雨）！",
+        Number.FormatCash(baseCash), Number.FormatCash(adCash)
     ))
+    if r.airDetAdBtn then
+        r.airDetAdBtn:SetDisabled(cd > 0)
+        r.airDetAdBtn:SetText((cd > 0) and ("冷却 " .. Number.FormatClock(cd)) or "广告×5暴富")
+    end
 end
 
 function TycoonHud.RefreshFormula()
     local ty = st.lastTycoon
     if not ty then return end
     local _, d = ty:GetTotalMult(true)
+    local eraTtl = ty.GetEraTitle and ty:GetEraTitle() or nil
+    local eraNote = eraTtl and string.format("\n星际纪元【%s】：×%s 永久飞升加成", eraTtl, Number.FormatMul(3 ^ (ty.era or 0))) or ""
     SetLbl(st.refs.formMultLbl, string.format(
-        "机台全币：×%s   |   黑科技乘区：×%s\n传奇股+基因：×%s   |   连击加成：×%s\n狂欢时刻：×%s   |   幸运老虎机：×%s\n广告×3：×%s   |   合计总倍率：×%s\n下一技能点阈值：%s（可用 %s 点）",
+        "机台全币：×%s   |   黑科技乘区：×%s\n传奇股+基因：×%s   |   连击加成：×%s\n狂欢时刻：×%s   |   幸运老虎机：×%s\n广告×3：×%s   |   合计总倍率：×%s\n下一技能点阈值：%s（可用 %s 点）%s",
         Number.FormatMul(d.machine), Number.FormatMul(d.tech),
         Number.FormatMul(d.prestige), Number.FormatMul(d.combo),
         Number.FormatMul(d.fever), Number.FormatMul(d.luck or 1),
         Number.FormatMul(d.ad), Number.FormatMul(d.total),
-        Number.FormatCash(ty:GetNextSpThreshold()), Number.FormatNum(ty.skillPoints or 0)
+        Number.FormatCash(ty:GetNextSpThreshold()), Number.FormatNum(ty.skillPoints or 0), eraNote
     ))
 end
 

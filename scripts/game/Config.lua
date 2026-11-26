@@ -46,10 +46,10 @@ Config.STAGE = {
     FRONT_DROP_Y = 542,
     DROP_END_Y = 576,
 
-    -- 性能硬上限（兼顾满台铺币视觉与移动端 60fps 流畅）
-    MAX_COINS = 92,
+    -- 性能硬上限（120 枚对象池预留 50 槽给高频率手点/币雨，防止手点触发删币回收）
+    MAX_COINS = 120,
     STUCK_FUSE_SEC = 3.2,
-    SEED_COUNT = 72,
+    SEED_COUNT = 70,
 }
 
 -- 基础规则常量
@@ -104,105 +104,105 @@ Config.COINS = {
     gold = {
         id = "gold", name = "标准金币", short = "金币", rarity = "common", family = "wealth",
         baseChips = 45, multAdd = 0.2, massMul = 1.0, radiusMul = 1.0, restitution = 0.56, feverGain = 6,
-        ticketBonus = 1, desc = "掉落基础45筹码，必额外产出1金券。",
+        ticketBonus = 1, desc = "开局基石币种，稳定推落并高效攒满狂欢。",
         color = { base = { 248, 196, 48 }, dark = { 164, 108, 18 }, light = { 255, 242, 168 }, rim = { 255, 226, 100 }, glow = { 255, 210, 70 } },
         symbol = "yen",
     },
     emerald = {
         id = "emerald", name = "幸运翡翠", short = "翡翠", rarity = "common", family = "fever",
         baseChips = 35, multAdd = 0.6, massMul = 1.0, radiusMul = 1.0, restitution = 0.58, feverGain = 10,
-        gateRefund = 2, desc = "过中奖门返+2投币，掉落倍率+0.6。",
+        gateRefund = 2, desc = "过移动奖门额外注入狂欢能量，掉落快速攒槽。",
         color = { base = { 66, 218, 138 }, dark = { 24, 128, 76 }, light = { 172, 255, 208 }, rim = { 110, 245, 175 }, glow = { 80, 240, 160 } },
         symbol = "clover",
     },
     split = {
         id = "split", name = "分裂子母", short = "分裂", rarity = "common", family = "swarm",
         baseChips = 30, multAdd = 0.25, massMul = 0.95, radiusMul = 1.0, restitution = 0.6, feverGain = 6,
-        splitCount = 2, desc = "首撞钉阵裂出2枚小银币同时落台。",
+        splitCount = 2, desc = "首撞钉阵裂出 2 枚小银币同时落台助推。",
         color = { base = { 96, 224, 188 }, dark = { 34, 130, 108 }, light = { 196, 255, 240 }, rim = { 140, 246, 220 }, glow = { 110, 245, 210 } },
         symbol = "split",
     },
     heavy = {
         id = "heavy", name = "重锤铁币", short = "重锤", rarity = "common", family = "gravity",
         baseChips = 70, multAdd = 0.3, massMul = 2.4, radiusMul = 1.18, restitution = 0.36, feverGain = 7,
-        pushPower = 1.5, desc = "大号重体强行碾开币堆，掉落70筹码。",
+        pushPower = 1.5, desc = "2.4 倍质量重体强行碾开币堆，清道助推核心。",
         color = { base = { 136, 152, 186 }, dark = { 66, 76, 104 }, light = { 214, 226, 248 }, rim = { 176, 194, 226 }, glow = { 160, 180, 225 } },
         symbol = "anvil",
     },
     thunder = {
         id = "thunder", name = "霹雳电币", short = "霹雳", rarity = "common", family = "chain",
         baseChips = 40, multAdd = 0.35, massMul = 1.0, radiusMul = 1.0, restitution = 0.6, feverGain = 8,
-        chainJumps = 3, desc = "落台或掉落放出3道闪电连锁加分。",
+        chainJumps = 3, desc = "落台或掉落放出 3 道闪电连锁跳电增收并前拉。",
         color = { base = { 76, 198, 255 }, dark = { 26, 104, 172 }, light = { 188, 242, 255 }, rim = { 132, 224, 255 }, glow = { 90, 215, 255 } },
         symbol = "bolt",
     },
     bomb = {
         id = "bomb", name = "定时炸弹", short = "炸弹", rarity = "common", family = "blast",
         baseChips = 65, multAdd = 0.4, massMul = 1.25, radiusMul = 1.06, restitution = 0.45, feverGain = 9,
-        explodeRadius = 72, explodeForce = 240, fuseTime = 3.8, desc = "落台倒数引爆，把前方币轰下悬崖。",
+        explodeRadius = 72, explodeForce = 240, fuseTime = 3.8, desc = "落台倒数引爆并触发 1.6 倍爆分，把前方币轰下悬崖。",
         color = { base = { 244, 96, 72 }, dark = { 148, 36, 30 }, light = { 255, 186, 140 }, rim = { 255, 138, 96 }, glow = { 255, 110, 64 } },
         symbol = "bomb",
     },
     spring = {
         id = "spring", name = "高弹霓虹", short = "弹跳", rarity = "rare", family = "swarm",
         baseChips = 42, multAdd = 0.45, massMul = 0.85, radiusMul = 0.96, restitution = 0.86, feverGain = 9,
-        bounceSpawn = 1, desc = "超高弹性在钉阵连撞，额外衍生银币。",
+        bounceSpawn = 1, desc = "超高弹性在钉阵连撞，衍生最多 3 枚银分身助推。",
         color = { base = { 255, 116, 196 }, dark = { 156, 38, 110 }, light = { 255, 206, 236 }, rim = { 255, 160, 220 }, glow = { 255, 130, 210 } },
         symbol = "spring",
     },
     magnet = {
         id = "magnet", name = "磁石吸金", short = "磁石", rarity = "rare", family = "gravity",
         baseChips = 55, multAdd = 0.4, massMul = 1.35, radiusMul = 1.05, restitution = 0.45, feverGain = 8,
-        magnetR = 72, desc = "吸附周边散币向中心靠拢，防侧漏。",
+        magnetR = 72, desc = "持续聚拢周边散币向中心汇聚，减少两侧流失。",
         color = { base = { 166, 116, 255 }, dark = { 84, 48, 166 }, light = { 226, 202, 255 }, rim = { 196, 160, 255 }, glow = { 176, 132, 255 } },
         symbol = "magnet",
     },
     ruby = {
-        id = "ruby", name = "红宝石倍率", short = "红宝", rarity = "rare", family = "wealth",
+        id = "ruby", name = "红宝石金币", short = "红宝", rarity = "rare", family = "wealth",
         baseChips = 50, multAdd = 1.1, massMul = 1.1, radiusMul = 1.0, restitution = 0.54, feverGain = 8,
-        permMult = 0.8, desc = "掉落直接为本关永久叠加+0.8倍率。",
+        permMult = 0.8, desc = "高纯度红宝高阶币，且是融合点金圣王的母体之一。",
         color = { base = { 236, 56, 98 }, dark = { 136, 20, 48 }, light = { 255, 166, 188 }, rim = { 255, 108, 146 }, glow = { 255, 76, 120 } },
         symbol = "gem",
     },
     neon = {
         id = "neon", name = "狂热霓虹", short = "霓虹", rarity = "rare", family = "fever",
         baseChips = 52, multAdd = 0.55, massMul = 1.0, radiusMul = 1.0, restitution = 0.62, feverGain = 24,
-        critBonus = 0.25, desc = "掉落狂欢槽+24%，自带+25%暴击率。",
+        critBonus = 0.25, desc = "掉落高效充能狂欢槽，并自带额外 +25% 暴击率。",
         color = { base = { 255, 68, 220 }, dark = { 142, 22, 138 }, light = { 255, 188, 250 }, rim = { 100, 245, 255 }, glow = { 255, 92, 230 } },
         symbol = "star",
     },
     frost = {
         id = "frost", name = "冰晶棱币", short = "冰晶", rarity = "rare", family = "gravity",
         baseChips = 62, multAdd = 0.5, massMul = 1.4, radiusMul = 1.04, restitution = 0.42, feverGain = 8,
-        frostR = 64, desc = "给周围5枚硬币镀上双倍碎冰得分。",
+        frostR = 64, desc = "掉落时给台面至多 5 枚硬币镀冰，使之 8 秒内掉落翻 2 倍。",
         color = { base = { 118, 238, 255 }, dark = { 42, 134, 174 }, light = { 224, 252, 255 }, rim = { 184, 248, 255 }, glow = { 140, 242, 255 } },
         symbol = "snow",
     },
     ghost = {
         id = "ghost", name = "幽灵穿影", short = "幽灵", rarity = "rare", family = "chain",
         baseChips = 68, multAdd = 0.65, massMul = 0.95, radiusMul = 1.0, restitution = 0.55, feverGain = 10,
-        phasePegs = true, desc = "穿越钉阵直狙中奖门，落地化为实体。",
+        phasePegs = true, desc = "前 0.42 秒穿透钉阵直瞄移动奖门，随后落地化为实体。",
         color = { base = { 174, 210, 255 }, dark = { 76, 98, 158 }, light = { 238, 248, 255 }, rim = { 206, 230, 255 }, glow = { 180, 215, 255 } },
         symbol = "ghost",
     },
     jackpot7 = {
         id = "jackpot7", name = "777轮盘币", short = "777", rarity = "legendary", family = "fever",
         baseChips = 110, multAdd = 1.2, massMul = 1.2, radiusMul = 1.1, restitution = 0.52, feverGain = 18,
-        roll777 = true, desc = "掉落必转777大奖，高概率喷射金币雨。",
+        roll777 = true, desc = "掉落 42%（四叶草后 65%）爆 2.5 倍现金与 5 枚高阶币雨。",
         color = { base = { 255, 215, 46 }, dark = { 172, 92, 16 }, light = { 255, 250, 198 }, rim = { 255, 82, 128 }, glow = { 255, 224, 72 } },
         symbol = "seven",
     },
     blackhole = {
         id = "blackhole", name = "黑洞奇点", short = "黑洞", rarity = "legendary", family = "gravity",
         baseChips = 120, multAdd = 1.1, massMul = 1.8, radiusMul = 1.12, restitution = 0.35, feverGain = 14,
-        bhRadius = 92, desc = "驻留吸聚周边6币蓄能后向前脉冲爆发。",
+        bhRadius = 92, desc = "驻留聚拢周边币蓄能后向前脉冲爆发并附带 1.4 倍收益。",
         color = { base = { 78, 42, 146 }, dark = { 24, 12, 48 }, light = { 182, 124, 255 }, rim = { 220, 150, 255 }, glow = { 156, 86, 255 } },
         symbol = "vortex",
     },
     giant = {
         id = "giant", name = "黄金巨人", short = "巨人", rarity = "legendary", family = "wealth",
         baseChips = 220, multAdd = 1.4, massMul = 4.2, radiusMul = 1.5, restitution = 0.32, feverGain = 18,
-        pushPower = 2.4, desc = "巨无霸碾压整条赛道，掉落5倍爆发分。",
+        pushPower = 2.4, desc = "4.2 倍重量巨无霸碾压整条赛道，前沿掉落直翻 2.5 倍。",
         color = { base = { 255, 178, 36 }, dark = { 160, 86, 12 }, light = { 255, 240, 156 }, rim = { 255, 226, 98 }, glow = { 255, 198, 56 } },
         symbol = "crown",
     },
@@ -210,7 +210,7 @@ Config.COINS = {
         id = "nuke", name = "核能烈焰", short = "核爆", rarity = "legendary", family = "blast",
         baseChips = 140, multAdd = 1.3, massMul = 1.5, radiusMul = 1.15, restitution = 0.42, feverGain = 16,
         explodeRadius = 104, explodeForce = 340, fuseTime = 3.2, doubleBlast = true,
-        desc = "双重超大爆破冲击，轰飞半台并叠火筹码。",
+        desc = "双重超大爆破冲击，轰飞前方币堆并引爆 1.6 倍核爆奖。",
         color = { base = { 255, 76, 42 }, dark = { 140, 22, 14 }, light = { 255, 224, 120 }, rim = { 255, 166, 52 }, glow = { 255, 100, 46 } },
         symbol = "flame",
     },
@@ -219,21 +219,21 @@ Config.COINS = {
     mini = {
         id = "mini", name = "银分身", short = "银币", rarity = "common", family = "swarm",
         baseChips = 24, multAdd = 0.12, massMul = 0.6, radiusMul = 0.72, restitution = 0.62, feverGain = 3,
-        internal = true, desc = "分裂产生的轻巧银币。",
+        internal = true, desc = "分裂与弹跳衍生的轻巧银币（0.45 倍分裂币价值）。",
         color = { base = { 202, 220, 242 }, dark = { 104, 120, 148 }, light = { 246, 252, 255 }, rim = { 226, 238, 255 }, glow = { 196, 224, 255 } },
         symbol = "dot",
     },
     slag = {
         id = "slag", name = "熔渣废币", short = "熔渣", rarity = "common", family = "blast",
         baseChips = 180, multAdd = 0.5, massMul = 2.6, radiusMul = 1.15, restitution = 0.3, feverGain = 10,
-        internal = true, desc = "Boss空投占道币，推落爆出8倍反奖。",
+        internal = true, desc = "重质占道币，推落结算 6 倍最高解锁币收益。",
         color = { base = { 106, 94, 92 }, dark = { 52, 42, 42 }, light = { 224, 126, 58 }, rim = { 255, 118, 42 }, glow = { 240, 108, 40 } },
         symbol = "cracks",
     },
     vault = {
         id = "vault", name = "装甲金库币", short = "金库", rarity = "legendary", family = "wealth",
         baseChips = 900, multAdd = 2.5, massMul = 3.2, radiusMul = 1.24, restitution = 0.38, feverGain = 22,
-        internal = true, desc = "吞金兽金库币，推落触发40倍超分。",
+        internal = true, desc = "金库巨币，推落结算当前最高解锁币 45 倍巨额暴击。",
         color = { base = { 240, 206, 98 }, dark = { 84, 70, 52 }, light = { 255, 248, 198 }, rim = { 116, 236, 255 }, glow = { 255, 226, 116 } },
         symbol = "vault",
     },
@@ -242,42 +242,42 @@ Config.COINS = {
     midas = {
         id = "midas", name = "点金圣王", short = "点金", rarity = "legendary", family = "wealth", evolved = true,
         baseChips = 190, multAdd = 1.8, massMul = 1.4, radiusMul = 1.16, restitution = 0.52, feverGain = 16,
-        midasR = 78, desc = "周边币点化成双倍黄金并直接叠倍率。",
+        midasR = 78, desc = "掉落时将台上至多 4 枚标准金币直接点化为当前最高阶币。",
         color = { base = { 255, 224, 62 }, dark = { 176, 108, 10 }, light = { 255, 254, 210 }, rim = { 255, 242, 140 }, glow = { 255, 232, 92 } },
         symbol = "crown",
     },
     thor = {
         id = "thor", name = "雷神之锤", short = "雷神", rarity = "legendary", family = "chain", evolved = true,
         baseChips = 175, multAdd = 1.6, massMul = 2.8, radiusMul = 1.28, restitution = 0.42, feverGain = 18,
-        chainJumps = 8, shockwave = 180, desc = "落地劈出8道落雷与震荡波轰落前排。",
+        chainJumps = 8, shockwave = 180, desc = "落台劈出震荡波与 8 道连锁落雷，重体轰落前排。",
         color = { base = { 98, 228, 255 }, dark = { 32, 98, 188 }, light = { 226, 250, 255 }, rim = { 255, 226, 98 }, glow = { 120, 238, 255 } },
         symbol = "bolt",
     },
     supernova = {
         id = "supernova", name = "超新星爆", short = "新星", rarity = "legendary", family = "blast", evolved = true,
         baseChips = 185, multAdd = 1.7, massMul = 1.4, radiusMul = 1.18, restitution = 0.5, feverGain = 42,
-        explodeRadius = 115, explodeForce = 360, fuseTime = 2.6, desc = "超级爆推清屏，同时瞬间灌满半槽狂欢。",
+        explodeRadius = 115, explodeForce = 360, fuseTime = 2.6, desc = "2.6 秒超大爆推清屏，同时瞬间灌满高额狂欢能量。",
         color = { base = { 255, 92, 174 }, dark = { 138, 20, 86 }, light = { 255, 224, 172 }, rim = { 255, 214, 72 }, glow = { 255, 118, 198 } },
         symbol = "flame",
     },
     hydra = {
         id = "hydra", name = "无限分身", short = "无限", rarity = "legendary", family = "swarm", evolved = true,
         baseChips = 120, multAdd = 1.2, massMul = 1.0, radiusMul = 1.06, restitution = 0.88, feverGain = 15,
-        splitCount = 4, bounceSpawn = 2, desc = "每撞钉狂飙弹跳并倾泻4枚以上银币。",
+        splitCount = 4, bounceSpawn = 2, desc = "高弹连撞钉阵并瞬间分裂倾泻 5 枚小银币助推。",
         color = { base = { 82, 248, 174 }, dark = { 22, 132, 86 }, light = { 206, 255, 232 }, rim = { 136, 255, 206 }, glow = { 96, 255, 186 } },
         symbol = "split",
     },
     singularity = {
         id = "singularity", name = "奇点涡轮", short = "奇点", rarity = "legendary", family = "gravity", evolved = true,
         baseChips = 210, multAdd = 1.9, massMul = 2.0, radiusMul = 1.2, restitution = 0.4, feverGain = 18,
-        magnetR = 110, bhRadius = 110, shockwave = 220, desc = "吸尽侧漏边缘全部币后向前发射脉冲。",
+        magnetR = 110, bhRadius = 110, shockwave = 220, desc = "强力广域聚能吸拢边缘币并释放 220 半径震荡脉冲。",
         color = { base = { 150, 74, 255 }, dark = { 38, 14, 98 }, light = { 228, 198, 255 }, rim = { 102, 236, 255 }, glow = { 172, 108, 255 } },
         symbol = "vortex",
     },
     carnival = {
         id = "carnival", name = "狂欢大满贯", short = "大满贯", rarity = "legendary", family = "fever", evolved = true,
         baseChips = 240, multAdd = 2.4, massMul = 1.3, radiusMul = 1.18, restitution = 0.56, feverGain = 35,
-        gateRefund = 3, roll777 = true, feverExtend = 3.0, desc = "直接延长狂欢3秒并掉落必出三连大奖。",
+        gateRefund = 3, roll777 = true, feverExtend = 3.0, desc = "狂欢内首次掉落延长 3 秒并概率触发 2.5 倍币雨大奖。",
         color = { base = { 255, 204, 64 }, dark = { 164, 58, 128 }, light = { 255, 252, 212 }, rim = { 96, 244, 255 }, glow = { 255, 216, 98 } },
         symbol = "star",
     },
@@ -428,7 +428,7 @@ Config.RANKS = Billionaires.LIST
 
 -- 1.5 财富阈值 -> 技能点（SP）双轨发放公式（钱只涨不跌专冲世界第一，全部升级花技能点）
 Config.SP_BASE_THRESHOLD = 200
-Config.SP_GROWTH = 1.47
+Config.SP_GROWTH = 1.113
 
 function Config.GetSpThreshold(stepIdx)
     if not stepIdx or stepIdx < 1 then return 0 end
@@ -440,56 +440,56 @@ end
 
 function Config.GetSpReward(stepIdx, bonusLv)
     local n = stepIdx or 1
-    local base = 3 + floor(n / 8) + ((n % 5 == 0) and 1 or 0)
+    local base = 1 + floor(n / 75)
     return base + (bonusLv or 0)
 end
 
--- 2. 机台 8 项无限强化（4×2 网格，纯技能点 SP 升级，绝不扣除现金）
+-- 2. 机台 8 项强化（4×2 网格，线性平滑 SP 成长，绝不扣除现金）
 Config.MACHINE_UPGRADES = {
-    { id = "auto_rate",    name = "自动投币",   short = "自动射速", relic = "double_barrel", baseSp = 2, spStep = 1.3, spQuad = 0.16, maxLv = 25,
+    { id = "auto_rate",    name = "自动投币",   short = "自动射速", relic = "double_barrel", baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 25,
       desc = "每秒自动持续投币，等级越高永动射速越快。" },
-    { id = "pusher_turbo", name = "涡轮推板",   short = "推板马力", relic = "turbo_pusher",  baseSp = 2, spStep = 1.4, spQuad = 0.16, maxLv = 20,
+    { id = "pusher_turbo", name = "涡轮推板",   short = "推板马力", relic = "turbo_pusher",  baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 20,
       desc = "加快推板往复速度并加大前推力，金币瀑布更猛。" },
-    { id = "global_mult",  name = "印钞倍率",   short = "全币倍率", relic = "vip_card",      baseSp = 2, spStep = 1.4, spQuad = 0.16, maxLv = 40,
-      desc = "全场所有掉落与特效收益每级永久 ×1.24。" },
-    { id = "multi_shot",   name = "多管齐射",   short = "双发齐射", relic = "first_surge",   baseSp = 3, spStep = 1.9, spQuad = 0.16, maxLv = 15,
-      desc = "每次自动或手点投币，高概率一次喷出 2~4 枚币。" },
-    { id = "crit_power",   name = "暴击增幅",   short = "暴击爆伤", relic = "crit_seal",     baseSp = 2, spStep = 1.5, spQuad = 0.16, maxLv = 20,
+    { id = "global_mult",  name = "印钞倍率",   short = "全币倍率", relic = "vip_card",      baseSp = 2, spStep = 0.020, spQuad = 0, maxLv = 300,
+      desc = "全场所有掉落与特效收益每级永久 ×1.0205。" },
+    { id = "multi_shot",   name = "多管齐射",   short = "双发齐射", relic = "first_surge",   baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 15,
+      desc = "每次自动或手点投币，高概率一次喷出 2~3 枚币（10级起可三连发）。" },
+    { id = "crit_power",   name = "暴击增幅",   short = "暴击爆伤", relic = "crit_seal",     baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 20,
       desc = "大幅提升暴击触发率与金光暴击伤害倍数。" },
-    { id = "gate_master",  name = "黄金中奖门", short = "中奖门",   relic = "wide_gate",     baseSp = 3, spStep = 1.6, spQuad = 0.16, maxLv = 20,
-      desc = "加宽移动中奖门，大幅提升老虎机 10x/50x/100x 大奖概率！" },
-    { id = "peg_gold",     name = "黄金钉阵",   short = "黄金钉阵", relic = "golden_pegs",   baseSp = 2, spStep = 1.5, spQuad = 0.16, maxLv = 20,
-      desc = "钉阵转化更多金色倍增钉，撞钉即爆即时现金。" },
-    { id = "fever_drive",  name = "狂欢超频",   short = "狂欢超频", relic = "fever_amp",     baseSp = 3, spStep = 1.7, spQuad = 0.16, maxLv = 20,
-      desc = "加快狂欢槽充能，延长狂欢时间并狂撒金币雨。" },
+    { id = "gate_master",  name = "黄金中奖门", short = "中奖门",   relic = "wide_gate",     baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 20,
+      desc = "加宽移动中奖门，提升过门币雨与老虎机高倍概率。" },
+    { id = "peg_gold",     name = "黄金钉阵",   short = "黄金钉阵", relic = "golden_pegs",   baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 11,
+      desc = "每级转化 1 颗金色倍增钉并提升撞钉收益（上限 11 级全覆盖）。" },
+    { id = "fever_drive",  name = "狂欢超频",   short = "狂欢超频", relic = "fever_amp",     baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 20,
+      desc = "加快狂欢充能速度，小幅延长狂欢时间并增加金币雨。" },
 }
 Config.MACHINE_BY_ID = {}
 for _, m in ipairs(Config.MACHINE_UPGRADES) do Config.MACHINE_BY_ID[m.id] = m end
 
--- 3. 22 种代币循序解锁与技能点升级表（需按顺序逐枚解锁，5~8小时长线节奏）
+-- 3. 22 种代币循序解锁与技能点升级表（×1.365 黄金平滑阶梯，约 5.5 小时登顶世界首富且升级不断档）
 Config.COIN_TIERS = {
-    { id = "gold",        unlockSp = 0,  baseValue = 2.5,    upBaseSp = 2,  upStepSp = 1.0, maxLv = 15 },
-    { id = "emerald",     unlockSp = 3,  baseValue = 6.5,    upBaseSp = 2,  upStepSp = 1.0, maxLv = 15 },
-    { id = "split",       unlockSp = 4,  baseValue = 17.0,   upBaseSp = 3,  upStepSp = 1.1, maxLv = 15 },
-    { id = "heavy",       unlockSp = 5,  baseValue = 44.0,   upBaseSp = 3,  upStepSp = 1.2, maxLv = 15 },
-    { id = "thunder",     unlockSp = 6,  baseValue = 115.0,  upBaseSp = 4,  upStepSp = 1.3, maxLv = 15 },
-    { id = "bomb",        unlockSp = 8,  baseValue = 300.0,  upBaseSp = 4,  upStepSp = 1.4, maxLv = 15 },
-    { id = "spring",      unlockSp = 10, baseValue = 780.0,  upBaseSp = 5,  upStepSp = 1.5, maxLv = 15 },
-    { id = "magnet",      unlockSp = 12, baseValue = 2050.0, upBaseSp = 5,  upStepSp = 1.6, maxLv = 15 },
-    { id = "ruby",        unlockSp = 14, baseValue = 5400.0, upBaseSp = 6,  upStepSp = 1.8, maxLv = 15 },
-    { id = "neon",        unlockSp = 16, baseValue = 1.42e4, upBaseSp = 7,  upStepSp = 2.0, maxLv = 15 },
-    { id = "frost",       unlockSp = 18, baseValue = 3.75e4, upBaseSp = 8,  upStepSp = 2.2, maxLv = 15 },
-    { id = "ghost",       unlockSp = 20, baseValue = 9.80e4, upBaseSp = 9,  upStepSp = 2.4, maxLv = 15 },
-    { id = "jackpot7",    unlockSp = 22, baseValue = 2.60e5, upBaseSp = 10, upStepSp = 2.6, maxLv = 15 },
-    { id = "blackhole",   unlockSp = 24, baseValue = 6.80e5, upBaseSp = 11, upStepSp = 2.8, maxLv = 15 },
-    { id = "giant",       unlockSp = 26, baseValue = 1.80e6, upBaseSp = 12, upStepSp = 3.0, maxLv = 15 },
-    { id = "nuke",        unlockSp = 28, baseValue = 4.80e6, upBaseSp = 14, upStepSp = 3.2, maxLv = 15 },
-    { id = "midas",       unlockSp = 32, baseValue = 1.30e7, upBaseSp = 16, upStepSp = 3.5, maxLv = 15, parents = { "gold", "ruby" } },
-    { id = "thor",        unlockSp = 36, baseValue = 3.50e7, upBaseSp = 18, upStepSp = 3.8, maxLv = 15, parents = { "heavy", "thunder" } },
-    { id = "supernova",   unlockSp = 40, baseValue = 9.50e7, upBaseSp = 20, upStepSp = 4.2, maxLv = 15, parents = { "bomb", "neon" } },
-    { id = "hydra",       unlockSp = 44, baseValue = 2.60e8, upBaseSp = 22, upStepSp = 4.6, maxLv = 15, parents = { "split", "spring" } },
-    { id = "singularity", unlockSp = 50, baseValue = 7.20e8, upBaseSp = 25, upStepSp = 5.0, maxLv = 15, parents = { "blackhole", "magnet" } },
-    { id = "carnival",    unlockSp = 56, baseValue = 2.00e9, upBaseSp = 30, upStepSp = 5.5, maxLv = 15, parents = { "jackpot7", "emerald" } },
+    { id = "gold",        unlockSp = 0,  baseValue = 1.00,  upBaseSp = 2, upStepSp = 0.500, maxLv = 15 },
+    { id = "emerald",     unlockSp = 6,  baseValue = 1.37,  upBaseSp = 2, upStepSp = 0.525, maxLv = 15 },
+    { id = "split",       unlockSp = 7,  baseValue = 1.86,  upBaseSp = 2, upStepSp = 0.550, maxLv = 15 },
+    { id = "heavy",       unlockSp = 7,  baseValue = 2.54,  upBaseSp = 2, upStepSp = 0.575, maxLv = 15 },
+    { id = "thunder",     unlockSp = 8,  baseValue = 3.47,  upBaseSp = 2, upStepSp = 0.600, maxLv = 15 },
+    { id = "bomb",        unlockSp = 8,  baseValue = 4.74,  upBaseSp = 2, upStepSp = 0.625, maxLv = 15 },
+    { id = "spring",      unlockSp = 9,  baseValue = 6.47,  upBaseSp = 2, upStepSp = 0.650, maxLv = 15 },
+    { id = "magnet",      unlockSp = 9,  baseValue = 8.83,  upBaseSp = 3, upStepSp = 0.675, maxLv = 15 },
+    { id = "ruby",        unlockSp = 10, baseValue = 12.1,  upBaseSp = 3, upStepSp = 0.700, maxLv = 15 },
+    { id = "neon",        unlockSp = 10, baseValue = 16.5,  upBaseSp = 3, upStepSp = 0.725, maxLv = 15 },
+    { id = "frost",       unlockSp = 11, baseValue = 22.5,  upBaseSp = 3, upStepSp = 0.750, maxLv = 15 },
+    { id = "ghost",       unlockSp = 11, baseValue = 30.7,  upBaseSp = 3, upStepSp = 0.775, maxLv = 15 },
+    { id = "jackpot7",    unlockSp = 12, baseValue = 41.9,  upBaseSp = 3, upStepSp = 0.800, maxLv = 15 },
+    { id = "blackhole",   unlockSp = 12, baseValue = 57.2,  upBaseSp = 4, upStepSp = 0.825, maxLv = 15 },
+    { id = "giant",       unlockSp = 13, baseValue = 78.1,  upBaseSp = 4, upStepSp = 0.850, maxLv = 15 },
+    { id = "nuke",        unlockSp = 13, baseValue = 107.0, upBaseSp = 4, upStepSp = 0.875, maxLv = 15 },
+    { id = "midas",       unlockSp = 14, baseValue = 145.0, upBaseSp = 4, upStepSp = 0.900, maxLv = 15, parents = { "gold", "ruby" } },
+    { id = "thor",        unlockSp = 14, baseValue = 199.0, upBaseSp = 4, upStepSp = 0.925, maxLv = 15, parents = { "heavy", "thunder" } },
+    { id = "supernova",   unlockSp = 15, baseValue = 271.0, upBaseSp = 4, upStepSp = 0.950, maxLv = 15, parents = { "bomb", "neon" } },
+    { id = "hydra",       unlockSp = 15, baseValue = 370.0, upBaseSp = 5, upStepSp = 0.975, maxLv = 15, parents = { "split", "spring" } },
+    { id = "singularity", unlockSp = 16, baseValue = 505.0, upBaseSp = 5, upStepSp = 1.000, maxLv = 15, parents = { "blackhole", "magnet" } },
+    { id = "carnival",    unlockSp = 16, baseValue = 690.0, upBaseSp = 5, upStepSp = 1.025, maxLv = 15, parents = { "jackpot7", "emerald" } },
 }
 Config.COIN_TIER_BY_ID = {}
 for idx, t in ipairs(Config.COIN_TIERS) do
@@ -499,18 +499,18 @@ end
 
 -- 4. 黑科技 12 项一次性里程碑（纯技能点研发，永久提升全盘物理与乘区）
 Config.TECH_UPGRADES = {
-    { id = "rail_guard",  name = "激光护栏",   relic = "rail_guard",  costSp = 4,  mult = 1.22, desc = "永久开启合金侧壁护栏防侧漏，全币收益 ×1.22。" },
-    { id = "metronome",   name = "连击共振仪", relic = "metronome",   costSp = 6,  mult = 1.22, desc = "连击窗延长至4秒且加速叠加倍率，总收益 ×1.22。" },
-    { id = "medkit",      name = "智能回收器", relic = "medkit",      costSp = 8,  mult = 1.24, desc = "每落10枚币直接额外返现金红包，总收益 ×1.24。" },
-    { id = "big_pouch",   name = "高频供币仓", relic = "big_pouch",   costSp = 10, mult = 1.24, desc = "推台初始铺币加密且全币产值 ×1.24。" },
-    { id = "bankbook",    name = "复利金库锁", relic = "bankbook",    costSp = 13, mult = 1.26, desc = "每秒按产值派发被动复利，全币产值 ×1.26。" },
-    { id = "mag_lip",     name = "磁力集束唇", relic = "mag_lip",     costSp = 16, mult = 1.26, desc = "前沿吸金加速跌落，爆分倍率 ×1.26。" },
-    { id = "powder_keg",  name = "工业炸药库", relic = "powder_keg",  costSp = 20, mult = 1.28, desc = "所有炸弹/核爆/脉冲范围与收益 ×1.28。" },
-    { id = "tesla_coil",  name = "超导特斯拉", relic = "tesla_coil",  costSp = 24, mult = 1.30, desc = "闪电链额外 +2 跳且每次跳电增幅 ×1.30。" },
-    { id = "clover",      name = "四叶草财神", relic = "clover",      costSp = 28, mult = 1.32, desc = "大幅拔高 10x/50x/100x 老虎机大奖概率，产值 ×1.32！" },
-    { id = "recycler",    name = "重力回流爪", relic = "recycler",    costSp = 34, mult = 1.35, desc = "侧漏全部转化为回收奖金，总收益 ×1.35。" },
-    { id = "overclock",   name = "超频量子核", relic = "overclock",   costSp = 40, mult = 1.40, desc = "满台溢出超频回收变成 4 倍暴利，总收益 ×1.40。" },
-    { id = "prism",       name = "彩虹棱镜矩阵",relic = "prism",      costSp = 48, mult = 1.48, desc = "解锁终极棱镜增幅，全印钞机器效率 ×1.48！" },
+    { id = "rail_guard",  name = "激光护栏",   relic = "rail_guard",  costSp = 4, mult = 1.18, desc = "开启合金侧壁护栏防侧漏，全币收益 ×1.18。" },
+    { id = "metronome",   name = "连击共振仪", relic = "metronome",   costSp = 4, mult = 1.18, desc = "连击窗延至 4 秒且强化波次结算，总收益 ×1.18。" },
+    { id = "medkit",      name = "智能回收器", relic = "medkit",      costSp = 5, mult = 1.20, desc = "每正面落 10 枚币返 2.5 倍惊喜红包，总收益 ×1.20。" },
+    { id = "big_pouch",   name = "高频供币仓", relic = "big_pouch",   costSp = 5, mult = 1.20, desc = "台面初始额外多铺 6 枚币，全币产值 ×1.20。" },
+    { id = "bankbook",    name = "复利金库锁", relic = "bankbook",    costSp = 6, mult = 1.22, desc = "每秒按基准产值派发 8% 被动复利，全币产值 ×1.22。" },
+    { id = "mag_lip",     name = "磁力集束唇", relic = "mag_lip",     costSp = 6, mult = 1.22, desc = "前沿 36px 加速吸金跌落悬崖，爆分倍率 ×1.22。" },
+    { id = "powder_keg",  name = "工业炸药库", relic = "powder_keg",  costSp = 7, mult = 1.24, desc = "炸弹/核爆/冲击波范围与威力 +35%，收益 ×1.24。" },
+    { id = "tesla_coil",  name = "超导特斯拉", relic = "tesla_coil",  costSp = 7, mult = 1.25, desc = "闪电链额外 +2 跳且每次跳电增幅 ×1.25。" },
+    { id = "clover",      name = "四叶草财神", relic = "clover",      costSp = 7, mult = 1.26, desc = "大幅提升老虎机高倍概率与 777 触发率至 65%，产值 ×1.26。" },
+    { id = "recycler",    name = "重力回流爪", relic = "recycler",    costSp = 8, mult = 1.28, desc = "侧漏全部转化为 50% 回收奖金，总收益 ×1.28。" },
+    { id = "overclock",   name = "超频量子核", relic = "overclock",   costSp = 8, mult = 1.32, desc = "解锁满台溢出 ×0.2 回收收益，总收益 ×1.32。" },
+    { id = "prism",       name = "彩虹棱镜矩阵",relic = "prism",      costSp = 9, mult = 1.38, desc = "解锁终极棱镜增幅，全印钞机器效率 ×1.38！" },
 }
 Config.TECH_BY_ID = {}
 for _, t in ipairs(Config.TECH_UPGRADES) do Config.TECH_BY_ID[t.id] = t end
@@ -529,6 +529,14 @@ Config.IPO_ROUNDS = {
     { id = 10, name = "全球金融寡头",   targetWealth = 6e11,     shares = 18, bonusSp = 26 },
     { id = 11, name = "星际能源财团",   targetWealth = 2.5e12,   shares = 24, bonusSp = 32 },
     { id = 12, name = "世界首富加冕钟", targetWealth = 6.041e12, shares = 35, bonusSp = 45 },
+}
+
+-- 二周目星际首富纪元称号（登顶世界第一后解锁「星际飞升」真转生，永久解锁星际加成）
+Config.GALACTIC_TITLES = {
+    "近地轨道首富",
+    "太阳系总督",
+    "银河证券主席",
+    "宇宙终极财阀",
 }
 
 function Config.GetIpoRound(roundIdx)
@@ -560,7 +568,7 @@ Config.PRESTIGE_TALENTS = {
 Config.PRESTIGE_BY_ID = {}
 for _, p in ipairs(Config.PRESTIGE_TALENTS) do Config.PRESTIGE_BY_ID[p.id] = p end
 
--- 5.5 街机三连老虎机（过移动中奖门触发旋转，限时爆发 2x~100x 全局掉落狂潮）
+-- 5.5 街机三连老虎机（过移动中奖门触发，每9秒限流一转，限时稀缺爆发 1.5x~100x）
 Config.SLOT_SYMBOLS = {
     { id = "coin",  name = "金币", col = { 255, 212, 62 }  },
     { id = "clover",name = "幸运", col = { 76, 232, 138 }  },
@@ -571,36 +579,36 @@ Config.SLOT_SYMBOLS = {
 }
 
 Config.SLOT_PRIZES = {
-    miss         = { id = "miss",         mult = 1,   dur = 0,  label = "差一点点",         col = { 176, 188, 216 }, rain = 1  },
-    pair         = { id = "pair",         mult = 2,   dur = 10, label = "对子小奖 ×2!",     col = { 82, 224, 255 },  rain = 3  },
-    triple_low   = { id = "triple_low",   mult = 5,   dur = 12, label = "幸运五倍 ×5!",     col = { 76, 232, 138 },  rain = 6  },
-    triple_bolt  = { id = "triple_bolt",  mult = 10,  dur = 12, label = "霹雳十倍 ×10!",    col = { 72, 212, 255 },  rain = 8,  lightning = true },
-    triple_gem   = { id = "triple_gem",   mult = 25,  dur = 15, label = "红宝狂潮 ×25!",    col = { 255, 96, 178 },  rain = 10 },
-    triple_crown = { id = "triple_crown", mult = 50,  dur = 15, label = "皇冠暴富 ×50!",    col = { 255, 206, 56 },  rain = 12, vault = 1 },
-    jackpot_777  = { id = "jackpot_777",  mult = 100, dur = 15, label = "777大满贯 ×100!!", col = { 255, 118, 255 }, rain = 16, vault = 2 },
+    miss         = { id = "miss",         mult = 1,   dur = 0, label = "差一点点",         col = { 176, 188, 216 }, rain = 0  },
+    pair         = { id = "pair",         mult = 1.5, dur = 8, label = "对子小奖 ×1.5!",   col = { 82, 224, 255 },  rain = 2  },
+    triple_low   = { id = "triple_low",   mult = 2,   dur = 8, label = "幸运双倍 ×2!",     col = { 76, 232, 138 },  rain = 3  },
+    triple_bolt  = { id = "triple_bolt",  mult = 3,   dur = 8, label = "霹雳三倍 ×3!",     col = { 72, 212, 255 },  rain = 4,  lightning = true },
+    triple_gem   = { id = "triple_gem",   mult = 5,   dur = 8, label = "红宝五倍 ×5!",     col = { 255, 96, 178 },  rain = 5  },
+    triple_crown = { id = "triple_crown", mult = 10,  dur = 8, label = "皇冠十倍 ×10!",    col = { 255, 206, 56 },  rain = 7,  vault = 1 },
+    jackpot_777  = { id = "jackpot_777",  mult = 100, dur = 6, label = "777大满贯 ×100!!", col = { 255, 118, 255 }, rain = 10, vault = 1 },
 }
 
--- 6. 6 个商业级激励模拟广告位（完整 UI + 冷却 + 3秒试看弹窗，先接入 MockAd 不碰真实 SDK）
+-- 6. 商业级激励模拟广告位（节制冷却爆发，防止常驻主导数值）
 Config.AD_PLACEMENTS = {
     boost_3x = {
-        id = "boost_3x", title = "超级印钞 ×3", short = "×3印钞", cooldown = 0,
+        id = "boost_3x", title = "超级印钞 ×3", short = "×3印钞", cooldown = 1200,
         iconKind = "relic", iconKey = "vip_card", inWelfare = true,
-        desc = "全场收益立刻翻 3 倍并持续 180 秒（可叠加至 900 秒）！",
+        desc = "全场收益翻 3 倍并持续 180 秒（上限 300 秒，冷却 20 分钟）！",
     },
     instant_fever = {
-        id = "instant_fever", title = "满槽超级狂欢", short = "超级狂欢", cooldown = 60,
+        id = "instant_fever", title = "满槽超级狂欢", short = "超级狂欢", cooldown = 300,
         iconKind = "relic", iconKey = "fever_amp", inWelfare = true,
-        desc = "瞬间灌满狂欢槽，触发 15 秒极限射速 + 30 枚高阶金币雨！",
+        desc = "瞬间灌满狂欢槽，触发 14 秒狂欢极速 + 28 枚高阶金币雨！",
     },
     vault_drop = {
-        id = "vault_drop", title = "空投50倍金库币", short = "金库巨币", cooldown = 90,
+        id = "vault_drop", title = "空投45倍金库币", short = "金库巨币", cooldown = 420,
         iconKind = "boss", iconKey = "vaultbeast", inWelfare = true,
-        desc = "直接向推台正中空投 2 枚 50 倍【装甲金库巨币】，推落秒赚百倍！",
+        desc = "向推台正中空投 2 枚 45 倍【装甲金库巨币】，推落秒赚百倍！",
     },
     airdrop_5x = {
-        id = "airdrop_5x", title = "风投空投 ×5 暴富", short = "风投暴富", cooldown = 75,
+        id = "airdrop_5x", title = "风投空投 ×5 暴富", short = "风投暴富", cooldown = 360,
         iconKind = "event", iconKey = "vault_crack", inWelfare = true,
-        desc = "立刻发放 120 秒产值巨额现金 + 10 枚当前最高阶硬币落台！",
+        desc = "立刻发放 45 秒基准产值现金 + 10 枚当前高阶硬币落台！",
     },
     offline_2x = {
         id = "offline_2x", title = "离线收益双倍领", short = "离线双倍", cooldown = 0,
