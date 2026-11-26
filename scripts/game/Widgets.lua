@@ -3,6 +3,7 @@
 -- ============================================================================
 
 local UI = require("urhox-libs/UI")
+local okIC, ImageCache = pcall(require, "urhox-libs/UI/Core/ImageCache")
 local Config = require("game/Config")
 local Skin = require("game/Skin")
 local Art = require("game/Art")
@@ -46,7 +47,9 @@ function NeoFrame:Init(props)
     self.skinStyle_ = props.style or "panel"
     self.skin_ = props.skin or {}
     props.style, props.skin = nil, nil
-    local tex = Skin.TEXTURES[self.skinStyle_]
+    local tex = (self.skinStyle_ == "button")
+        and (Skin.TEXTURES["button_" .. tostring(self.skin_.variant or "primary")] or Skin.TEXTURES.button)
+        or Skin.TEXTURES[self.skinStyle_]
     if tex then
         props.backgroundImage = tex.image
         props.backgroundFit = "sliced"
@@ -56,9 +59,78 @@ function NeoFrame:Init(props)
     UI.Panel.Init(self, props)
 end
 
+-- 绘制无内部接缝的 9-slice（仅向内邻接边重叠 +0.85px，消除 NanoVG 相邻矩形 0.75 alpha 暗缝）
+local function DrawSeamlessSliced(nvg, imagePath, l, slice, opacity)
+    if not (okIC and ImageCache) or not imagePath or l.w <= 0 or l.h <= 0 then return false end
+    local imgHandle = ImageCache.Get(imagePath)
+    if not imgHandle or imgHandle <= 0 then return false end
+    local imgW, imgH = ImageCache.GetSize(imagePath)
+    if imgW <= 0 or imgH <= 0 then return false end
+
+    local srcT, srcR, srcB, srcL = slice[1] or 0, slice[2] or 0, slice[3] or 0, slice[4] or 0
+    local x, y, w, h = l.x, l.y, l.w, l.h
+    local dstL, dstR, dstT, dstB = srcL, srcR, srcT, srcB
+    if w < dstL + dstR and (dstL + dstR) > 0 then
+        local kx = w / (dstL + dstR)
+        dstL, dstR = dstL * kx, dstR * kx
+    end
+    if h < dstT + dstB and (dstT + dstB) > 0 then
+        local ky = h / (dstT + dstB)
+        dstT, dstB = dstT * ky, dstB * ky
+    end
+    local centerW = max(0, w - dstL - dstR)
+    local centerH = max(0, h - dstT - dstB)
+    local srcCW = max(1, imgW - srcL - srcR)
+    local srcCH = max(1, imgH - srcT - srcB)
+    local alpha = opacity or 1
+    local ov = 0.85
+
+    local function drawSlice(dx, dy, dw, dh, sx, sy, sw, sh, exL, exT, exR, exB)
+        if dw <= 0.01 or dh <= 0.01 or sw <= 0 or sh <= 0 then return end
+        local scaleX = dw / sw
+        local scaleY = dh / sh
+        local ox = dx - sx * scaleX
+        local oy = dy - sy * scaleY
+        nvgBeginPath(nvg)
+        nvgRect(nvg, dx - exL, dy - exT, dw + exL + exR, dh + exT + exB)
+        nvgFillPaint(nvg, nvgImagePattern(nvg, ox, oy, imgW * scaleX, imgH * scaleY, 0, imgHandle, alpha))
+        nvgFill(nvg)
+    end
+
+    -- 1. 中心区（4 条内边均略微外延，先铺底）
+    drawSlice(x + dstL, y + dstT, centerW, centerH, srcL, srcT, srcCW, srcCH, ov, ov, ov, ov)
+    -- 2. 四边（仅沿贴片接触边向角/中心延伸）
+    drawSlice(x + dstL, y, centerW, dstT, srcL, 0, srcCW, srcT, ov, 0, ov, ov)
+    drawSlice(x + dstL, y + dstT + centerH, centerW, dstB, srcL, imgH - srcB, srcCW, srcB, ov, ov, ov, 0)
+    drawSlice(x, y + dstT, dstL, centerH, 0, srcT, srcL, srcCH, 0, ov, ov, ov)
+    drawSlice(x + dstL + centerW, y + dstT, dstR, centerH, imgW - srcR, srcT, srcR, srcCH, ov, ov, 0, ov)
+    -- 3. 四角（严格贴合外框，0 外溢）
+    drawSlice(x, y, dstL, dstT, 0, 0, srcL, srcT, 0, 0, 0, 0)
+    drawSlice(x + dstL + centerW, y, dstR, dstT, imgW - srcR, 0, srcR, srcT, 0, 0, 0, 0)
+    drawSlice(x, y + dstT + centerH, dstL, dstB, 0, imgH - srcB, srcL, srcB, 0, 0, 0, 0)
+    drawSlice(x + dstL + centerW, y + dstT + centerH, dstR, dstB, imgW - srcR, imgH - srcB, srcR, srcB, 0, 0, 0, 0)
+    return true
+end
+
 function NeoFrame:Render(nvg)
     if self.useTexture_ then
-        UI.Panel.Render(self, nvg)
+        local props = self.props
+        if props.backgroundFit == "sliced" and props.backgroundSlice and props.backgroundImage then
+            if not DrawSeamlessSliced(nvg, props.backgroundImage, self:GetAbsoluteLayout(), props.backgroundSlice, props.backgroundImageOpacity or 1) then
+                UI.Panel.Render(self, nvg)
+            end
+        else
+            UI.Panel.Render(self, nvg)
+        end
+        if self.skin_.selected then
+            local l = self:GetAbsoluteLayout()
+            local r = self.skin_.radius or 10
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, l.x + 1, l.y + 1, l.w - 2, l.h - 2, r)
+            nvgStrokeColor(nvg, Skin.Col(C.gold, 255))
+            nvgStrokeWidth(nvg, 2.5)
+            nvgStroke(nvg)
+        end
         return
     end
     local l = self:GetAbsoluteLayout()
@@ -73,8 +145,9 @@ Widgets.NeoButton = NeoButton
 
 function NeoButton:Init(props)
     props = props or {}
+    local frameStyle = props.style or "button"
     local variant = props.variant or "primary"
-    local darkText = (variant == "primary" or variant == "cyan" or variant == "green")
+    local darkText = (frameStyle == "button") and (variant == "primary" or variant == "cyan" or variant == "green")
     self.onPress_ = props.onClick
     self.btnLabel_ = UI.Label {
         text = props.text or "",
@@ -86,40 +159,30 @@ function NeoButton:Init(props)
         flexShrink = 1,
     }
     local selfRef = self
-    local fp = {
-        style = "button",
-        skin = { variant = variant, pressed = false, disabled = false, radius = props.borderRadius or 12 },
-        flexDirection = "row",
-        justifyContent = "center",
-        alignItems = "center",
-        minHeight = props.minHeight or 44,
-        paddingHorizontal = props.paddingHorizontal or 12,
-        paddingBottom = 2,
-        width = props.width,
-        height = props.height,
-        minWidth = props.minWidth,
-        maxWidth = props.maxWidth,
-        alignSelf = props.alignSelf,
-        flexGrow = props.flexGrow,
-        flexBasis = props.flexBasis,
-        flexShrink = props.flexShrink,
-        visible = props.visible,
-        children = { self.btnLabel_ },
-        transition = "scale 0.1s easeOut",
-        onPointerDown = function()
-            if selfRef.skin_.disabled then return end
-            selfRef.skin_.pressed = true
-            selfRef:SetStyle({ scale = 0.94 })
-            selfRef.btnLabel_:SetStyle({ translateY = 1.5 })
-        end,
-        onPointerUp = function() selfRef:Unpress() end,
-        onPointerLeave = function() selfRef:Unpress() end,
-        onClick = function()
-            if selfRef.skin_.disabled then return end
-            if selfRef.onPress_ then selfRef.onPress_(selfRef) end
-        end,
-    }
-    NeoFrame.Init(self, fp)
+    props.style = frameStyle
+    props.skin = { variant = variant, pressed = false, disabled = false, radius = props.borderRadius or 12 }
+    props.flexDirection = "row"
+    props.justifyContent = "center"
+    props.alignItems = "center"
+    props.minHeight = props.minHeight or 44
+    props.paddingHorizontal = props.paddingHorizontal or 12
+    props.paddingBottom = 2
+    props.children = { self.btnLabel_ }
+    props.transition = props.transition or "scale 0.1s easeOut"
+    props.onPointerDown = function()
+        if selfRef.skin_.disabled then return end
+        selfRef.skin_.pressed = true
+        selfRef:SetStyle({ scale = 0.94 })
+        selfRef.btnLabel_:SetStyle({ translateY = 1.5 })
+    end
+    props.onPointerUp = function() selfRef:Unpress() end
+    props.onPointerLeave = function() selfRef:Unpress() end
+    props.onClick = function()
+        if selfRef.skin_.disabled then return end
+        if selfRef.onPress_ then selfRef.onPress_(selfRef) end
+    end
+    props.variant, props.text, props.fontSize, props.fontColor = nil, nil, nil, nil
+    NeoFrame.Init(self, props)
 end
 
 function NeoButton:Unpress()
@@ -140,6 +203,12 @@ function NeoButton:SetVariant(v)
         self.skin_.variant = v
         local darkText = (v == "primary" or v == "cyan" or v == "green")
         self.btnLabel_:SetStyle({ fontColor = darkText and { 14, 16, 32, 255 } or U.text })
+        if self.useTexture_ then
+            local tex = Skin.TEXTURES["button_" .. tostring(v)] or Skin.TEXTURES.button
+            if tex then
+                self:SetStyle({ backgroundImage = tex.image, backgroundFit = "sliced", backgroundSlice = tex.slice })
+            end
+        end
     end
 end
 
@@ -191,6 +260,12 @@ function NeoIcon:Render(nvg)
         if not Art.DrawSprite(nvg, sp, x, y, s, s, 1) then
             local def = Config.RELICS[self.iconKey_]
             Art.DrawIcon(nvg, (def and def.icon) or "star", x, y, s, self.iconTint_)
+        end
+    elseif self.iconKind_ == "boss" then
+        local sp = "boss_" .. tostring(self.iconKey_)
+        if not Art.DrawSprite(nvg, sp, x, y, s, s, 1) then
+            local bDef = Config.BOSSES[self.iconKey_]
+            Art.DrawIcon(nvg, (bDef and bDef.icon) or "crown", x, y, s, self.iconTint_)
         end
     else
         Art.DrawIcon(nvg, self.iconKey_, x, y, s, self.iconTint_)

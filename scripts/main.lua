@@ -86,12 +86,12 @@ local function CloseModal()
     SyncDucking()
 end
 
-local function MaybeShowIntro(tipKey, iconKey, title, desc)
+local function MaybeShowIntro(tipKey, iconKey, title, desc, iconKind)
     local prefs = SaveManager.GetPrefs()
     if prefs.tips[tipKey] then return end
     prefs.tips[tipKey] = true
     SaveManager.SavePrefs()
-    CodexHud.OpenIntro(iconKey, title, desc)
+    CodexHud.OpenIntro(iconKey, title, desc, iconKind)
     OpenModal("intro")
 end
 
@@ -115,7 +115,7 @@ local function MakeListener()
             Sfx.Play("boss")
             local bDef = Config.BOSSES[run.bossId]
             if bDef then
-                MaybeShowIntro("boss_" .. run.bossId, bDef.icon or "crown", "Boss · " .. bDef.name, bDef.desc)
+                MaybeShowIntro("boss_" .. run.bossId, run.bossId, "Boss · " .. bDef.name, bDef.desc, "boss")
             end
         end
         game.hudDirty = true

@@ -39,13 +39,39 @@ function Art.DrawCoin(nvg, kind, cx, cy, r, level, squashY, rot, frost, fuseT, i
     local ry = r * sq
     local thick = max(2.2, r * 0.24)
 
-    -- 如果用户提供了硬币贴图，直接用贴图绘制（带投影）
+    -- 如果用户提供了硬币贴图，直接用贴图绘制（带投影、冰冻、引爆闪烁与升星角标）
     if Skin.SPRITES[spriteKey] then
+        local dw = r * 2.20
+        local dh = r * 2.20 * (0.94 + (sq - 0.86) * 0.35)
         nvgBeginPath(nvg)
         nvgEllipse(nvg, cx + 1.5, cy + thick + 2, r * 0.96, ry * 0.94)
         nvgFillColor(nvg, Col(C.shadow, 125))
         nvgFill(nvg)
-        if Art.DrawSprite(nvg, spriteKey, cx - r, cy - r, r * 2, r * 2, 1.0) then
+        if Art.DrawSprite(nvg, spriteKey, cx - dw * 0.5, cy - dh * 0.5, dw, dh, 1.0) then
+            if frost then
+                nvgBeginPath(nvg)
+                nvgEllipse(nvg, cx, cy, r * 1.04, ry * 1.04)
+                nvgStrokeColor(nvg, Col(C.cyan, 235))
+                nvgStrokeWidth(nvg, 2.0)
+                nvgStroke(nvg)
+            end
+            if fuseT and fuseT > 0 and fuseT < 1.3 then
+                nvgBeginPath(nvg)
+                nvgCircle(nvg, cx, cy, r * 1.18)
+                nvgStrokeColor(nvg, Col(C.gold, 210))
+                nvgStrokeWidth(nvg, 2.0)
+                nvgStroke(nvg)
+            end
+            if level and level > 1 then
+                for s = 1, level do
+                    local sx = cx + (s - (level + 1) * 0.5) * 5.2
+                    local sy = cy - dh * 0.5 + 2
+                    nvgBeginPath(nvg)
+                    nvgCircle(nvg, sx, sy, 2.4)
+                    nvgFillColor(nvg, Col(C.gold, 255))
+                    nvgFill(nvg)
+                end
+            end
             return
         end
     end

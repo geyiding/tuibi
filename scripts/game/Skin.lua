@@ -29,33 +29,66 @@ Skin.AUTO_SPRITES = {
     boss_vaultbeast = IMG_PREFIX .. "boss/boss_vaultbeast.png",
 }
 
+local UI_SLICES = {
+    panel          = { 24, 24, 24, 24 },
+    card           = { 16, 16, 16, 16 },
+    slot           = { 12, 12, 12, 12 },
+    plate          = { 10, 16, 12, 16 },
+    cloth          = { 12, 16, 10, 16 },
+    banner         = { 14, 34, 16, 34 },
+    button         = { 14, 18, 16, 18 },
+    button_primary = { 14, 18, 16, 18 },
+    button_cyan    = { 14, 18, 16, 18 },
+    button_magenta = { 14, 18, 16, 18 },
+    button_green   = { 14, 18, 16, 18 },
+    button_danger  = { 14, 18, 16, 18 },
+    button_dark    = { 14, 18, 16, 18 },
+}
+
+local function HasAsset(path)
+    if not cache then return false end
+    if cache.Exists and cache:Exists(path) then return true end
+    if cache.GetResInfo and cache:GetResInfo(path) ~= nil then return true end
+    return false
+end
+
 --- 自动检测可选贴图是否存在（存在才注册，零报错日志）
 function Skin.ProbeAutoAssets()
-    if not (cache and cache.Exists) then return end
+    if not cache then return end
+    local texCount, sprCount = 0, 0
     for k, path in pairs(Skin.AUTO_SPRITES) do
-        if not Skin.SPRITES[k] and cache:Exists(path) then
+        if not Skin.SPRITES[k] and HasAsset(path) then
             Skin.SPRITES[k] = path
+        end
+    end
+    for k, slice in pairs(UI_SLICES) do
+        local p = IMG_PREFIX .. "ui/" .. k .. ".png"
+        if not Skin.TEXTURES[k] and HasAsset(p) then
+            Skin.TEXTURES[k] = { image = p, slice = slice }
         end
     end
     local Config = require("game/Config")
     for id in pairs(Config.COINS or {}) do
         local p = IMG_PREFIX .. "coins/coin_" .. id .. ".png"
-        if not Skin.SPRITES["coin_" .. id] and cache:Exists(p) then
+        if not Skin.SPRITES["coin_" .. id] and HasAsset(p) then
             Skin.SPRITES["coin_" .. id] = p
         end
     end
     for id in pairs(Config.RELICS or {}) do
         local p = IMG_PREFIX .. "relics/relic_" .. id .. ".png"
-        if not Skin.SPRITES["relic_" .. id] and cache:Exists(p) then
+        if not Skin.SPRITES["relic_" .. id] and HasAsset(p) then
             Skin.SPRITES["relic_" .. id] = p
         end
     end
     for id in pairs(Config.EVENTS or {}) do
         local p = IMG_PREFIX .. "events/event_" .. id .. ".png"
-        if not Skin.SPRITES["event_" .. id] and cache:Exists(p) then
+        if not Skin.SPRITES["event_" .. id] and HasAsset(p) then
             Skin.SPRITES["event_" .. id] = p
         end
     end
+    for _ in pairs(Skin.TEXTURES) do texCount = texCount + 1 end
+    for _ in pairs(Skin.SPRITES) do sprCount = sprCount + 1 end
+    print(string.format("[Skin] loaded %d UI textures, %d sprites", texCount, sprCount))
 end
 
 -- ----------------------------------------------------------------------------

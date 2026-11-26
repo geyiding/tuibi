@@ -20,7 +20,7 @@ end
 local function BuildSettingsModal(cb)
     local r = st.refs
     local closeBtn = NeoButton {
-        text = "×", variant = "dark", width = 40, minWidth = 40, minHeight = 36, fontSize = 18,
+        text = "×", style = "slot", width = 38, minWidth = 38, height = 38, minHeight = 38, paddingHorizontal = 0, fontSize = 18,
         onClick = function() if cb.OnCloseSettings then cb.OnCloseSettings() end end,
     }
     local header = UI.Row {

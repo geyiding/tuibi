@@ -188,12 +188,23 @@ function Stage:Render(nvg)
         Col(C.gold, 55), Col(C.gold, 10)))
     nvgFill(nvg)
 
-    -- 3. 往复机械推板
+    -- 3. 往复机械推板（固定板长向下滑出并用裁剪防拉伸失真）
     local py = phys.pusherY
     local pBack = S.DECK_TOP_Y
     local pW = S.DECK_TOP_HALF * 2 - 6
     local px = 180 - pW * 0.5
-    if not Art.DrawSprite(nvg, "pusher_bar", px, pBack, pW, py - pBack, 1.0) then
+    local drawnPusher = false
+    if Skin.SPRITES.pusher_bar then
+        local visH = max(0, py - pBack)
+        if visH > 2 then
+            local slabH = 92
+            nvgSave(nvg)
+            nvgIntersectScissor(nvg, px - 6, pBack, pW + 12, visH + 6)
+            drawnPusher = Art.DrawSprite(nvg, "pusher_bar", px, py - slabH + 3, pW, slabH, 1.0)
+            nvgRestore(nvg)
+        end
+    end
+    if not drawnPusher then
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, px, pBack, pW, py - pBack, 6)
         nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, pBack, 0, py, Col({ 52, 66, 124 }, 255), Col({ 78, 96, 164 }, 255)))
@@ -241,15 +252,23 @@ function Stage:Render(nvg)
         nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, gy - 4, 0, gy + 12, Col(C.gold, 190), Col(C.gold, 0)))
         nvgFill(nvg)
     end
-    -- 左右斜口门板
-    nvgBeginPath(nvg)
-    nvgRoundedRect(nvg, gx - gHalf - dW, gy - 4, dW, S.GATE_DOOR_H, 3)
-    nvgRoundedRect(nvg, gx + gHalf, gy - 4, dW, S.GATE_DOOR_H, 3)
-    nvgFillColor(nvg, Col(phys.gateClosed and C.red or trim, 245))
-    nvgFill(nvg)
-    nvgStrokeColor(nvg, Col(C.white, 210))
-    nvgStrokeWidth(nvg, 1.2)
-    nvgStroke(nvg)
+    local gateW = (gHalf + dW) * 1.84
+    if not Art.DrawSprite(nvg, "gate_badge", gx - gateW * 0.5, gy - 20, gateW, 34, phys.gateClosed and 0.45 or 1.0) then
+        -- 左右斜口门板
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, gx - gHalf - dW, gy - 4, dW, S.GATE_DOOR_H, 3)
+        nvgRoundedRect(nvg, gx + gHalf, gy - 4, dW, S.GATE_DOOR_H, 3)
+        nvgFillColor(nvg, Col(phys.gateClosed and C.red or trim, 245))
+        nvgFill(nvg)
+        nvgStrokeColor(nvg, Col(C.white, 210))
+        nvgStrokeWidth(nvg, 1.2)
+        nvgStroke(nvg)
+    elseif phys.gateClosed then
+        nvgBeginPath(nvg)
+        nvgRect(nvg, gx - gateW * 0.4, gy - 3, gateW * 0.8, 5)
+        nvgFillColor(nvg, Col(C.red, 235))
+        nvgFill(nvg)
+    end
 
     -- 6. 顶部摆动发射炮口
     local angRad = rad(phys.launchAngleDeg)

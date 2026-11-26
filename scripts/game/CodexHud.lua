@@ -68,7 +68,7 @@ local function BuildDeckModal(cb)
     local r = st.refs
     r.deckTitle = UI.Label { text = "投币仓", fontSize = 18, fontWeight = "bold", fontColor = U.gold }
     local closeBtn = NeoButton {
-        text = "×", variant = "dark", width = 40, minWidth = 40, minHeight = 36, fontSize = 18,
+        text = "×", style = "slot", width = 38, minWidth = 38, height = 38, minHeight = 38, paddingHorizontal = 0, fontSize = 18,
         onClick = function() if cb.OnCloseDeck then cb.OnCloseDeck() end end,
     }
     local header = UI.Row {
@@ -226,7 +226,7 @@ local function BuildCodexModal(cb)
     local r = st.refs
     r.codexDisLbl = UI.Label { text = "禁用 0/3", fontSize = 13, fontColor = U.magenta }
     local closeBtn = NeoButton {
-        text = "×", variant = "dark", width = 40, minWidth = 40, minHeight = 36, fontSize = 18,
+        text = "×", style = "slot", width = 38, minWidth = 38, height = 38, minHeight = 38, paddingHorizontal = 0, fontSize = 18,
         onClick = function() if cb.OnCloseCodex then cb.OnCloseCodex() end end,
     }
     local header = UI.Row {
@@ -576,7 +576,7 @@ function CodexHud.RefreshCodex()
                 slot.cell.skin_.rarity = def.rarity
             else
                 local def = Config.BOSSES[key]
-                slot.ic:SetIcon("icon", def.icon or "crown", 1, C.magenta)
+                slot.ic:SetIcon("boss", key, 1, C.magenta)
                 SetLbl(slot.nm, def.name)
                 slot.cell.skin_.rarity = "epic"
             end
@@ -617,7 +617,7 @@ function CodexHud.RefreshCodexDetail()
         SetLbl(r.codexDetDesc, def.desc)
     else
         local def = Config.BOSSES[key]
-        r.codexDetIcon:SetIcon("icon", def.icon or "crown", 1, C.magenta)
+        r.codexDetIcon:SetIcon("boss", key, 1, C.magenta)
         SetLbl(r.codexDetTitle, def.name)
         SetLbl(r.codexDetDesc, def.desc)
     end
@@ -645,9 +645,9 @@ function CodexHud.RefreshDiff()
     SetLbl(r.diffDesc, cfg.name .. "：" .. cfg.desc)
 end
 
-function CodexHud.OpenIntro(iconKey, title, desc)
+function CodexHud.OpenIntro(iconKey, title, desc, iconKind)
     local r = st.refs
-    r.introIcon:SetIcon("icon", iconKey or "crown", 1, C.gold)
+    r.introIcon:SetIcon(iconKind or "icon", iconKey or "crown", 1, C.gold)
     SetLbl(r.introTitle, title or "新机制")
     SetLbl(r.introDesc, desc or "")
 end

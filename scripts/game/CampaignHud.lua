@@ -101,11 +101,12 @@ local function BuildMapPage(cb)
     for idx, spec in ipairs(rowSpecs) do
         local rowChildren = {}
         for _, nid in ipairs(spec.ids) do
-            local ic = NeoIcon { kind = "icon", key = "play", size = 26 }
+            local isBoss = (nid == "6_1")
+            local ic = NeoIcon { kind = "icon", key = "play", size = isBoss and 38 or 26 }
             local lb = UI.Label { text = "战斗", fontSize = 12, fontWeight = "bold", fontColor = U.text, maxLines = 1 }
             local btn = NeoFrame(Widgets.PressFx {
                 style = "card", skin = { rarity = "common", radius = 14 },
-                width = 96, height = 64, padding = 6, gap = 2,
+                width = isBoss and 112 or 96, height = isBoss and 72 or 64, padding = 6, gap = 2,
                 flexDirection = "column", alignItems = "center", justifyContent = "center",
                 children = { ic, lb },
                 onClick = function()
@@ -319,6 +320,11 @@ function EventArt:Render(nvg)
     local l = self:GetAbsoluteLayout()
     if l.w <= 0 or l.h <= 0 then return end
     if Art.DrawSprite(nvg, "event_" .. self.evId_, l.x, l.y, l.w, l.h, 1.0) then
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, l.x + 1, l.y + 1, l.w - 2, l.h - 2, 10)
+        nvgStrokeColor(nvg, Skin.Col(C.cyan, 190))
+        nvgStrokeWidth(nvg, 2)
+        nvgStroke(nvg)
         return
     end
     nvgBeginPath(nvg)
@@ -335,7 +341,7 @@ end
 
 local function BuildEventPage(cb)
     local r = st.refs
-    r.evArt = EventArt { width = "100%", height = 150 }
+    r.evArt = EventArt { width = "100%", height = 190 }
     r.evTitle = UI.Label { text = "黄金祭坛", fontSize = 20, fontWeight = "bold", fontColor = U.gold }
     r.evDesc = UI.Label { text = "", fontSize = 14, fontColor = U.textDim, whiteSpace = "normal", textAlign = "center", width = "100%" }
     r.evBtnA = NeoButton { text = "选项A", variant = "primary", flexGrow = 1, flexBasis = 0, minHeight = 46, fontSize = 13,
@@ -408,7 +414,11 @@ function CampaignHud.RefreshMap(run)
         if node and slot then
             local meta = Route.NODE_META[node.type] or Route.NODE_META.battle
             local canGo = run:IsNodeSelectable(nid)
-            slot.ic:SetIcon("icon", meta.icon, 1, node.visited and C.muted or meta.col)
+            if node.type == "boss" and node.bossId then
+                slot.ic:SetIcon("boss", node.bossId, 1, C.magenta)
+            else
+                slot.ic:SetIcon("icon", meta.icon, 1, node.visited and C.muted or meta.col)
+            end
             SetLbl(slot.lb, node.title or meta.name)
             slot.btn.skin_.selected = canGo
             slot.btn.skin_.rarity = (node.type == "boss" and "epic") or (canGo and "legendary" or "common")
