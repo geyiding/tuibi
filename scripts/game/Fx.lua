@@ -192,6 +192,13 @@ function Fx.New()
     self.screenW, self.screenH = 390, 844
     self.modalOpen = false
     self.quality = 1.0       -- 1 = 高画质；0.5 = 低端机（粒子减半、去辉光晕圈）
+    -- 强反馈预算（每秒回充）：屏震 / 闪光 / 镜头冲击不论事件多密集都不会常驻
+    self.shakeBudget = 0.8
+    self.flashBudget = 160
+    self.kickBudget = 1.0
+    self.hitstopCd = 0
+    self.lastSlotStampM = 1
+    self.lastSlotStampT = -99
 
     -- 世界坐标 -> 屏幕坐标（Stage 绑定；无 Stage 时恒等映射）
     self.toScreen = nil
@@ -275,15 +282,49 @@ function Fx.New()
     self.tokCursor = 0
 
     -- 中央印章（当前 + 等待队列）
-    self.stamp = { on = false, age = 0, dur = 1.4, title = "", sub = "", col = GOLD, prio = 0, big = false, tw = 0 }
+    self.stamp = { on = false, age = 0, dur = 1.4, title = "", sub = "", col = GOLD, prio = 0, big = false, tw = 0, kind = "" }
     self.stampQ = {}
     for i = 1, MAX_STAMP_Q do
-        self.stampQ[i] = { on = false, dur = 1.2, title = "", sub = "", col = GOLD, prio = 0, big = false }
+        self.stampQ[i] = { on = false, dur = 1.2, title = "", sub = "", col = GOLD, prio = 0, big = false, kind = "" }
     end
 
     -- 兼容旧横幅接口
     self.banner = { t = 0, dur = 0, text = "", col = GOLD }
     return self
+end
+
+--- 预算化强反馈：force=true 用于里程碑级事件（FEVER / 大奖 / 上市）
+function Fx:AddTrauma(v, force)
+    if not force then
+        v = min(v, self.shakeBudget)
+        self.shakeBudget = self.shakeBudget - v
+    end
+    if v > 0 then self.trauma = min(1, self.trauma + v) end
+end
+
+function Fx:AddFlash(a, col, force)
+    if not force then
+        a = min(a, self.flashBudget)
+        self.flashBudget = self.flashBudget - a
+    end
+    if a > self.flashA then
+        self.flashA = a
+        self.flashCol = col or GOLD
+    end
+end
+
+function Fx:AddKick(v, force)
+    if not force then
+        v = min(v, self.kickBudget)
+        self.kickBudget = self.kickBudget - v
+    end
+    if v > 0 then self.kick = min(1, self.kick + v) end
+end
+
+function Fx:AddHitstop(sec)
+    if self.hitstopCd > 0 then return end
+    self.hitstop = max(self.hitstop, sec)
+    self.hitstopCd = 2.0
 end
 
 --- 画质档位：1 高 / 0.5 低（低端机或连续掉帧时由外部调低）
@@ -561,19 +602,39 @@ end
 -- ----------------------------------------------------------------------------
 -- 中央重磅印章
 -- ----------------------------------------------------------------------------
-function Fx:Stamp(title, sub, col, prio, dur, big)
+function Fx:Stamp(title, sub, col, prio, dur, big, kind)
     prio = prio or 1
+    kind = kind or title
     local st = self.stamp
-    if st.on and st.prio > prio then
-        -- 排队（同类低优先级只保留最新）
-        for i = 1, MAX_STAMP_Q do
-            local q = self.stampQ[i]
-            if not q.on then
-                q.on, q.title, q.sub, q.col, q.prio, q.dur, q.big = true, title, sub or "", col or GOLD, prio, (dur or 1.2) * 0.8, big == true
-                return
-            end
-        end
+    -- 同类印章刚结束 2.5s 内：降级为小飘字，避免高频事件（连续超越）让印章常驻
+    if not st.on and st.kind == kind and (self.time - (self.stampEndT or -99)) < 2.5 then
+        self:UiPop(self.screenW * 0.5, self.screenH * 0.3, title or "", col or GOLD, 18)
         return
+    end
+    if st.on then
+        -- 同类印章（如连续超越）在显示中：直接刷新文字并续时，不再重复入场
+        if st.kind == kind then
+            st.title, st.sub, st.col = title or "", sub or "", col or GOLD
+            st.dur = min(3.0, max(st.dur, st.age + (dur or 1.2) * 0.7))
+            st.prio = max(st.prio, prio)
+            return
+        end
+        -- 至少展示 0.8s 才允许被同级替换；更高优先级 0.35s 后可插队
+        local canReplace = (prio > st.prio and st.age >= 0.35) or (prio >= st.prio and st.age >= 0.8)
+        if not canReplace then
+            local slot, low = nil, 99
+            for i = 1, MAX_STAMP_Q do
+                local q = self.stampQ[i]
+                if q.on and q.kind == kind then slot = q; break end
+                if not q.on then slot = q; low = -1; break end
+                if q.prio < low then low = q.prio; slot = q end
+            end
+            if slot and (not slot.on or slot.kind == kind or slot.prio <= prio) then
+                slot.on, slot.title, slot.sub, slot.col, slot.prio, slot.dur, slot.big, slot.kind =
+                    true, title, sub or "", col or GOLD, prio, (dur or 1.2) * 0.8, big == true, kind
+            end
+            return
+        end
     end
     st.on = true
     st.age = 0
@@ -583,10 +644,11 @@ function Fx:Stamp(title, sub, col, prio, dur, big)
     st.col = col or GOLD
     st.prio = prio
     st.big = big == true
+    st.kind = kind
     local w, h = self.screenW, self.screenH
     self:Ring(w * 0.5, h * 0.36, 20, w * 0.62 / self.ws, st.col, 0.45, 5)
-    self.trauma = min(1, self.trauma + (big and 0.55 or 0.25))
-    self.kick = min(1, self.kick + (big and 0.9 or 0.45))
+    self:AddTrauma(big and 0.55 or 0.25, big)
+    self:AddKick(big and 0.9 or 0.45, big)
 end
 
 -- 兼容旧接口
@@ -652,7 +714,7 @@ function Fx:TrackMult(ty)
     if comboStep > self.mtComboStep and comboStep > 0 then
         self:Token(self.ancComboX, self.ancComboY, "连击 ×" .. string.format("%.1f", comboM), CYAN)
         if comboStep % 3 == 0 then
-            self:Stamp(tostring(ty.combo or 0) .. " 连击!", "连击倍率 ×" .. string.format("%.1f", comboM), CYAN, 1, 1.0)
+            self:Stamp(tostring(ty.combo or 0) .. " 连击!", "连击倍率 ×" .. string.format("%.1f", comboM), CYAN, 1, 1.0, false, "combo")
         end
     end
     if perm > self.mtPerm * 1.0001 then
@@ -673,7 +735,7 @@ function Fx:OnShoot(coin, run)
     if not coin then return end
     local sx, sy = self:S(coin.x, coin.y)
     self:Burst(sx, sy, 4, CYAN, 90, 2.2, 0)
-    self.kick = min(1, self.kick + 0.04)
+    self:AddKick(0.04)
 end
 
 function Fx:OnTap(sx, sy)
@@ -702,7 +764,7 @@ function Fx:OnGateWin(coin, rewardName)
     self:Ring(sx, sy, 2, 40, HOT, 0.25, 0, true)
     self:Burst(sx, sy, 18, GOLD, 200, 3.2, 4)
     self:UiPop(sx, sy - 18, "中奖门! 转老虎机", GOLD, 17)
-    self.trauma = min(1, self.trauma + 0.2)
+    self:AddTrauma(0.2)
     self.lightFlash = max(self.lightFlash, 0.6)
     self.lightCol = GOLD
 end
@@ -729,21 +791,20 @@ function Fx:OnScore(dmg, x, y, crit, combo, tag, refCps, mult)
     end
     local p = self:SpawnPop(sx, sy - 10 * self.ws, dmg, tier, crit, "d", mult)
     if crit then
-        self.trauma = min(1, self.trauma + 0.08 + tier * 0.03)
+        self:AddTrauma(0.08 + tier * 0.03)
         self:Burst(sx, sy, 6 + tier * 2, GOLD, 150, 2.6, 1)
     end
     if tier >= 4 then
         self:Ring(sx, sy, 6, 46 + tier * 10, (tier >= 5) and MAGENTA or ORANGE, 0.38, 3.5)
         self:Burst(sx, sy, 10 + tier * 3, (tier >= 5) and MAGENTA or ORANGE, 220, 3.2, 3)
-        self.trauma = min(1, self.trauma + 0.12 * (tier - 3))
-        self.kick = min(1, self.kick + 0.18 * (tier - 3))
+        self:AddTrauma(0.12 * (tier - 3))
+        self:AddKick(0.18 * (tier - 3))
         self.lightFlash = max(self.lightFlash, 0.4 + 0.3 * (tier - 3))
         self.lightCol = (tier >= 5) and MAGENTA or ORANGE
     end
     if tier >= 5 then
-        self.hitstop = max(self.hitstop, 0.05)
-        self.flashA = max(self.flashA, 70)
-        self.flashCol = MAGENTA
+        self:AddHitstop(0.05)
+        self:AddFlash(70, MAGENTA)
     end
 end
 
@@ -786,11 +847,10 @@ function Fx:OnExplosion(x, y, rad)
     self:Ring(sx, sy, 6, rad * 0.7, MAGENTA, 0.3, 3)
     self:Burst(sx, sy, 26, ORANGE, 250, 3.6, 4)
     self:CoinFountain(sx, sy, 4, 1.0)
-    self.trauma = min(1, self.trauma + 0.42)
-    self.hitstop = max(self.hitstop, 0.035)
-    self.flashA = max(self.flashA, 60)
-    self.flashCol = ORANGE
-    self.kick = min(1, self.kick + 0.35)
+    self:AddTrauma(0.42)
+    self:AddHitstop(0.035)
+    self:AddFlash(60, ORANGE)
+    self:AddKick(0.35)
     self.lightFlash = max(self.lightFlash, 0.9)
     self.lightCol = ORANGE
 end
@@ -800,8 +860,8 @@ function Fx:OnBlackholeBurst(x, y, rad)
     self:Ring(sx, sy, rad, 8, PURPLE, 0.4, 4)
     self:Ring(sx, sy, 6, rad * 1.2, MAGENTA, 0.45, 3)
     self:Burst(sx, sy, 22, PURPLE, 210, 3.2, 3)
-    self.trauma = min(1, self.trauma + 0.32)
-    self.kick = min(1, self.kick + 0.3)
+    self:AddTrauma(0.32)
+    self:AddKick(0.3)
 end
 
 function Fx:OnJackpot777(x, y)
@@ -809,8 +869,7 @@ function Fx:OnJackpot777(x, y)
     self:CoinFountain(sx, sy, 10, 1.3)
     self:Burst(sx, sy, 20, GOLD, 240, 3.4, 5)
     self:Stamp("777!", "轮盘大奖 · 金币雨", GOLD, 3, 1.2)
-    self.flashA = max(self.flashA, 90)
-    self.flashCol = GOLD
+    self:AddFlash(90, GOLD)
 end
 
 function Fx:OnSlotWin(prize)
@@ -822,22 +881,32 @@ function Fx:OnSlotWin(prize)
         return
     end
     local col = prize.col or GOLD
+    -- 已处于同档或更高档幸运倍率时，重复大奖不再整屏印章（避免倍率常驻时刷屏），只给滚轮处爆点
+    local fresh = (m > self.lastSlotStampM) or (self.time - self.lastSlotStampT > 10)
+    if m >= 10 and not fresh then
+        self:UiPop(sx, sy + 24, prize.label or ("×" .. tostring(m)), col, 18)
+        self:Burst(sx, sy, 14, col, 200, 3, 3)
+        self:CoinFountain(sx, sy, 4, 1.0)
+        return
+    end
+    if m >= 10 then
+        self.lastSlotStampM = m
+        self.lastSlotStampT = self.time
+    end
     if m >= 50 then
-        self:Stamp(m >= 100 and "JACKPOT!!" or "皇冠暴富!", "全场收益 ×" .. tostring(m), (m >= 100) and MAGENTA or GOLD, 5, 2.2, true)
+        self:Stamp(m >= 100 and "JACKPOT!!" or "皇冠暴富!", "全场收益 ×" .. tostring(m), (m >= 100) and MAGENTA or GOLD, 5, 2.2, true, "slot")
         self:CoinFountain(sx, sy, 16, 1.5)
         self:Burst(sx, sy, 30, col, 300, 4, 8)
         self:Confetti(40, 0, self.screenW, -10)
-        self.flashA = max(self.flashA, 150)
-        self.flashCol = col
-        self.hitstop = max(self.hitstop, 0.08)
+        self:AddFlash(150, col)
+        self:AddHitstop(0.08)
         self.lightFlash = 1.4
         self.lightCol = col
     elseif m >= 10 then
-        self:Stamp("大奖 ×" .. tostring(m), prize.label or "", col, 4, 1.6, true)
+        self:Stamp("大奖 ×" .. tostring(m), prize.label or "", col, 4, 1.6, true, "slot")
         self:CoinFountain(sx, sy, 8, 1.2)
         self:Burst(sx, sy, 22, col, 240, 3.4, 5)
-        self.flashA = max(self.flashA, 95)
-        self.flashCol = col
+        self:AddFlash(95, col)
         self.lightFlash = 1.1
         self.lightCol = col
     else
@@ -872,33 +941,29 @@ function Fx:OnRankUp(rank, themeChanged, info)
         head = "冲入" .. (rank.name or ("全球前" .. Number.FormatWorldRank(rank.rank)))
     end
     local sub = rank.isRealName and (rank.name or "") or (themeChanged and "新机台主题解锁!" or (rank.title or ""))
-    self:Stamp(head, sub, GOLD, 4, 1.8, themeChanged or rank.isRealName)
+    self:Stamp(head, sub, GOLD, 4, 1.8, themeChanged or rank.isRealName, "rank")
     self:Confetti(36, 0, self.screenW, -10)
-    self.flashA = max(self.flashA, 110)
-    self.flashCol = GOLD
+    self:AddFlash(110, GOLD)
 end
 
 function Fx:OnUnlockCoin(def)
     local nm = (def and (def.name or def.short)) or "新内容"
     self:Stamp("解锁!", nm, CYAN, 3, 1.5)
     self:Burst(self.screenW * 0.5, self.screenH * 0.36, 24, CYAN, 230, 3.2, 6)
-    self.flashA = max(self.flashA, 70)
-    self.flashCol = CYAN
+    self:AddFlash(70, CYAN)
 end
 
 function Fx:OnPrestige(shares, bonusSp, roundName)
     local spTxt = (bonusSp and bonusSp > 0) and (" · +" .. tostring(bonusSp) .. "技能点") or ""
     self:Stamp("敲钟上市!", (roundName or "") .. " +" .. Number.FormatNum(shares) .. "股" .. spTxt, MAGENTA, 5, 2.2, true)
     self:Confetti(60, 0, self.screenW, -10)
-    self.flashA = 150
-    self.flashCol = GOLD
+    self:AddFlash(150, GOLD, true)
 end
 
 function Fx:OnAdReward(msg)
     self:Stamp("福利到账!", msg or "", GREEN, 3, 1.5)
     self:CoinFountain(self.screenW * 0.5, self.screenH * 0.45, 10, 1.2)
-    self.flashA = max(self.flashA, 80)
-    self.flashCol = GOLD
+    self:AddFlash(80, GOLD)
 end
 
 function Fx:OnFeverStart(run)
@@ -906,8 +971,7 @@ function Fx:OnFeverStart(run)
     self.feverOn = true
     self:Stamp("狂欢时刻!", "FEVER · 收益 ×2.2 · 射速 ×1.65", MAGENTA, 4, 1.8, true)
     self:Confetti(30, 0, self.screenW, -10)
-    self.flashA = 140
-    self.flashCol = MAGENTA
+    self:AddFlash(140, MAGENTA, true)
     self.lightFlash = 1.2
     self.lightCol = MAGENTA
 end
@@ -921,7 +985,8 @@ function Fx:OnGoalMet(run)
 end
 
 function Fx:OnCombo(combo)
-    self.comboPop = 1.0
+    -- 只在前 10 连与每 10 连时弹一下，事件密集时不再常驻放大
+    if (combo or 0) < 10 or combo % 10 == 0 then self.comboPop = 1.0 end
 end
 
 function Fx:OnComboBreak()
@@ -942,6 +1007,10 @@ end
 function Fx:Update(dt)
     self.time = self.time + dt
     if self.hitstop > 0 then self.hitstop = max(0, self.hitstop - dt) end
+    if self.hitstopCd > 0 then self.hitstopCd = max(0, self.hitstopCd - dt) end
+    self.shakeBudget = min(0.8, self.shakeBudget + dt * 0.45)
+    self.flashBudget = min(160, self.flashBudget + dt * 70)
+    self.kickBudget = min(1.0, self.kickBudget + dt * 0.5)
     if self.comboPop > 0 then self.comboPop = max(0, self.comboPop - dt * 5) end
     if self.flashA > 0 then self.flashA = max(0, self.flashA - dt * 320) end
     if self.kick > 0 then self.kick = max(0, self.kick - dt * 2.6) end
@@ -1060,11 +1129,12 @@ function Fx:Update(dt)
         st.age = st.age + dt
         if st.age >= st.dur then
             st.on = false
+            self.stampEndT = self.time
             for i = 1, MAX_STAMP_Q do
                 local q = self.stampQ[i]
                 if q.on then
                     q.on = false
-                    self:Stamp(q.title, q.sub, q.col, q.prio, q.dur, q.big)
+                    self:Stamp(q.title, q.sub, q.col, q.prio, q.dur, q.big, q.kind)
                     break
                 end
             end

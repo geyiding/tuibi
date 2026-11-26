@@ -121,6 +121,20 @@ end
 -- ----------------------------------------------------------------------------
 local function LogicToWorld3D(lx, ly, zone, lz, onPusher)
     lz = lz or 0
+    -- Physics 的坠落态叫 "falling"：越过前沿的进前方出币槽，侧漏的从台面两侧翻落
+    if zone == "falling" then
+        if ly >= S.DECK_BOT_Y - 1 then
+            zone = "dropping"
+        else
+            local hw = Physics.TrapezoidHalfW(ly)
+            local nx = (lx - 180) / max(1, hw)
+            local over = max(0, math.abs(nx) - 1)
+            local wx = nx * 1.40
+            local wz = 1.50 - (ly - S.DECK_TOP_Y) * 0.01
+            local wy = 0.036 - over * 3.2 - max(0, ly - S.SIDE_GAP_Y) * 0.004
+            return Vector3(wx, wy, wz)
+        end
+    end
     if zone == "slot" then
         local wx = ((lx - 180) / 124.0) * 1.36
         local wy = 0.28 + (S.DECK_TOP_Y - ly) * 0.0101
@@ -684,14 +698,22 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
             end
 
             local crot = c.rot or 0
-            if czZone ~= slot.lastZone or (crot - slot.lastRot) * (crot - slot.lastRot) > 0.0004 then
+            local isFall = (czZone == "falling" or czZone == "dropping")
+            if isFall or czZone ~= slot.lastZone or (crot - slot.lastRot) * (crot - slot.lastRot) > 0.0004 then
                 slot.lastRot = crot
                 local rotDeg = math.deg(crot)
                 if czZone == "slot" then
                     slot.node.rotation = Quaternion(-90, Vector3.RIGHT) * Quaternion(rotDeg, Vector3.UP)
-                elseif czZone == "dropping" then
+                elseif isFall and cy >= S.DECK_BOT_Y - 1 then
+                    -- 前沿坠落：向镜头方向翻倒滑入出币槽
                     local prog = max(0, min(1, (cy - S.DECK_BOT_Y) / max(1, S.DROP_END_Y - S.DECK_BOT_Y)))
                     slot.node.rotation = Quaternion(prog * 82, Vector3.RIGHT) * Quaternion(rotDeg, Vector3.UP)
+                elseif isFall then
+                    -- 侧漏：朝外侧翻落
+                    local hw = Physics.TrapezoidHalfW(cy)
+                    local over = max(0, min(1, (math.abs(cx - 180) - hw) / 30))
+                    local side = (cx < 180) and 1 or -1
+                    slot.node.rotation = Quaternion(side * over * 75, Vector3.FORWARD) * Quaternion(rotDeg, Vector3.UP)
                 else
                     slot.node.rotation = Quaternion(rotDeg, Vector3.UP)
                 end
