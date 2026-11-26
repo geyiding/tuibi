@@ -19,6 +19,21 @@ function Widgets.Tick(dt)
     Widgets.time = Widgets.time + (dt or 0)
 end
 
+-- 科技风按钮文字色（主色提亮，深色玻璃底上清晰不刺眼）
+local BTN_TEXT = {
+    primary = { 255, 236, 170, 255 },
+    cyan    = { 205, 245, 255, 255 },
+    magenta = { 255, 214, 240, 255 },
+    green   = { 205, 255, 225, 255 },
+    danger  = { 255, 214, 218, 255 },
+    dark    = { 205, 216, 240, 255 },
+}
+local function ButtonTextCol(style, variant)
+    if style ~= "button" then return U.text end
+    return BTN_TEXT[variant or "primary"] or BTN_TEXT.primary
+end
+Widgets.ButtonTextCol = ButtonTextCol
+
 local BADGE_RED = { 255, 58, 82 }
 local BADGE_EDGE = { 255, 236, 240 }
 local SHINE = { 255, 255, 255 }
@@ -179,20 +194,20 @@ function NeoButton:Init(props)
     props = props or {}
     local frameStyle = props.style or "button"
     local variant = props.variant or "primary"
-    local darkText = (frameStyle == "button") and (variant == "primary" or variant == "cyan" or variant == "green")
     self.onPress_ = props.onClick
     self.btnLabel_ = UI.Label {
         text = props.text or "",
         fontSize = props.fontSize or 16,
         fontWeight = "bold",
-        fontColor = props.fontColor or (darkText and { 14, 16, 32, 255 } or U.text),
+        fontColor = props.fontColor or ButtonTextCol(frameStyle, variant),
         textAlign = "center",
         maxLines = 1,
         flexShrink = 1,
     }
     local selfRef = self
     props.style = frameStyle
-    props.skin = { variant = variant, pressed = false, disabled = false, radius = props.borderRadius or 12 }
+    props.skin = { variant = variant, accent = props.accent, pressed = false, disabled = false, radius = props.borderRadius or 12 }
+    props.accent = nil
     props.flexDirection = "row"
     props.justifyContent = "center"
     props.alignItems = "center"
@@ -234,8 +249,7 @@ function NeoButton:SetVariant(v)
     if self.skin_.variant ~= v then
         self.skin_.variant = v
         local isBtn = (self.skinStyle_ == "button")
-        local darkText = isBtn and (v == "primary" or v == "cyan" or v == "green")
-        self.btnLabel_:SetStyle({ fontColor = darkText and { 14, 16, 32, 255 } or U.text })
+        self.btnLabel_:SetStyle({ fontColor = ButtonTextCol(self.skinStyle_, v) })
         if self.useTexture_ and isBtn then
             local tex = Skin.TEXTURES["button_" .. tostring(v)] or Skin.TEXTURES.button
             if tex then

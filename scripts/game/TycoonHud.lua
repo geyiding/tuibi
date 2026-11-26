@@ -110,7 +110,7 @@ local function MakeDetailBar(iconKind, iconKey, btnText, btnVar, onAction)
     local title = UI.Label { text = "", fontSize = 15, fontWeight = "bold", fontColor = U.gold, maxLines = 1, flexShrink = 0 }
     local desc = UI.Label { text = "", fontSize = 12, fontColor = U.textDim, whiteSpace = "normal", width = "100%" }
     local scroll = UI.ScrollView {
-        width = "100%", height = 52, scrollY = true,
+        width = "100%", height = 62, scrollY = true, overflow = "hidden",
         children = { desc },
     }
     local btn = NeoButton {
@@ -119,11 +119,11 @@ local function MakeDetailBar(iconKind, iconKey, btnText, btnVar, onAction)
         onClick = onAction,
     }
     local bar = NeoFrame {
-        style = "card", width = "100%", height = 108, padding = 8, gap = 8,
+        style = "card", width = "100%", height = 120, padding = 8, gap = 8,
         flexDirection = "row", alignItems = "center",
         children = {
             ic,
-            UI.Column { flexGrow = 1, flexBasis = 0, flexShrink = 1, height = 78, gap = 2, children = { title, scroll } },
+            UI.Column { flexGrow = 1, flexBasis = 0, flexShrink = 1, height = 92, gap = 4, overflow = "hidden", children = { title, scroll } },
             btn,
         },
     }
@@ -264,19 +264,20 @@ local function BuildMainPage(stageWidget, cb)
         children = { stageWidget, floatRack, r.overtakeWrap },
     }
 
+    -- 底栏：深色玻璃科技键，每个分类自带一条主色光线；可购买时整键点亮 + 流光 + 红点
     local navDefs = {
-        { id = "machine", text = "机台" },
-        { id = "coins",   text = "币种" },
-        { id = "tech",    text = "科技" },
-        { id = "prestige",text = "上市" },
-        { id = "welfare", text = "福利" },
+        { id = "machine", text = "机台", accent = "primary" },
+        { id = "coins",   text = "币种", accent = "cyan" },
+        { id = "tech",    text = "科技", accent = "green" },
+        { id = "prestige",text = "上市", accent = "magenta" },
+        { id = "welfare", text = "福利", accent = "primary" },
     }
     r.navBtns = {}
     local navRowChildren = {}
     for i, nd in ipairs(navDefs) do
         local btn = NeoButton {
-            text = nd.text, variant = "dark", flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0,
-            minHeight = 50, paddingHorizontal = 2, fontSize = 13,
+            text = nd.text, variant = "dark", accent = nd.accent, flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0,
+            minHeight = 50, paddingHorizontal = 2, fontSize = 15,
             onClick = function() TycoonHud.OpenModal(nd.id) end,
         }
         r.navBtns[nd.id] = btn
@@ -350,7 +351,7 @@ local function BuildMachineModal(cb)
     r.machDetIc, r.machDetTitle, r.machDetDesc, r.machDetBtn = detIc, detTitle, detDesc, detBtn
 
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 528, padding = 12, gap = 8,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 8,
         flexDirection = "column", justifyContent = "space-between",
         children = { header, modeRow, grid, UI.Spacer(), detBar },
     }
@@ -380,7 +381,7 @@ local function BuildCoinsModal(cb)
         local sub = UI.Label { text = "Lv.1", fontSize = 12, fontColor = U.gold, maxLines = 1 }
         local cell = NeoFrame(Widgets.PressFx {
             style = "slot", skin = { rarity = "common", selected = false, afford = false },
-            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 88, padding = 4, gap = 1,
+            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 98, padding = 4, gap = 2,
             flexDirection = "column", alignItems = "center", justifyContent = "center",
             children = { ic, nm, sub },
             onClick = function() st.coinSel = i; TycoonHud.RefreshCoins() end,
@@ -419,7 +420,7 @@ local function BuildCoinsModal(cb)
     r.coinDetIc, r.coinDetTitle, r.coinDetDesc, r.coinDetBtn = detIc, detTitle, detDesc, detBtn
 
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 528, padding = 12, gap = 8,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 8,
         flexDirection = "column", justifyContent = "space-between",
         children = { header, grid, pageRow, detBar },
     }
@@ -467,7 +468,7 @@ local function BuildTechModal(cb)
     r.techDetIc, r.techDetTitle, r.techDetDesc, r.techDetBtn = detIc, detTitle, detDesc, detBtn
 
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 528, padding = 12, gap = 8,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 8,
         flexDirection = "column", justifyContent = "space-between",
         children = { header, grid, UI.Spacer(), detBar },
     }
@@ -542,7 +543,7 @@ local function BuildPrestigeModal(cb)
     local botRow = UI.Row { width = "100%", gap = 6, children = { r.presNormalBtn, r.presAdBtn, r.presAscendBtn } }
 
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 528, padding = 12, gap = 8,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 8,
         flexDirection = "column", justifyContent = "space-between",
         children = { header, topCard, tGrid, detBar, botRow },
     }
@@ -590,7 +591,7 @@ local function BuildWelfareModal(cb)
     r.adDetIc, r.adDetTitle, r.adDetDesc, r.adDetBtn = detIc, detTitle, detDesc, detBtn
 
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 528, padding = 12, gap = 8,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 8,
         flexDirection = "column", justifyContent = "space-between",
         children = {
             header,
@@ -682,7 +683,7 @@ local function BuildRanksModal()
     r.rankGoalDesc = UI.Label { text = "超越 No.1 马斯克称霸世界!", fontSize = 12, fontColor = U.textDim, whiteSpace = "normal", textAlign = "center", width = "100%" }
 
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 532, padding = 10, gap = 6,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 10, gap = 6,
         flexDirection = "column", justifyContent = "space-between",
         children = {
             header, listCol, pageRow,

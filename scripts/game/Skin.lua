@@ -18,6 +18,7 @@ Skin.TEXTURES = {}
 Skin.SPRITES = {}
 
 local IMG_PREFIX = "image/"
+Skin.USE_UI_TEXTURES = false
 Skin.AUTO_SPRITES = {
     backdrop_act1   = IMG_PREFIX .. "machine/backdrop_act1.png",
     backdrop_act2   = IMG_PREFIX .. "machine/backdrop_act2.png",
@@ -61,10 +62,14 @@ function Skin.ProbeAutoAssets()
             Skin.SPRITES[k] = path
         end
     end
-    for k, slice in pairs(UI_SLICES) do
-        local p = IMG_PREFIX .. "ui/" .. k .. ".png"
-        if not Skin.TEXTURES[k] and HasAsset(p) then
-            Skin.TEXTURES[k] = { image = p, slice = slice }
+    -- UI 框体改为程序化“科技灯光线条”风格（Skin.Draw），不再挂载糖果色九宫格贴图；
+    -- 如需恢复贴图框体，把 Skin.USE_UI_TEXTURES 设为 true
+    if Skin.USE_UI_TEXTURES then
+        for k, slice in pairs(UI_SLICES) do
+            local p = IMG_PREFIX .. "ui/" .. k .. ".png"
+            if not Skin.TEXTURES[k] and HasAsset(p) then
+                Skin.TEXTURES[k] = { image = p, slice = slice }
+            end
         end
     end
     local Config = require("game/Config")
@@ -162,125 +167,210 @@ function Skin.Col(t, a)
     return c
 end
 
+-- ----------------------------------------------------------------------------
+-- 科技灯光线条风格（深色玻璃 + 切角 + 细光线描边 + 底部光条）
+-- ----------------------------------------------------------------------------
+-- 按钮主色：line = 光线色，tint = 玻璃底色染色，glow = 外发光
 local VARIANTS = {
-    primary = { top = { 255, 212, 66 }, bot = { 232, 142, 24 }, rim = { 255, 244, 178 }, edge = { 138, 74, 10 } },
-    cyan    = { top = { 72, 232, 255 }, bot = { 24, 152, 220 }, rim = { 190, 248, 255 }, edge = { 14, 78, 128 } },
-    magenta = { top = { 255, 92, 186 }, bot = { 196, 36, 128 }, rim = { 255, 194, 232 }, edge = { 104, 14, 68 } },
-    green   = { top = { 92, 238, 150 }, bot = { 34, 168, 92 },  rim = { 196, 255, 220 }, edge = { 18, 92, 50 } },
-    danger  = { top = { 255, 98, 108 }, bot = { 192, 42, 56 },  rim = { 255, 196, 202 }, edge = { 102, 16, 28 } },
-    dark    = { top = { 44, 54, 98 },   bot = { 24, 30, 62 },   rim = { 104, 126, 196 }, edge = { 12, 16, 36 } },
+    primary = { line = { 255, 204, 72 },  tint = { 120, 84, 16 },  glow = { 255, 190, 60 } },
+    cyan    = { line = { 80, 220, 255 },  tint = { 18, 86, 120 },  glow = { 60, 200, 255 } },
+    magenta = { line = { 255, 96, 196 },  tint = { 110, 24, 84 },  glow = { 255, 80, 190 } },
+    green   = { line = { 96, 240, 160 },  tint = { 20, 96, 60 },   glow = { 80, 230, 150 } },
+    danger  = { line = { 255, 100, 110 }, tint = { 110, 24, 34 },  glow = { 255, 80, 90 } },
+    dark    = { line = { 110, 150, 210 }, tint = { 26, 34, 56 },   glow = { 90, 140, 220 } },
 }
+Skin.VARIANTS = VARIANTS
 
---- 绘制霓虹街机样式面板/按钮/卡牌
+local GLASS_TOP = { 22, 28, 46 }
+local GLASS_BOT = { 10, 13, 24 }
+local PANEL_TOP = { 17, 21, 36 }
+local PANEL_BOT = { 8, 10, 19 }
+local PANEL_LINE = { 70, 190, 255 }
+local PANEL_TICK = { 150, 235, 255 }
+local CARD_TOP = { 22, 27, 44 }
+local CARD_BOT = { 13, 16, 28 }
+local CARD_LINE = { 46, 58, 90 }
+local SEL_GOLD = { 255, 206, 80 }
+local WHITE = C.white
+
+local function Additive(nvg, on)
+    if type(nvgGlobalCompositeOperation) == "function" and NVG_LIGHTER ~= nil then
+        nvgGlobalCompositeOperation(nvg, on and NVG_LIGHTER or (NVG_SOURCE_OVER or 0))
+    end
+end
+
+--- 切角矩形路径（左上 / 右下切角，科技面板常用造型）
+local function TechPath(nvg, x, y, w, h, c)
+    c = math.min(c, w * 0.3, h * 0.45)
+    nvgMoveTo(nvg, x + c, y)
+    nvgLineTo(nvg, x + w, y)
+    nvgLineTo(nvg, x + w, y + h - c)
+    nvgLineTo(nvg, x + w - c, y + h)
+    nvgLineTo(nvg, x, y + h)
+    nvgLineTo(nvg, x, y + c)
+    nvgClosePath(nvg)
+end
+Skin.TechPath = TechPath
+
+--- 中间亮、两端渐隐的光线（水平）
+local function LightLine(nvg, x, y, w, th, col, a)
+    local half = w * 0.5
+    nvgBeginPath(nvg)
+    nvgRect(nvg, x, y, half, th)
+    nvgFillPaint(nvg, nvgLinearGradient(nvg, x, y, x + half, y, Skin.Col(col, 0), Skin.Col(col, a)))
+    nvgFill(nvg)
+    nvgBeginPath(nvg)
+    nvgRect(nvg, x + half, y, half, th)
+    nvgFillPaint(nvg, nvgLinearGradient(nvg, x + half, y, x + w, y, Skin.Col(col, a), Skin.Col(col, 0)))
+    nvgFill(nvg)
+end
+Skin.LightLine = LightLine
+
+--- 绘制科技风面板 / 按钮 / 卡片
 function Skin.Draw(nvg, styleName, x, y, w, h, opt)
     if w <= 0 or h <= 0 then return end
     opt = opt or {}
 
     if styleName == "button" then
         local v = VARIANTS[opt.variant or "primary"] or VARIANTS.primary
-        local r = opt.radius or 12
-        local yOff = opt.pressed and 2 or 0
-        -- 底部立体厚边
-        if not opt.pressed then
+        local isDark = (opt.variant == "dark")
+        local acc = (isDark and opt.accent and VARIANTS[opt.accent]) or v
+        local c = math.min(9, h * 0.28)
+        local yOff = opt.pressed and 1.5 or 0
+        local by = y + yOff
+        -- 外发光（非暗色按钮）
+        if not isDark and not opt.disabled then
+            Additive(nvg, true)
             nvgBeginPath(nvg)
-            nvgRoundedRect(nvg, x, y + 4, w, h, r)
-            nvgFillColor(nvg, Skin.Col(v.edge, 255))
+            nvgRect(nvg, x - 10, by - 8, w + 20, h + 16)
+            nvgFillPaint(nvg, nvgBoxGradient(nvg, x, by, w, h, c, 12, Skin.Col(v.glow, opt.pressed and 90 or 60), Skin.Col(v.glow, 0)))
+            nvgFill(nvg)
+            Additive(nvg, false)
+        end
+        -- 玻璃底（主色染色）
+        nvgBeginPath(nvg)
+        TechPath(nvg, x, by, w, h, c)
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, by, x, by + h,
+            Skin.Col(isDark and GLASS_TOP or v.tint, 250), Skin.Col(GLASS_BOT, 250)))
+        nvgFill(nvg)
+        -- 主色由下往上的光晕（让按钮“亮着”）
+        if not isDark then
+            nvgBeginPath(nvg)
+            TechPath(nvg, x, by, w, h, c)
+            nvgFillPaint(nvg, nvgLinearGradient(nvg, x, by + h, x, by + h * 0.35, Skin.Col(v.line, opt.pressed and 110 or 80), Skin.Col(v.line, 0)))
             nvgFill(nvg)
         end
-        -- 主体渐变
+        -- 顶部玻璃高光线
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x, y + yOff, w, h, r)
-        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, y + yOff, x, y + yOff + h, Skin.Col(v.top), Skin.Col(v.bot)))
-        nvgFill(nvg)
-        -- 顶部高光条
-        nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x + 3, y + yOff + 2, w - 6, h * 0.36, math.max(2, r - 3))
-        nvgFillColor(nvg, Skin.Col(C.white, opt.disabled and 25 or 55))
-        nvgFill(nvg)
-        -- 霓虹边框
-        nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x + 1, y + yOff + 1, w - 2, h - 2, r - 1)
-        nvgStrokeColor(nvg, Skin.Col(v.rim, opt.disabled and 100 or 230))
-        nvgStrokeWidth(nvg, 1.5)
+        nvgMoveTo(nvg, x + c + 2, by + 1.5)
+        nvgLineTo(nvg, x + w - 3, by + 1.5)
+        nvgStrokeColor(nvg, Skin.Col(WHITE, opt.disabled and 20 or 55))
+        nvgStrokeWidth(nvg, 1)
         nvgStroke(nvg)
+        -- 细光线描边
+        nvgBeginPath(nvg)
+        TechPath(nvg, x + 0.5, by + 0.5, w - 1, h - 1, c)
+        nvgStrokeColor(nvg, Skin.Col(isDark and acc.line or v.line, isDark and 120 or 235))
+        nvgStrokeWidth(nvg, isDark and 1 or 1.4)
+        nvgStroke(nvg)
+        -- 底部光条
+        LightLine(nvg, x + w * 0.12, by + h - 2.5, w * 0.76, 2, isDark and acc.line or v.line, isDark and 150 or 255)
 
     elseif styleName == "card" or styleName == "slot" then
         local rar = Skin.RARITY[opt.rarity or "common"] or Skin.RARITY.common
-        local r = opt.radius or 10
-        local bgCol = opt.selected and { 54, 42, 92 } or rar.bg
-        -- 投影
+        local c = math.min(8, h * 0.18)
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x + 1, y + 3, w, h, r)
-        nvgFillColor(nvg, Skin.Col(C.shadow, 130))
+        TechPath(nvg, x, y, w, h, c)
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, y, x, y + h, Skin.Col(CARD_TOP, 245), Skin.Col(CARD_BOT, 248)))
         nvgFill(nvg)
-        -- 卡面
+        -- 稀有度：顶部光条 + 极淡底色染色
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x, y, w, h, r)
-        nvgFillColor(nvg, Skin.Col(bgCol, 245))
+        TechPath(nvg, x, y, w, h, c)
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, y, x, y + h * 0.6, Skin.Col(rar.col, 26), Skin.Col(rar.col, 0)))
         nvgFill(nvg)
-        -- 边框（选中高亮金边）
+        LightLine(nvg, x + c, y + 0.5, w - c * 2, 2, rar.col, 220)
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x + 1, y + 1, w - 2, h - 2, r - 1)
-        nvgStrokeColor(nvg, Skin.Col(opt.selected and C.gold or rar.col, opt.selected and 255 or 190))
-        nvgStrokeWidth(nvg, opt.selected and 2.5 or 1.6)
+        TechPath(nvg, x + 0.5, y + 0.5, w - 1, h - 1, c)
+        nvgStrokeColor(nvg, Skin.Col(opt.selected and SEL_GOLD or CARD_LINE, opt.selected and 255 or 230))
+        nvgStrokeWidth(nvg, opt.selected and 1.8 or 1)
         nvgStroke(nvg)
+        if opt.selected then
+            nvgBeginPath(nvg)
+            TechPath(nvg, x + 1, y + 1, w - 2, h - 2, c)
+            nvgFillPaint(nvg, nvgBoxGradient(nvg, x, y, w, h, c, math.min(w, h) * 0.3, Skin.Col(SEL_GOLD, 0), Skin.Col(SEL_GOLD, 60)))
+            nvgFill(nvg)
+        end
 
-    elseif styleName == "plate" then
+    elseif styleName == "plate" or styleName == "cloth" then
+        -- 顶栏（plate，光线在底边）/ 底栏（cloth，光线在顶边）
         nvgBeginPath(nvg)
         nvgRect(nvg, x, y, w, h)
-        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, y, x, y + h, Skin.Col({ 24, 30, 60 }, 245), Skin.Col({ 12, 16, 36 }, 250)))
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, y, x, y + h, Skin.Col(PANEL_TOP, 248), Skin.Col(PANEL_BOT, 252)))
         nvgFill(nvg)
+        local ly = (styleName == "plate") and (y + h - 1.5) or y
+        LightLine(nvg, x, ly, w, 1.5, PANEL_LINE, 220)
+        Additive(nvg, true)
+        local gy = (styleName == "plate") and (y + h - 10) or y
         nvgBeginPath(nvg)
-        nvgRect(nvg, x, y + h - 2, w, 2)
-        nvgFillColor(nvg, Skin.Col(C.cyan, 200))
+        nvgRect(nvg, x, gy, w, 10)
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, (styleName == "plate") and (y + h) or y,
+            x, (styleName == "plate") and (y + h - 10) or (y + 10), Skin.Col(PANEL_LINE, 40), Skin.Col(PANEL_LINE, 0)))
         nvgFill(nvg)
-
-    elseif styleName == "cloth" then
-        nvgBeginPath(nvg)
-        nvgRect(nvg, x, y, w, h)
-        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, y, x, y + h, Skin.Col({ 18, 24, 52 }, 248), Skin.Col({ 10, 12, 28 }, 252)))
-        nvgFill(nvg)
-        nvgBeginPath(nvg)
-        nvgRect(nvg, x, y, w, 2)
-        nvgFillColor(nvg, Skin.Col(C.magenta, 200))
-        nvgFill(nvg)
+        Additive(nvg, false)
 
     elseif styleName == "banner" then
-        local r = 10
         local col = (opt.color == "gold" and C.gold) or (opt.color == "red" and C.red)
             or (opt.color == "green" and C.green) or C.cyan
-        local dark = (opt.color == "gold" and C.goldDark) or (opt.color == "red" and C.redDark)
-            or (opt.color == "green" and C.greenDark) or C.cyanDark
+        local c = math.min(8, h * 0.3)
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x, y + 3, w, h, r)
-        nvgFillColor(nvg, Skin.Col(dark, 255))
+        TechPath(nvg, x, y, w, h, c)
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, y, x, y + h, Skin.Col(GLASS_TOP, 245), Skin.Col(GLASS_BOT, 248)))
         nvgFill(nvg)
-        nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x, y, w, h, r)
-        nvgFillColor(nvg, Skin.Col(col, 255))
-        nvgFill(nvg)
-        nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x + 2, y + 2, w - 4, h - 4, r - 2)
-        nvgStrokeColor(nvg, Skin.Col(C.white, 170))
-        nvgStrokeWidth(nvg, 1.5)
+        nvgStrokeColor(nvg, Skin.Col(col, 230))
+        nvgStrokeWidth(nvg, 1.2)
         nvgStroke(nvg)
+        LightLine(nvg, x + w * 0.1, y + h - 2, w * 0.8, 2, col, 255)
 
     else
-        -- 默认弹窗/容器面板 "panel"
-        local r = opt.radius or 14
+        -- 弹窗 / 容器面板 "panel"
+        local c = math.min(16, w * 0.06)
+        local line = opt.borderColor or PANEL_LINE
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x, y + 4, w, h, r)
-        nvgFillColor(nvg, Skin.Col(C.shadow, 160))
+        TechPath(nvg, x, y + 4, w, h, c)
+        nvgFillColor(nvg, Skin.Col(C.shadow, 150))
         nvgFill(nvg)
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x, y, w, h, r)
-        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, y, x, y + h, Skin.Col(C.bgPanel, 250), Skin.Col(C.bgInset, 252)))
+        TechPath(nvg, x, y, w, h, c)
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, x, y, x, y + h, Skin.Col(PANEL_TOP, 250), Skin.Col(PANEL_BOT, 252)))
         nvgFill(nvg)
+        -- 极淡横向扫描纹（科技屏幕质感）
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x + 1, y + 1, w - 2, h - 2, r - 1)
-        nvgStrokeColor(nvg, Skin.Col(opt.borderColor or C.cyan, 210))
+        for ly = y + 6, y + h - 4, 6 do
+            nvgRect(nvg, x + 2, ly, w - 4, 1)
+        end
+        nvgFillColor(nvg, Skin.Col(WHITE, 6))
+        nvgFill(nvg)
+        -- 细描边 + 亮角标
+        nvgBeginPath(nvg)
+        TechPath(nvg, x + 0.5, y + 0.5, w - 1, h - 1, c)
+        nvgStrokeColor(nvg, Skin.Col(line, 110))
+        nvgStrokeWidth(nvg, 1)
+        nvgStroke(nvg)
+        local tk = math.min(22, w * 0.08)
+        nvgBeginPath(nvg)
+        nvgMoveTo(nvg, x + c * 0.3, y + c + tk)
+        nvgLineTo(nvg, x + 0.5, y + c)
+        nvgLineTo(nvg, x + c, y + 0.5)
+        nvgLineTo(nvg, x + c + tk, y + 0.5)
+        nvgMoveTo(nvg, x + w - c - tk, y + h - 0.5)
+        nvgLineTo(nvg, x + w - c, y + h - 0.5)
+        nvgLineTo(nvg, x + w - 0.5, y + h - c)
+        nvgLineTo(nvg, x + w - 0.5, y + h - c - tk)
+        nvgStrokeColor(nvg, Skin.Col(PANEL_TICK, 240))
         nvgStrokeWidth(nvg, 2)
         nvgStroke(nvg)
+        -- 顶边光线
+        LightLine(nvg, x + w * 0.2, y + 0.5, w * 0.6, 1.5, PANEL_TICK, 200)
     end
 end
 
