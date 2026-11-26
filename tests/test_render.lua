@@ -7,6 +7,8 @@
 
 NVG_ALIGN_CENTER = 2
 NVG_ALIGN_MIDDLE = 16
+NVG_ALIGN_LEFT = 1
+NVG_ALIGN_RIGHT = 4
 NVG_CW = 2
 NVG_ROUND = 1
 
@@ -30,6 +32,14 @@ function nvgRGBA(r, g, b, a)
 end
 function nvgLinearGradient() return {} end
 function nvgRadialGradient() return {} end
+function nvgBoxGradient() return {} end
+NVG_LIGHTER = 8
+NVG_SOURCE_OVER = 0
+local compositeCalls = 0
+function nvgGlobalCompositeOperation(_, op)
+    assert(op == NVG_LIGHTER or op == NVG_SOURCE_OVER, "非法混合模式")
+    compositeCalls = compositeCalls + 1
+end
 function nvgCreateImage() return 0 end
 function nvgImagePattern() return {} end
 
@@ -61,6 +71,7 @@ local Config = require("game/Config")
 local Tycoon = require("game/Tycoon")
 local Fx = require("game/Fx")
 local Stage = require("game/Stage")
+local JuiceWidgets = require("game/JuiceWidgets")
 local AvatarArt = require("game/AvatarArt")
 local Art = require("game/Art")
 
@@ -153,5 +164,77 @@ fx:RenderOverlay("nvg_stub", 360, 493, "sans", ty)
 for _, iconKey in ipairs({ "coin", "gear", "shield", "bolt", "flame", "crit", "lock", "magnet", "book", "skull", "play", "star" }) do
     Art.DrawIcon("nvg_stub", iconKey, 20, 20, 18, Skin.C.gold)
 end
+
+-- 6. 新爽感链路：倍率追踪令牌 / 飞币入账 / 印章队列 / 购买爆点 / 全屏层（待机 / 激活 / 极值）
+local fx2 = Fx.New()
+local ty2 = Tycoon.New(fx2, { seed = 7 })
+fx2.toScreen = function(x, y) return x, y + 100 end
+fx2:TrackMult(ty2)                                 -- 初始化基线
+ty2.combo = 60; ty2:TriggerFever(false); ty2.luckMult = 100; ty2.luckTimer = 15; ty2.luckDur = 15; ty2.adBoostLeft = 30
+ty2.machineLv.global_mult = 3; ty2:InvalidateCaches()
+fx2:TrackMult(ty2)                                 -- 狂欢 / 老虎机 / 印钞 / 连击 / 永久 五种令牌
+local tokOn = 0
+for i = 1, #fx2.tokens do if fx2.tokens[i].on then tokOn = tokOn + 1 end end
+assert(tokOn >= 4, "倍率增益必须生成飞向招牌的令牌, got " .. tokOn)
+assert(fx2.multTotal > 1000, "极值态总倍率应 > 1000")
+assert(fx2.heat > 0.9, "极值态热度应接近 1")
+-- 基准产值不含临时加成：×100 老虎机期间单次掉落应冲上高阶飘字
+local base = ty2:GetBaselineCPS()
+assert(base > 0 and base < ty2:GetEstimatedCPS(), "基准产值必须剔除临时加成")
+assert(Fx.CalcTier(base * 0.5 * 100, base) == 5, "临时 ×100 时普通掉落应达到 T5")
+for k = 1, 30 do
+    fx2:OnScore(base * (k % 5 + 1) * 3, 120 + k * 4, 520, k % 3 == 0, 60, "gold", base, ty2:GetTotalMult())
+    fx2:OnScore(base * 0.05, 180, 120, false, 60, "peg", base, 1)
+end
+fx2:OnFrontDrop({ kind = "giant", x = 180, y = 540 }, base * 50, true)
+fx2:OnSlotWin(Config.SLOT_PRIZES.jackpot_777)
+fx2:OnSlotWin(Config.SLOT_PRIZES.triple_bolt)       -- 低优先级进入队列
+fx2:OnSlotWin(Config.SLOT_PRIZES.pair)
+fx2:OnSlotWin(Config.SLOT_PRIZES.miss)
+fx2:OnRankUp(Config.RANKS[#Config.RANKS], true, {})
+fx2:OnPrestige(10, 5, "港股敲钟上市")
+fx2:OnSkillPointsGain(3); fx2:OnSkillPointsGain(4)
+fx2:UiBurst(100, 600, 120, 46, "Lv.5!", Skin.C.gold)
+fx2:OnTap(200, 400)
+fx2:OnExplosion(180, 400, 90)
+fx2:OnLightning(120, 150, 220, 340)
+local merged = 0
+for i = 1, #fx2.pops do if fx2.pops[i].life > 0 and fx2.pops[i].tier >= 4 then merged = merged + 1 end end
+assert(merged <= 3, "高阶爆分必须合并为少量滚动大数字, got " .. merged)
+local cc = setmetatable({}, JuiceWidgets.CashCounter)
+cc:Init({ getTycoon = function() return ty2 end, getTime = function() return fx2.time end, fx = fx2 })
+cc.GetAbsoluteLayout = function() return { x = 90, y = 10, w = 150, h = 54 } end
+local layer = setmetatable({}, JuiceWidgets.FxLayer)
+layer:Init({ fx = fx2, isModalOpen = function() return false end })
+for f = 1, 90 do
+    ty2:Update(1 / 60)
+    fx2:TrackMult(ty2)
+    fx2:Update(1 / 60)
+    cc:Render("nvg_stub")
+    layer:Render("nvg_stub")
+end
+fx2:Render("nvg_stub", 360, 667, "sans", true)     -- 弹窗打开态
+assert(fx2.cashHits == 0, "飞币砸中计数必须被现金计数器消费")
+assert(compositeCalls > 0, "发光特效应使用叠加混合")
+
+-- 7. Stage 3D 锚点分支（模拟 Machine3D 激活）
+local Machine3D = require("game/Machine3D")
+local realActive, realAnchor, realProj = Machine3D.IsActive, Machine3D.GetAnchor, Machine3D.ProjectFast
+Machine3D.IsActive = function() return true end
+Machine3D.GetAnchor = function(name, w, h)
+    local tbl = { marquee = { 0.5, 0.2 }, slotTL = { 0.16, 0.25 }, slotTR = { 0.84, 0.25 }, slotBot = { 0.5, 0.47 },
+        deckTL = { 0.19, 0.49 }, deckTR = { 0.81, 0.49 }, deckBL = { 0.1, 0.68 }, deckBR = { 0.9, 0.68 } }
+    local v = tbl[name]; return v[1] * w, v[2] * h
+end
+Machine3D.ProjectFast = function(lx, ly, w, h) return lx * w / 360, 160 + ly * 0.8 end
+local game3 = { tycoon = ty2, fx = fx2, time = 2.0, font = "sans", showTapHint = function() return true end }
+local stg3 = setmetatable({}, Stage)
+stg3:Init({ game = game3 })
+stg3.GetAbsoluteLayout = function() return { x = 0, y = 126, w = 360, h = 469 } end
+for f = 1, 6 do game3.time = game3.time + 0.016; stg3:Render("nvg_stub") end
+ty2.slotSpinning = true; ty2.slotSpinT = 0.5; stg3:Render("nvg_stub")
+ty2.combo = 0; ty2.feverActive = false; ty2.luckMult = 1; ty2.adBoostLeft = 0; stg3:Render("nvg_stub")
+assert(fx2.ancMultX > 0 and fx2.ancSlotY > fx2.ancMultY, "招牌在上、滚轮在下")
+Machine3D.IsActive, Machine3D.GetAnchor, Machine3D.ProjectFast = realActive, realAnchor, realProj
 
 print("[test_render] ALL PASS! ranks_drawn=" .. tostring(#Config.RANKS) .. " coins_drawn=" .. tostring(#Config.COIN_TIERS))

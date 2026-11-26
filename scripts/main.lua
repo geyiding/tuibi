@@ -18,6 +18,7 @@ local SettingsHud = require("game/SettingsHud")
 local SaveManager = require("game/SaveManager")
 local Sfx = require("game/Sfx")
 local Music = require("game/Music")
+local Widgets = require("game/Widgets")
 
 local game = {
     time = 0,
@@ -108,8 +109,8 @@ local function MakeListener()
         game.fx:OnGateBounce(coin)
         Sfx.Play("gate_bounce", 0.5, 1.0, Sfx.PanOf(coin.x, Config.WORLD_W))
     end
-    function l:OnScore(dmg, x, y, crit, combo, tag, refCps)
-        game.fx:OnScore(dmg, x, y, crit, combo, tag, refCps)
+    function l:OnScore(dmg, x, y, crit, combo, tag, refCps, mult)
+        game.fx:OnScore(dmg, x, y, crit, combo, tag, refCps, mult)
         Music.SetIntensity(combo, game.tycoon and game.tycoon.feverActive)
         if crit and (game.time - game._lastCritSfx) >= 0.12 then
             game._lastCritSfx = game.time
@@ -188,6 +189,13 @@ end
 
 local listener = MakeListener()
 
+--- 购买成功爆点：在当前弹窗主按钮处炸开粒子 + 飘字（如 “Lv.5!”）
+local function PurchaseFx(text, col)
+    if not game.fx then return end
+    local x, y, w, h = TycoonHud.GetActionRect()
+    if x then game.fx:UiBurst(x, y, w, h, text, col) end
+end
+
 local callbacks = {
     OnTapStage = function()
         if game.tycoon and not TycoonHud.GetCurModal() then
@@ -204,6 +212,7 @@ local callbacks = {
         if not game.tycoon then return end
         if game.tycoon:BuyMachineUpgrade(id) then
             Sfx.Play("pick")
+            PurchaseFx("Lv." .. tostring(game.tycoon.machineLv[id] or 0) .. "!", Skin.C.gold)
             PersistTycoon(false)
             game.hudDirty = true
             TycoonHud.RefreshMain(game.tycoon)
@@ -212,9 +221,10 @@ local callbacks = {
     end,
     OnBuyCoin = function(id)
         if not game.tycoon then return end
-        local ok = game.tycoon:BuyCoin(id)
+        local ok, isUnlock = game.tycoon:BuyCoin(id)
         if ok then
             Sfx.Play("coin")
+            PurchaseFx(isUnlock and "解锁!" or ("Lv." .. tostring(game.tycoon.coinLv[id] or 0) .. "!"), Skin.C.cyan)
             PersistTycoon(false)
             game.hudDirty = true
             TycoonHud.RefreshMain(game.tycoon)
@@ -225,6 +235,7 @@ local callbacks = {
         if not game.tycoon then return end
         if game.tycoon:BuyTech(id) then
             Sfx.Play("win")
+            PurchaseFx("研发成功!", Skin.C.green)
             PersistTycoon(false)
             game.hudDirty = true
             TycoonHud.RefreshMain(game.tycoon)
@@ -235,6 +246,7 @@ local callbacks = {
         if not game.tycoon then return end
         if game.tycoon:BuyPrestigeTalent(id) then
             Sfx.Play("pick")
+            PurchaseFx("Lv." .. tostring(game.tycoon.prestigeLv[id] or 0) .. "!", Skin.C.magenta)
             PersistTycoon(false)
             game.hudDirty = true
             TycoonHud.RefreshMain(game.tycoon)
@@ -461,6 +473,12 @@ function Start()
             fx = game.fx,
             font = game.font,
             OnTapStage = callbacks.OnTapStage,
+            OnTapSign = function()
+                if not TycoonHud.GetCurModal() then
+                    Sfx.Play("click")
+                    TycoonHud.OpenModal("formula")
+                end
+            end,
             showTapHint = function()
                 return game.tycoon and game.tycoon.totalClicks < 3 and not TycoonHud.GetCurModal()
             end,
@@ -476,7 +494,11 @@ function Start()
     }
 
     local extraModals = SettingsHud.BuildModals(callbacks)
-    local root = TycoonHud.Build(game.stage, callbacks, extraModals.settings, extraModals.cloudFail)
+    local root = TycoonHud.Build(game.stage, callbacks, extraModals.settings, extraModals.cloudFail, {
+        fx = game.fx,
+        font = game.font,
+        getTime = function() return game.time end,
+    })
     UI.SetRoot(root)
     TycoonHud.RefreshMain(game.tycoon)
 
@@ -541,6 +563,7 @@ function HandleUpdate(eventType, eventData)
 
     Sfx.Update(dt)
     Music.Update(dt)
+    Widgets.Tick(dt)
 
     -- 定期同步数据快照以供 SaveManager 自动本地/云端保存
     game.snapshotAccum = game.snapshotAccum + dt
@@ -566,6 +589,22 @@ function HandleUpdate(eventType, eventData)
         end
         local gdt = dt * (fx and fx:TimeScale() or 1)
         ty:Update(gdt)
+    end
+    -- 倍率追踪：增益出现时生成“×N”令牌飞向机台倍率招牌
+    if ty and fx then fx:TrackMult(ty) end
+
+    -- 自适应画质：持续 3 秒平均低于 45 帧则特效降为低档（粒子减半、去辉光晕圈）
+    if fx and fx.quality >= 1 then
+        game.frameAvg = (game.frameAvg or (1 / 60)) * 0.95 + dt * 0.05
+        if game.frameAvg > (1 / 45) then
+            game.slowT = (game.slowT or 0) + dt
+            if game.slowT > 3 then
+                fx:SetQuality(0.5)
+                print("[Fx] 平均帧时长 " .. string.format("%.1f", game.frameAvg * 1000) .. "ms，特效切换为低画质")
+            end
+        else
+            game.slowT = 0
+        end
     end
 
     if ty and Machine3D.IsActive() then

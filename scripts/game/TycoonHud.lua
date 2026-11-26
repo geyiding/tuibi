@@ -9,6 +9,7 @@ local Billionaires = require("game/Billionaires")
 local Skin = require("game/Skin")
 local Widgets = require("game/Widgets")
 local Number = require("game/Number")
+local JuiceWidgets = require("game/JuiceWidgets")
 
 local C, U = Skin.C, Skin.UI
 local NeoFrame, NeoButton, NeoIcon, NeoBar, AvatarIcon =
@@ -41,6 +42,7 @@ local st = {
     overtakeDur = 4.8,
     overtakeSticky = false,
     overtakeBounty = 0,
+    juice = nil,
 }
 
 local function SetLbl(lbl, txt)
@@ -135,12 +137,16 @@ local function BuildMainPage(stageWidget, cb)
         onClick = function() TycoonHud.OpenModal("ranks") end,
     })
 
-    r.lblCash = UI.Label { text = "¥0", fontSize = 17, fontWeight = "bold", fontColor = U.gold, maxLines = 1 }
-    r.lblCps = UI.Label { text = "¥3/秒", fontSize = 12, fontColor = U.cyan, maxLines = 1 }
-    local cashCol = UI.Column {
-        flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, gap = 0,
-        children = { r.lblCash, r.lblCps },
+    -- 滚动现金计数器（飞币砸中冲击 + 金光 + 每秒产值上涨绿闪）
+    local juice = st.juice or {}
+    r.cashCounter = JuiceWidgets.CashCounter {
+        flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 54,
+        getTycoon = function() return st.lastTycoon end,
+        getTime = juice.getTime,
+        fx = juice.fx,
+        font = juice.font,
     }
+    local cashCol = r.cashCounter
 
     local helpBtn = NeoButton {
         text = "?", style = "slot", width = 34, minWidth = 34, height = 34, minHeight = 34, paddingHorizontal = 0, fontSize = 16,
@@ -173,17 +179,10 @@ local function BuildMainPage(stageWidget, cb)
         children = { r.rankBar },
     })
 
-    r.lblMult = UI.Label { text = "x1.0", fontSize = 13, fontWeight = "bold", fontColor = U.magenta, maxLines = 1, textAlign = "center" }
-    local multPill = NeoFrame(Widgets.PressFx {
-        style = "slot", height = 28, minWidth = 54, paddingHorizontal = 6,
-        flexDirection = "row", justifyContent = "center", alignItems = "center",
-        children = { r.lblMult },
-        onClick = function() TycoonHud.OpenModal("formula") end,
-    })
-
+    -- 总倍率已移到机台顶棚的霓虹招牌（点击招牌查看公式），顶栏第二行只保留技能点 + 财富进度
     local row2 = UI.Row {
         width = "100%", height = 34, alignItems = "center", paddingHorizontal = 10, gap = 6,
-        children = { spPill, rankBarWrap, multPill },
+        children = { spPill, rankBarWrap },
     }
 
     local topPlate = NeoFrame {
@@ -812,8 +811,10 @@ end
 -- ----------------------------------------------------------------------------
 -- 对外构建与刷新接口
 -- ----------------------------------------------------------------------------
-function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal)
+--- juice = { fx = Fx 实例, getTime = function() return 游戏时间 end, font = 字体 }
+function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal, juice)
     st.cb = cb or {}
+    st.juice = juice
     st.modals = {}
     st.shown = {}
 
@@ -837,6 +838,14 @@ function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal)
         m:SetVisible(false)
         children[#children + 1] = m
     end
+    -- 顶层特效层（飞币 / 倍率令牌 / 印章 / 购买爆点），不拦截点击
+    if juice and juice.fx then
+        st.fxLayer = JuiceWidgets.FxLayer {
+            fx = juice.fx, font = juice.font,
+            isModalOpen = function() return st.curModal ~= nil end,
+        }
+        children[#children + 1] = st.fxLayer
+    end
 
     local safe = UI.SafeAreaView {
         width = "100%", height = "100%", nativeMenuInset = true, pointerEvents = "box-none",
@@ -851,6 +860,20 @@ end
 
 function TycoonHud.GetCurModal()
     return st.curModal
+end
+
+--- 当前弹窗主操作按钮的屏幕矩形（购买爆点特效定位用）
+function TycoonHud.GetActionRect()
+    local r = st.refs
+    local map = {
+        machine = r.machDetBtn, coins = r.coinDetBtn, tech = r.techDetBtn,
+        prestige = r.talDetBtn, welfare = r.adDetBtn,
+    }
+    local b = st.curModal and map[st.curModal]
+    if not b then return nil end
+    local l = b:GetAbsoluteLayout()
+    if not l or l.w <= 0 then return nil end
+    return l.x, l.y, l.w, l.h
 end
 
 function TycoonHud.OpenModal(name)
@@ -983,11 +1006,7 @@ function TycoonHud.RefreshMain(ty)
     local rkTxt = Number.FormatRankBadge(ty:GetWorldRank())
     if sh.rankNo ~= rkTxt then sh.rankNo = rkTxt; SetLbl(r.lblRankNo, rkTxt) end
 
-    local cashTxt = Number.FormatCash(ty.cash)
-    if sh.cash ~= cashTxt then sh.cash = cashTxt; SetLbl(r.lblCash, cashTxt) end
-
-    local cpsTxt = Number.FormatCash(ty:GetDisplayCPS()) .. "/秒"
-    if sh.cps ~= cpsTxt then sh.cps = cpsTxt; SetLbl(r.lblCps, cpsTxt) end
+    -- 现金 / 每秒产值由 CashCounter 每帧滚动绘制
 
     local spTxt = "技能点:" .. Number.FormatNum(ty.skillPoints or 0)
     if sh.spTxt ~= spTxt then sh.spTxt = spTxt; SetLbl(r.lblSp, spTxt) end
@@ -1012,8 +1031,6 @@ function TycoonHud.RefreshMain(ty)
         r.rankBar:SetProgress(barRatio, barTxt, barCol)
     end
 
-    local mTxt = "x" .. Number.FormatMul(ty:GetTotalMult())
-    if sh.mult ~= mTxt then sh.mult = mTxt; SetLbl(r.lblMult, mTxt) end
 
     local boostSec = ceil(ty.adBoostLeft or 0)
     local boostTxt = (boostSec > 0) and ("×3 " .. Number.FormatClock(boostSec)) or "×3印钞"
@@ -1037,12 +1054,16 @@ function TycoonHud.RefreshMain(ty)
     }
     for _, nm in ipairs(navMap) do
         local b = r.navBtns[nm.id]
-        local wantVar = (nm.n > 0) and nm.lit or "dark"
-        local wantTxt = (nm.n > 0)
-            and ((nm.id == "prestige") and "上市!" or (nm.base .. "·" .. tostring(min(99, nm.n))))
-            or nm.base
-        if sh.navVar[nm.id] ~= wantVar then sh.navVar[nm.id] = wantVar; b:SetVariant(wantVar) end
+        local lit = nm.n > 0
+        local wantVar = lit and nm.lit or "dark"
+        local wantTxt = (lit and nm.id == "prestige") and "上市!" or nm.base
+        if sh.navVar[nm.id] ~= wantVar then
+            sh.navVar[nm.id] = wantVar
+            b:SetVariant(wantVar)
+            b:SetShine(lit)
+        end
         if sh.navTxt[nm.id] ~= wantTxt then sh.navTxt[nm.id] = wantTxt; b:SetText(wantTxt) end
+        b:SetBadge(lit and nm.n or 0)
     end
 end
 
@@ -1287,7 +1308,7 @@ end
 function TycoonHud.RefreshFormula()
     local ty = st.lastTycoon
     if not ty then return end
-    local _, d = ty:GetTotalMult()
+    local _, d = ty:GetTotalMult(true)
     SetLbl(st.refs.formMultLbl, string.format(
         "机台全币：×%s   |   黑科技乘区：×%s\n传奇股+基因：×%s   |   连击加成：×%s\n狂欢时刻：×%s   |   幸运老虎机：×%s\n广告×3：×%s   |   合计总倍率：×%s\n下一技能点阈值：%s（可用 %s 点）",
         Number.FormatMul(d.machine), Number.FormatMul(d.tech),

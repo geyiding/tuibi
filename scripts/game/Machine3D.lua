@@ -56,6 +56,20 @@ local M = {
     lastTheme = -1,
     bulbLitMat = nil,
     bulbDimMat = nil,
+    -- 屏幕锚点（归一化 0..1，随相机变化刷新）
+    anc = {},
+    lastAspect = -1, lastSX = 0, lastSY = 0, lastFov = -1,
+    lastLightB = -1, lastLightKey = -1,
+    feverPhase = -1,
+}
+
+local ANCHOR_DEFS = {
+    marquee = { 0, 2.97, 1.32 },
+    chuteLip = { 0, -0.74, -1.96 },
+}
+local RAINBOW3 = {
+    { 1.0, 0.28, 0.38 }, { 1.0, 0.55, 0.16 }, { 1.0, 0.84, 0.25 }, { 0.47, 0.94, 0.35 },
+    { 0.22, 0.88, 1.0 }, { 0.43, 0.51, 1.0 }, { 0.77, 0.38, 1.0 }, { 1.0, 0.31, 0.77 },
 }
 
 -- 辅助：创建纯色 / 自发光 / 透明 PBR 材质（仅用合法内置 Technique）
@@ -142,8 +156,9 @@ local function SetMatEmissive(mat, rgb)
     end
 end
 
-local function ApplyThemeColors(themeIdx, boostOn, feverOn)
-    local themeKey = tostring(themeIdx) .. (boostOn and "B" or "") .. (feverOn and "F" or "")
+local function ApplyThemeColors(themeIdx, boostOn, feverOn, feverPhase)
+    -- 数值键（避免每帧拼接字符串）；狂欢时按相位循环彩虹霓虹
+    local themeKey = themeIdx * 100000 + (boostOn and 10000 or 0) + (feverOn and (1000 + (feverPhase or 0) % 8) or 0)
     if themeKey == M.lastThemeKey then return end
     M.lastThemeKey = themeKey
 
@@ -160,8 +175,9 @@ local function ApplyThemeColors(themeIdx, boostOn, feverOn)
     end
 
     if feverOn then
-        c1 = { 1.0, 0.25, 0.75 }
-        c2 = { 1.0, 0.86, 0.22 }
+        local ph = (feverPhase or 0) % 8
+        c1 = RAINBOW3[ph + 1]
+        c2 = RAINBOW3[((ph + 4) % 8) + 1]
     elseif boostOn then
         c2 = { 1.0, 0.86, 0.22 }
     end
@@ -401,6 +417,29 @@ local function UpdateFastProjPlanes()
     local d01 = p:WorldToScreenPoint(LogicToWorld3D(180 - S.DECK_BOT_HALF, S.DECK_BOT_Y, "deck", 0, false))
     local d11 = p:WorldToScreenPoint(LogicToWorld3D(180 + S.DECK_BOT_HALF, S.DECK_BOT_Y, "deck", 0, false))
     M.projDeck = { d00.x, d00.y, d10.x, d10.y, d01.x, d01.y, d11.x, d11.y }
+
+    -- HUD 锚点（倍率招牌挂在顶棚、滚轮/狂欢管/连击环贴着落币区）
+    local a = M.anc
+    a.slotTL = { s01.x, s01.y }
+    a.slotTR = { s11.x, s11.y }
+    local sb = p:WorldToScreenPoint(LogicToWorld3D(180, S.DECK_TOP_Y, "slot", 0, false))
+    a.slotBot = { sb.x, sb.y }
+    a.deckTL = { d00.x, d00.y }
+    a.deckTR = { d10.x, d10.y }
+    a.deckBL = { d01.x, d01.y }
+    a.deckBR = { d11.x, d11.y }
+    for name, v in pairs(ANCHOR_DEFS) do
+        local sp = p:WorldToScreenPoint(Vector3(v[1], v[2], v[3]))
+        a[name] = { sp.x, sp.y }
+    end
+end
+
+--- 取屏幕锚点（UI 坐标）；3D 未就绪时返回 nil
+function Machine3D.GetAnchor(name, uiW, uiH)
+    if not M.active then return nil end
+    local v = M.anc[name]
+    if not v then return nil end
+    return v[1] * uiW, v[2] * uiH
 end
 
 -- ----------------------------------------------------------------------------
@@ -499,7 +538,9 @@ function Machine3D.Init(tycoon)
     BuildCoinPool()
 
     M.lastTheme = -1
-    M.lastThemeKey = ""
+    M.lastThemeKey = -1
+    M.lastAspect = -1
+    M.lastFov = -1
     M.lastBulbPhase = -1
     M.lastGuarded = nil
     M.lastCamKey = ""
@@ -527,9 +568,13 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
     local aspect = max(0.42, w / max(1, h))
     local sx = fx and (fx.shakeX or 0) * 0.008 or 0
     local sy = fx and (fx.shakeY or 0) * 0.008 or 0
-    local camKey = string.format("%.3f:%.3f:%.3f", aspect, sx, sy)
-    if camKey ~= M.lastCamKey then
-        M.lastCamKey = camKey
+    -- 镜头冲击：大事件时 FOV 收缩，推近机台
+    local kick = fx and (fx.kick or 0) or 0
+    local fov = 45.0 - kick * kick * 4.5
+    if math.abs(aspect - M.lastAspect) > 0.0005 or math.abs(sx - M.lastSX) > 0.0005
+        or math.abs(sy - M.lastSY) > 0.0005 or math.abs(fov - M.lastFov) > 0.02 then
+        M.lastAspect, M.lastSX, M.lastSY, M.lastFov = aspect, sx, sy, fov
+        M.cam.fov = fov
         local target = Vector3(0, 0.74, 0.06)
         local dist = (aspect < 0.72) and min(10.2, 5.15 / aspect) or max(6.4, min(7.6, 5.5 / aspect))
         local dir = Vector3(0, -0.49, 0.87):Normalized()
@@ -539,10 +584,35 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
     end
 
     -- 2. 主题配色 & 背板贴图同步（仅变化时提交着色器参数）
-    ApplyThemeColors(themeIdx, boostOn, feverOn)
+    local tNow = timeSec or tycoon.clock or 0
+    ApplyThemeColors(themeIdx, boostOn, feverOn, floor(tNow * 8))
 
-    -- 3. 跑马灯珠波浪闪烁（仅相位跳转时更新材质）
-    local phase = floor((timeSec or tycoon.clock or 0) * (feverOn and 12 or 5))
+    -- 2.5 机台点光随大事件闪烁变色（仅变化时提交）
+    local pl = M.ptLights[1]
+    if pl then
+        local lf = fx and (fx.lightFlash or 0) or 0
+        local heat = fx and (fx.heat or 0) or 0
+        local bright = 1.65 + min(1.4, lf) * 2.2 + heat * 0.6
+        if math.abs(bright - M.lastLightB) > 0.03 then
+            M.lastLightB = bright
+            pl.brightness = bright
+        end
+        local lc = (lf > 0.05 and fx and fx.lightCol) or nil
+        local lkey = lc and (lc[1] * 65536 + lc[2] * 256 + lc[3]) or 0
+        if lkey ~= M.lastLightKey then
+            M.lastLightKey = lkey
+            if lc then
+                pl.color = Color(0.55 + lc[1] / 255 * 0.45, 0.55 + lc[2] / 255 * 0.45, 0.55 + lc[3] / 255 * 0.45)
+            else
+                M.lastThemeKey = -1 -- 交给主题色恢复
+                ApplyThemeColors(themeIdx, boostOn, feverOn, floor(tNow * 8))
+            end
+        end
+    end
+
+    -- 3. 跑马灯珠波浪闪烁（热度越高追逐越快；仅相位跳转时更新材质）
+    local heatRate = fx and (fx.heat or 0) * 14 or 0
+    local phase = floor(tNow * ((feverOn and 12 or 5) + heatRate))
     if phase ~= M.lastBulbPhase then
         M.lastBulbPhase = phase
         for _, b in ipairs(M.bulbs) do

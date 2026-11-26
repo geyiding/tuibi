@@ -12,6 +12,16 @@ local Number = require("game/Number")
 
 local Widgets = {}
 local C, U = Skin.C, Skin.UI
+
+-- 全局动画时钟（main.lua 每帧 Widgets.Tick(dt) 推进；用于按钮流光等常驻动效）
+Widgets.time = 0
+function Widgets.Tick(dt)
+    Widgets.time = Widgets.time + (dt or 0)
+end
+
+local BADGE_RED = { 255, 58, 82 }
+local BADGE_EDGE = { 255, 236, 240 }
+local SHINE = { 255, 255, 255 }
 local floor, min, max = math.floor, math.min, math.max
 
 local function PickWidget(a, b)
@@ -219,6 +229,63 @@ function NeoButton:SetVariant(v)
                 self:SetStyle({ backgroundImage = tex.image, backgroundFit = "sliced", backgroundSlice = tex.slice })
             end
         end
+    end
+end
+
+--- 右上角红点数字（0 隐藏）
+function NeoButton:SetBadge(n)
+    n = math.floor(tonumber(n) or 0)
+    if n == self.badge_ then return end
+    self.badge_ = n
+    self.badgeTxt_ = (n > 99) and "99+" or tostring(n)
+end
+
+--- 常驻流光（可购买 / 可领取时提示“快点我”）
+function NeoButton:SetShine(on)
+    self.shine_ = (on == true)
+    if self.shine_ and not self.shinePh_ then self.shinePh_ = math.random() * 1.6 end
+end
+
+function NeoButton:Render(nvg)
+    NeoFrame.Render(self, nvg)
+    local hasBadge = (self.badge_ or 0) > 0
+    if not self.shine_ and not hasBadge then return end
+    local l = self:GetAbsoluteLayout()
+    if l.w <= 0 or l.h <= 0 then return end
+    if self.shine_ and not self.skin_.disabled then
+        local ph = (Widgets.time * 0.7 + (self.shinePh_ or 0)) % 1.6
+        if ph < 1 then
+            local x = l.x - l.w * 0.3 + l.w * 1.6 * ph
+            local bw = max(10, l.w * 0.16)
+            nvgSave(nvg)
+            nvgIntersectScissor(nvg, l.x + 2, l.y + 2, l.w - 4, l.h - 4)
+            nvgBeginPath(nvg)
+            nvgMoveTo(nvg, x, l.y)
+            nvgLineTo(nvg, x + bw, l.y)
+            nvgLineTo(nvg, x + bw - l.h * 0.5, l.y + l.h)
+            nvgLineTo(nvg, x - l.h * 0.5, l.y + l.h)
+            nvgClosePath(nvg)
+            nvgFillColor(nvg, Skin.Col(SHINE, 85))
+            nvgFill(nvg)
+            nvgRestore(nvg)
+        end
+    end
+    if hasBadge then
+        local r = 9
+        local bx, by = l.x + l.w - r - 1, l.y + r + 1
+        local pulse = 1 + 0.08 * math.sin(Widgets.time * 6)
+        nvgBeginPath(nvg)
+        nvgCircle(nvg, bx, by, r * pulse)
+        nvgFillColor(nvg, Skin.Col(BADGE_RED, 255))
+        nvgFill(nvg)
+        nvgStrokeColor(nvg, Skin.Col(BADGE_EDGE, 255))
+        nvgStrokeWidth(nvg, 1.5)
+        nvgStroke(nvg)
+        nvgFontFace(nvg, "sans")
+        nvgFontSize(nvg, (#self.badgeTxt_ >= 3) and 9 or 11)
+        nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(nvg, Skin.Col(C.white, 255))
+        nvgText(nvg, bx, by + 0.5, self.badgeTxt_)
     end
 end
 

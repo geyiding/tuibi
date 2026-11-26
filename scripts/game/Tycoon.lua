@@ -177,6 +177,9 @@ function Tycoon:GetCoinUnitValue(kind, lvOverride)
 end
 
 function Tycoon:GetAvgUnlockedCoinValue()
+    -- 帧内缓存（撞钉 / 闪电每次结算都会调用，避免反复建表）
+    local cached = self._avgVal
+    if cached then return cached end
     local list = self:GetUnlockedCoins()
     local topN = min(5, #list)
     local sum = 0
@@ -184,26 +187,51 @@ function Tycoon:GetAvgUnlockedCoinValue()
         local cid = list[i]
         sum = sum + self:GetCoinUnitValue(cid, self.coinLv[cid])
     end
-    return max(2.5, sum / max(1, topN))
+    cached = max(2.5, sum / max(1, topN))
+    self._avgVal = cached
+    return cached
 end
 
 function Tycoon:GetShareMult()
     return 1 + (self.prestigeShares or 0) * 0.09
 end
 
-function Tycoon:GetTotalMult()
+--- 永久乘区（机台印钞 × 黑科技 × 传奇股/黄金基因），帧内缓存
+function Tycoon:GetPermParts()
     local machine = pow(1.24, self.machineLv.global_mult or 0)
     local tech = 1.0
     for _, t in ipairs(Config.TECH_UPGRADES) do
         if self.techOwned[t.id] then tech = tech * t.mult end
     end
     local prestige = self:GetShareMult() * pow(1.28, self.prestigeLv.golden_dna or 0)
+    return machine, tech, prestige
+end
+
+function Tycoon:GetPermMult()
+    local cached = self._permMult
+    if cached then return cached end
+    local m, t, p = self:GetPermParts()
+    cached = m * t * p
+    self._permMult = cached
+    return cached
+end
+
+--- 购买 / 读档后立刻作废帧内缓存
+function Tycoon:InvalidateCaches()
+    self._permMult = nil
+    self._avgVal = nil
+end
+
+--- 总倍率；wantBreakdown 为 true 时额外返回分项表（仅 UI 公式页使用，避免每次结算建表）
+function Tycoon:GetTotalMult(wantBreakdown)
     local comboFactor = self:HasTech("metronome") and 0.012 or 0.008
     local comboM = 1 + min(100, self.combo) * comboFactor
     local feverM = self.feverActive and 2.2 or 1.0
     local adM = (self.adBoostLeft > 0) and 3.0 or 1.0
     local luckM = max(1, self.luckMult or 1)
-    local total = machine * tech * prestige * comboM * feverM * adM * luckM
+    local total = self:GetPermMult() * comboM * feverM * adM * luckM
+    if not wantBreakdown then return total end
+    local machine, tech, prestige = self:GetPermParts()
     return total, {
         total = total,
         machine = machine,
@@ -229,11 +257,20 @@ function Tycoon:GetEstimatedCPS()
     return rate * self:GetAvgUnlockedCoinValue() * mult * 0.92
 end
 
+--- 不含临时加成（连击/狂欢/老虎机/印钞）的基准产值：飘字分级参照，倍率越高字越大越炸
+function Tycoon:GetBaselineCPS()
+    local base = 0.95 + (self.machineLv.auto_rate or 0) * 0.18
+    local perp = 1 + (self.prestigeLv.perpetual or 0) * 0.14
+    local rate = min(12.0, base * perp) * (1 + min(0.75, (self.machineLv.multi_shot or 0) * 0.05))
+    return rate * self:GetAvgUnlockedCoinValue() * self:GetPermMult() * 0.92
+end
+
 function Tycoon:GetDisplayCPS()
     return max(self.cashPerSec, self:GetEstimatedCPS())
 end
 
 function Tycoon:SyncPhysicsMods()
+    self:InvalidateCaches()
     local phys = self.physics
     if not phys then return end
     local perp = 1 + (self.prestigeLv.perpetual or 0) * 0.14
@@ -454,7 +491,7 @@ function Tycoon:AwardCash(baseVal, x, y, sourceTag, canCrit, extraMul)
     local dmg = max(1, floor(baseVal * mult + 0.5))
     if dmg > self.bestHit then self.bestHit = dmg end
     self:AddWealth(dmg, true)
-    Emit(self.fx, "OnScore", dmg, x, y, crit, self.combo, sourceTag, self:GetDisplayCPS())
+    Emit(self.fx, "OnScore", dmg, x, y, crit, self.combo, sourceTag, self:GetBaselineCPS(), mult)
     return dmg, crit
 end
 
@@ -897,6 +934,7 @@ function Tycoon:BuyCoin(id)
     self.skillPoints = self.skillPoints - cost
     local isUnlock = (cur == 0)
     self.coinLv[id] = cur + 1
+    self:InvalidateCaches()
 
     -- 刚解锁或升星时立刻空投3枚对应炫酷硬币上台！
     for k = 1, 3 do
@@ -975,6 +1013,7 @@ function Tycoon:DoCapitalIPO(isDoubleAd)
     end
     local bonusSp = r.bonusSp or 0
     self.prestigeShares = self.prestigeShares + shares
+    self:InvalidateCaches()
     self.skillPoints = self.skillPoints + bonusSp
     self.totalSkillPoints = self.totalSkillPoints + bonusSp
     Emit(self.fx, "OnPrestige", shares, bonusSp, r.name)
@@ -1075,6 +1114,7 @@ function Tycoon:ClaimRedeemCode(rawCode, redeemedMap)
     end
     if def.shares then
         self.prestigeShares = self.prestigeShares + def.shares
+        self:InvalidateCaches()
     end
     if def.boostSec then
         self.adBoostLeft = min(900, self.adBoostLeft + def.boostSec)
@@ -1148,6 +1188,8 @@ end
 function Tycoon:Update(dt)
     dt = min(0.05, max(0, dt or 0))
     self.clock = self.clock + dt
+    self._permMult = nil
+    self._avgVal = nil
     if self.manualCd > 0 then self.manualCd = max(0, self.manualCd - dt) end
 
     -- 广告冷却与×3倒计时
