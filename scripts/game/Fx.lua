@@ -16,10 +16,10 @@ local C = Skin.C
 local Fx = {}
 Fx.__index = Fx
 
-local MAX_PARTICLES = 320
-local MAX_RINGS = 32
-local MAX_BOLTS = 24
-local MAX_POPS = 96
+local MAX_PARTICLES = 72
+local MAX_RINGS = 12
+local MAX_BOLTS = 10
+local MAX_POPS = 24
 local MAX_BANNERS = 1
 
 -- 飘字颜色分级（白 → 霓虹青 → 黄金 → 烈焰橙红 → 霓虹紫）
@@ -44,6 +44,7 @@ function Fx.New()
     self.flashCol = C.gold
     self.feverGlow = 0
     self.comboPop = 0
+    self.activePopCount = 0
     self.banner = { t = 0, dur = 0, text = "", col = C.gold }
 
     -- 粒子池 (SoA)
@@ -202,8 +203,8 @@ function Fx:OnCoinLandDeck(coin)
 end
 
 function Fx:OnScore(dmg, x, y, crit, combo, tag, refCps)
-    if tag == "peg" and dmg < max(35, (refCps or 12) * 0.04) then
-        if random() < 0.25 then
+    if tag == "peg" and (self.activePopCount >= 10 or dmg < max(35, (refCps or 12) * 0.05)) then
+        if self.activePopCount < 8 and random() < 0.25 then
             self:SpawnPopup(x, y, "+¥" .. Number.FormatNum(dmg), 1, false)
         end
         return
@@ -217,9 +218,32 @@ function Fx:OnScore(dmg, x, y, crit, combo, tag, refCps)
     end
 end
 
+function Fx:OnSlotWin(prize)
+    if not prize then return end
+    if prize.mult and prize.mult > 1 then
+        self:ShowBanner(prize.label or ("幸运倍率 ×" .. tostring(prize.mult)), prize.col or C.gold, (prize.mult >= 10) and 2.2 or 1.6)
+        self:SpawnBurst(180, 210, (prize.mult >= 25) and 22 or 12, prize.col or C.gold, 200, 3.6)
+        if prize.mult >= 10 then
+            self.flashA = max(self.flashA, (prize.mult >= 50) and 125 or 85)
+            self.flashCol = prize.col or C.gold
+            self.trauma = min(1, self.trauma + ((prize.mult >= 50) and 0.45 or 0.24))
+        end
+    end
+end
+
+function Fx:OnSkillPointsGain(gained)
+    if not gained or gained <= 0 then return end
+    self:SpawnPopup(180, 96, "+" .. tostring(gained) .. " 技能点!", 2, false)
+end
+
 function Fx:OnRankUp(rank, themeChanged, info)
-    local noStr = rank.rank and ("No." .. tostring(rank.rank) .. " ") or ""
-    local msg = themeChanged and ("超越 " .. noStr .. rank.name .. " · 新机台解锁!") or ("超越 " .. noStr .. rank.name .. "!")
+    local head
+    if rank.isRealName then
+        head = "超越世界 No." .. tostring(rank.rank) .. " " .. rank.name
+    else
+        head = "冲入" .. (rank.name or ("全球前" .. Number.FormatWorldRank(rank.rank)))
+    end
+    local msg = themeChanged and (head .. " · 新机台解锁!") or (head .. "!")
     self:ShowBanner(msg, C.gold, 2.2)
     self:SpawnBurst(180, 260, 36, C.gold, 250, 4.6)
     self:SpawnBurst(180, 180, 24, C.magenta, 210, 4.0)
@@ -237,12 +261,13 @@ function Fx:OnUnlockCoin(def)
     self.flashCol = C.cyan
 end
 
-function Fx:OnPrestige(shares)
-    self:ShowBanner("IPO 上市成功! +" .. Number.FormatNum(shares) .. "股", C.magenta, 2.2)
-    self:SpawnBurst(180, 280, 36, C.magenta, 250, 4.5)
-    self.flashA = 140
+function Fx:OnPrestige(shares, bonusSp, roundName)
+    local spTxt = (bonusSp and bonusSp > 0) and (" +" .. tostring(bonusSp) .. "技能点") or ""
+    self:ShowBanner((roundName or "敲钟上市!") .. " +" .. Number.FormatNum(shares) .. "股" .. spTxt, C.magenta, 2.2)
+    self:SpawnBurst(180, 280, 24, C.magenta, 230, 4.2)
+    self.flashA = 135
     self.flashCol = C.gold
-    self.trauma = 0.6
+    self.trauma = 0.55
 end
 
 function Fx:OnAdReward(msg)
@@ -360,6 +385,7 @@ function Fx:Update(dt)
         if b.life > 0 then b.life = max(0, b.life - dt) end
     end
 
+    local activePop = 0
     for i = 1, MAX_POPS do
         local p = self.pops[i]
         if p.life > 0 then
@@ -368,8 +394,10 @@ function Fx:Update(dt)
             p.y = p.y + p.vy * dt
             p.vy = p.vy * (1 - 1.8 * dt)
             if p.scale > 1.0 then p.scale = max(1.0, p.scale - dt * 2.2) end
+            if p.life > 0 then activePop = activePop + 1 end
         end
     end
+    self.activePopCount = activePop
 end
 
 function Fx:RenderWorld(nvg, font, projectFn)
@@ -436,7 +464,7 @@ function Fx:RenderWorld(nvg, font, projectFn)
         end
     end
 
-    -- 满屏描边飘字
+    -- 轻量化阴影 + 主字飘字（每条仅 2 次 Text 绘制，降低 60% 文本 Pass）
     nvgFontFace(nvg, font or "sans")
     nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     for i = 1, MAX_POPS do
@@ -446,13 +474,8 @@ function Fx:RenderWorld(nvg, font, projectFn)
             local f = min(1, (p.life / p.max) * 1.45)
             local a = floor(255 * f)
             nvgFontSize(nvg, floor(p.size * p.scale))
-            -- 描边阴影层
             nvgFillColor(nvg, Col(OUTLINE_COL, a))
-            nvgText(nvg, px - 1.5, py, p.text)
-            nvgText(nvg, px + 1.5, py, p.text)
-            nvgText(nvg, px, py - 1.5, p.text)
-            nvgText(nvg, px, py + 1.5, p.text)
-            -- 主字层
+            nvgText(nvg, px + 1.5, py + 1.5, p.text)
             nvgFillColor(nvg, Col(p.col, a))
             nvgText(nvg, px, py, p.text)
         end

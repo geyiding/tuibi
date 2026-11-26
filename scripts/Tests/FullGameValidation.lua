@@ -58,7 +58,8 @@ function Start()
 
     -- 2.5 测试富豪超越即时漫画头像弹窗边界与正常收下
     local Config = require("game/Config")
-    TycoonHud.ShowOvertake(Config.RANKS[100], { jumped = 1, bounty = Config.RANKS[100].bounty, wealthNow = Config.RANKS[100].target })
+    local topRank = Config.RANKS[#Config.RANKS]
+    TycoonHud.ShowOvertake(topRank, { jumped = 1, bounty = topRank.bounty, wealthNow = topRank.target })
     UI.Layout()
     TycoonHud.DismissOvertake()
 
@@ -80,10 +81,12 @@ function Start()
     assert(ty.cash == afterFirst, "重复兑换码不可再次发奖")
     cb.OnCloseSettings()
 
-    -- 5. 验证 IPO 转生与重置重推
-    ty.runCash = 2500000
-    local gained = ty:DoPrestige(false)
-    assert(gained > 0 and ty.prestigeShares >= gained, "IPO 转生必须获得传奇股")
+    -- 5. 验证 IPO 资本上市与推进重推
+    ty.lifetimeCash = math.max(ty.lifetimeCash, 2500000)
+    ty.cash = ty.lifetimeCash
+    ty.runCash = ty.lifetimeCash
+    local gained, bonusSp = ty:DoPrestige(false)
+    assert(gained > 0 and ty.prestigeShares >= gained and (bonusSp or 0) >= 0, "IPO 上市必须获得传奇股")
     for _ = 1, 60 do
         game.time = game.time + (1 / 60)
         game.fx:Update(1 / 60)

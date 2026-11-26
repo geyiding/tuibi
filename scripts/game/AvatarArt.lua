@@ -271,6 +271,75 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
         nvgFill(nvg)
     end
 
+    -- 2.5 全球前1000名外匿名财富阶层：神秘剪影徽章（绝不显示真人五官与名字）
+    if av.anonymous == true then
+        -- 剪影肩部
+        nvgBeginPath(nvg)
+        nvgMoveTo(nvg, cx - r * 0.62, cy + r * 0.60)
+        nvgBezierTo(nvg, cx - r * 0.44, cy + r * 0.24, cx + r * 0.44, cy + r * 0.24, cx + r * 0.62, cy + r * 0.60)
+        nvgBezierTo(nvg, cx + r * 0.40, cy + r * 0.90, cx - r * 0.40, cy + r * 0.90, cx - r * 0.62, cy + r * 0.60)
+        nvgClosePath(nvg)
+        nvgFillColor(nvg, Col({ 18, 24, 44 }, 235))
+        nvgFill(nvg)
+        nvgStrokeColor(nvg, Col(tierCol, 220))
+        nvgStrokeWidth(nvg, max(1.3, r * 0.055))
+        nvgStroke(nvg)
+
+        -- 剪影头部
+        nvgBeginPath(nvg)
+        nvgCircle(nvg, cx, cy - r * 0.14, r * 0.28)
+        nvgFillColor(nvg, Col({ 22, 30, 52 }, 245))
+        nvgFill(nvg)
+        nvgStrokeColor(nvg, Col(tierCol, 235))
+        nvgStrokeWidth(nvg, max(1.4, r * 0.06))
+        nvgStroke(nvg)
+
+        -- 胸前低调闪耀标志（"?" 神秘富豪剪影标识）
+        nvgFontFace(nvg, "sans")
+        nvgFontSize(nvg, max(10, r * 0.34))
+        nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(nvg, Col(tierCol, 240))
+        nvgText(nvg, cx, cy - r * 0.13, "?")
+
+        -- 外圈边框
+        nvgBeginPath(nvg)
+        nvgCircle(nvg, cx, cy, r)
+        nvgStrokeColor(nvg, Col(shocked and C.gold or tierCol, 245))
+        nvgStrokeWidth(nvg, max(2.0, r * 0.10))
+        nvgStroke(nvg)
+        nvgBeginPath(nvg)
+        nvgCircle(nvg, cx, cy, r * 0.94)
+        nvgStrokeColor(nvg, Col(C.white, 115))
+        nvgStrokeWidth(nvg, max(0.8, r * 0.03))
+        nvgStroke(nvg)
+
+        if r >= 20 and av.prop then
+            DrawPropBadge(nvg, av.prop, cx + r * 0.68, cy + r * 0.68, r * 0.34, tierCol)
+        end
+        if surpassed and r >= 22 then
+            nvgSave(nvg)
+            nvgTranslate(nvg, cx + r * 0.42, cy - r * 0.56)
+            nvgRotate(nvg, -0.26)
+            local bw, bh = r * 0.92, max(12, r * 0.36)
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, -bw * 0.5, -bh * 0.5, bw, bh, 3)
+            nvgFillColor(nvg, Col({ 22, 112, 136 }, 235))
+            nvgFill(nvg)
+            nvgStrokeColor(nvg, Col(C.cyan, 245))
+            nvgStrokeWidth(nvg, 1.3)
+            nvgStroke(nvg)
+            nvgFontFace(nvg, "sans")
+            nvgFontSize(nvg, max(8, bh * 0.62))
+            nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            nvgFillColor(nvg, Col(C.white, 255))
+            nvgText(nvg, 0, 0.5, "已突破")
+            nvgRestore(nvg)
+        end
+
+        nvgRestore(nvg)
+        return
+    end
+
     -- 3. 肩部与个性服饰（严格贴合圆底弧面）
     local shY = cy + r * 0.46
     nvgBeginPath(nvg)

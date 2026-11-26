@@ -45,6 +45,13 @@ local M = {
     bulbs = {},
     pegNodes = {},
     pegSig = "",
+    lastPegVer = -1,
+    lastThemeKey = "",
+    lastBulbPhase = -1,
+    lastGuarded = nil,
+    lastCamKey = "",
+    projSlot = nil,
+    projDeck = nil,
     coinPool = {},
     lastTheme = -1,
     bulbLitMat = nil,
@@ -83,7 +90,7 @@ local function MakeTexturedUnlit(texPath, isAlpha, tintCol)
     return mat
 end
 
-local function AddPart(parent, name, model, mat, pos, scale, rot, castShadows)
+local function AddPart(parent, name, model, mat, pos, scale, rot)
     local n = parent:CreateChild(name)
     if pos then n.position = pos end
     if scale then n.scale = scale end
@@ -91,7 +98,7 @@ local function AddPart(parent, name, model, mat, pos, scale, rot, castShadows)
     local sm = n:CreateComponent("StaticModel")
     sm:SetModel(model)
     if mat then sm:SetMaterial(mat) end
-    sm.castShadows = (castShadows ~= false)
+    sm.castShadows = false
     return n, sm
 end
 
@@ -136,6 +143,10 @@ local function SetMatEmissive(mat, rgb)
 end
 
 local function ApplyThemeColors(themeIdx, boostOn, feverOn)
+    local themeKey = tostring(themeIdx) .. (boostOn and "B" or "") .. (feverOn and "F" or "")
+    if themeKey == M.lastThemeKey then return end
+    M.lastThemeKey = themeKey
+
     local c1, c2
     if themeIdx == 2 then
         c1 = { 1.0, 0.72, 0.16 }
@@ -163,9 +174,7 @@ local function ApplyThemeColors(themeIdx, boostOn, feverOn)
     SetMatEmissive(M.pusherNeonMat, { c2[1] * pulse, c2[2] * pulse, c2[3] * pulse })
     SetMatColor(M.pusherNeonMat, c2, 1.0)
 
-    if M.ptLights[1] then M.ptLights[1].color = Color(c1[1], c1[2], c1[3]) end
-    if M.ptLights[2] then M.ptLights[2].color = Color(c2[1], c2[2], c2[3]) end
-    if M.ptLights[3] then M.ptLights[3].color = Color(1.0, 0.84, 0.35) end
+    if M.ptLights[1] then M.ptLights[1].color = Color(c2[1] * 0.4 + 0.6, c2[2] * 0.4 + 0.5, c2[3] * 0.4 + 0.5) end
 
     if themeIdx ~= M.lastTheme then
         M.lastTheme = themeIdx
@@ -326,27 +335,26 @@ local function BuildAnimatedMechanisms()
 end
 
 local function BuildCoinPool()
-    local cyl, torus, plane = M.models.cyl, M.models.torus, M.models.plane
+    local cyl, plane = M.models.cyl, M.models.plane
     local initMats = GetCoinMaterials("gold")
     M.coinPool = {}
     for i = 1, S.MAX_COINS do
         local n = M.scene:CreateChild("Coin3D_" .. i)
-        local _, rimSm   = AddPart(n, "Rim",   cyl,   initMats.rim,  Vector3(0, 0, 0),      Vector3(1.0, 0.24, 1.0), nil, true)
-        local _, bevelSm = AddPart(n, "Bevel", torus, initMats.rim,  Vector3(0, 0.095, 0),  Vector3(0.77, 0.28, 0.77), nil, false)
-        local _, faceSm  = AddPart(n, "Face",  plane, initMats.face, Vector3(0, 0.125, 0),  Vector3(0.88, 1.0, 0.88), nil, false)
+        local _, rimSm  = AddPart(n, "Rim",  cyl,   initMats.rim,  Vector3(0, 0, 0),     Vector3(1.0, 0.24, 1.0))
+        local _, faceSm = AddPart(n, "Face", plane, initMats.face, Vector3(0, 0.125, 0), Vector3(0.90, 1.0, 0.90))
         n:SetDeepEnabled(false)
-        M.coinPool[i] = { node = n, rim = rimSm, bevel = bevelSm, face = faceSm, lastKind = "gold", enabled = false }
+        M.coinPool[i] = {
+            node = n, rim = rimSm, face = faceSm, lastKind = "gold", enabled = false,
+            lastDia = -1, lastZone = "", lastOnPusher = nil, lastX = -9999, lastY = -9999, lastZ = -9999, lastRot = -999,
+        }
     end
 end
 
 local function SyncPegs3D(phys)
     local pegs = phys.pegs or {}
-    local sigParts = { tostring(#pegs) }
-    for i = 1, #pegs do sigParts[#sigParts + 1] = pegs[i].kind end
-    local sig = table.concat(sigParts, ",")
-
-    if sig ~= M.pegSig then
-        M.pegSig = sig
+    local pegVer = phys.pegVersion or 0
+    if pegVer ~= M.lastPegVer then
+        M.lastPegVer = pegVer
         for _, pn in ipairs(M.pegNodes) do
             pn.node:Remove()
         end
@@ -356,9 +364,9 @@ local function SyncPegs3D(phys)
             local p = pegs[i]
             local pn = M.scene:CreateChild("Peg_" .. i)
             pn.position = LogicToWorld3D(p.x, p.y, "slot", 0, false)
-            AddPart(pn, "Stem", cyl, M.mats.chrome, Vector3(0, 0, 0.06), Vector3(0.06, 0.18, 0.06), Quaternion(90, Vector3.RIGHT), false)
-            local head = AddPart(pn, "Head", sphere, GetPegMat(p.kind), Vector3(0, 0, -0.04), Vector3(0.112, 0.112, 0.076), nil, true)
-            M.pegNodes[i] = { node = pn, head = head }
+            AddPart(pn, "Stem", cyl, M.mats.chrome, Vector3(0, 0, 0.06), Vector3(0.06, 0.18, 0.06), Quaternion(90, Vector3.RIGHT))
+            local head = AddPart(pn, "Head", sphere, GetPegMat(p.kind), Vector3(0, 0, -0.04), Vector3(0.112, 0.112, 0.076))
+            M.pegNodes[i] = { node = pn, head = head, flashDirty = false }
         end
     end
 
@@ -366,10 +374,33 @@ local function SyncPegs3D(phys)
         local p = pegs[i]
         local rec = M.pegNodes[i]
         if rec then
-            local sc = 0.112 * (1.0 + (p.flash or 0) * 0.45)
-            rec.head.scale = Vector3(sc, sc, sc * 0.68)
+            local fl = p.flash or 0
+            if fl > 0.01 then
+                local sc = 0.112 * (1.0 + fl * 0.45)
+                rec.head.scale = Vector3(sc, sc, sc * 0.68)
+                rec.flashDirty = true
+            elseif rec.flashDirty then
+                rec.head.scale = Vector3(0.112, 0.112, 0.076)
+                rec.flashDirty = false
+            end
         end
     end
+end
+
+local function UpdateFastProjPlanes()
+    if not M.cam then return end
+    local p = M.cam
+    local s00 = p:WorldToScreenPoint(LogicToWorld3D(56,  S.DECK_TOP_Y, "slot", 0, false))
+    local s10 = p:WorldToScreenPoint(LogicToWorld3D(304, S.DECK_TOP_Y, "slot", 0, false))
+    local s01 = p:WorldToScreenPoint(LogicToWorld3D(56,  S.SLOT_TOP,   "slot", 0, false))
+    local s11 = p:WorldToScreenPoint(LogicToWorld3D(304, S.SLOT_TOP,   "slot", 0, false))
+    M.projSlot = { s00.x, s00.y, s10.x, s10.y, s01.x, s01.y, s11.x, s11.y }
+
+    local d00 = p:WorldToScreenPoint(LogicToWorld3D(180 - S.DECK_TOP_HALF, S.DECK_TOP_Y, "deck", 0, false))
+    local d10 = p:WorldToScreenPoint(LogicToWorld3D(180 + S.DECK_TOP_HALF, S.DECK_TOP_Y, "deck", 0, false))
+    local d01 = p:WorldToScreenPoint(LogicToWorld3D(180 - S.DECK_BOT_HALF, S.DECK_BOT_Y, "deck", 0, false))
+    local d11 = p:WorldToScreenPoint(LogicToWorld3D(180 + S.DECK_BOT_HALF, S.DECK_BOT_Y, "deck", 0, false))
+    M.projDeck = { d00.x, d00.y, d10.x, d10.y, d01.x, d01.y, d11.x, d11.y }
 end
 
 -- ----------------------------------------------------------------------------
@@ -385,55 +416,55 @@ function Machine3D.Init(tycoon)
     local cyl    = cache:GetResource("Model", "Models/Cylinder.mdl")
     local sphere = cache:GetResource("Model", "Models/Sphere.mdl")
     local plane  = cache:GetResource("Model", "Models/Plane.mdl")
-    local torus  = cache:GetResource("Model", "Models/Torus.mdl")
-    if not (box and cyl and sphere and plane and torus) then
+    if not (box and cyl and sphere and plane) then
         return false
     end
-    M.models = { box = box, cyl = cyl, sphere = sphere, plane = plane, torus = torus }
+    M.models = { box = box, cyl = cyl, sphere = sphere, plane = plane }
 
     local scene = Scene()
     scene:CreateComponent("Octree")
     M.scene = scene
 
-    -- 自建纯净暗色霓虹 Zone（纯色环境光，避免缺失环境贴图报错与过曝泛白）
+    -- 轻量暗色霓虹 Zone（关闭 SSAO / BloomUE / 雾效等高开销后处理，大幅提升电脑/手机帧率）
     local zoneNode = scene:CreateChild("ArcadeZone")
     local zone = zoneNode:CreateComponent("Zone")
     zone.boundingBox = BoundingBox(Vector3(-200, -200, -200), Vector3(200, 200, 200))
     zone.ambientSource = AMBIENT_COLOR
-    zone.ambientColor = Color(0.28, 0.32, 0.46)
+    zone.ambientColor = Color(0.32, 0.36, 0.50)
     zone.ambientIntensity = 1.0
-    zone.fogColor = Color(0.04, 0.05, 0.11)
-    zone.depthFogStart = 20.0
-    zone.depthFogEnd = 75.0
     zone.vignetteEnabled = false
     zone.autoExposureEnabled = false
-    zone.bloomMode = BLOOM_MODE_UE
-    zone.bloomUEIntensity = 0.26
-    zone.bloomUEThreshold = 1.15
+    zone.ssaoIntensity = 0
+    zone.bloomMode = BLOOM_MODE_LEGACY
+    zone.bloomWeight = 0
+    zone.bloomPlusEnabled = false
+    zone.bloomUEIntensity = 0
+    zone.ssrEnabled = false
+    zone.ssgiEnabled = false
+    zone.motionBlurEnabled = false
+    zone.volumetricFogEnabled = false
+    zone.depthFogEnable = false
     M.zone = zone
 
-    -- 主高光方向光 + 3 盏街机气氛点光
+    -- 主方向光 + 1 盏前置高光点光（无实时阴影，大幅减少 Pass 数）
     local dlNode = scene:CreateChild("MainLight")
     dlNode.direction = Vector3(0.22, -0.84, 0.49):Normalized()
     local dl = dlNode:CreateComponent("Light")
     dl.lightType = LIGHT_DIRECTIONAL
     dl.color = Color(1.0, 0.96, 0.90)
-    dl.brightness = 1.65
-    dl.castShadows = true
+    dl.brightness = 1.85
+    dl.castShadows = false
     M.dirLight = dl
 
     M.ptLights = {}
-    local ptPos = { Vector3(-1.85, 1.95, -0.15), Vector3(1.85, 1.95, -0.15), Vector3(0.0, 0.95, -2.15) }
-    for idx, pos in ipairs(ptPos) do
-        local plNode = scene:CreateChild("ArcadeLight_" .. idx)
-        plNode.position = pos
-        local pl = plNode:CreateComponent("Light")
-        pl.lightType = LIGHT_POINT
-        pl.brightness = (idx == 3) and 1.55 or 1.25
-        pl.range = 10.0
-        pl.castShadows = false
-        M.ptLights[idx] = pl
-    end
+    local plNode = scene:CreateChild("ArcadeLight_1")
+    plNode.position = Vector3(0.0, 1.35, -1.65)
+    local pl = plNode:CreateComponent("Light")
+    pl.lightType = LIGHT_POINT
+    pl.brightness = 1.65
+    pl.range = 10.0
+    pl.castShadows = false
+    M.ptLights[1] = pl
 
     -- 相机与 Viewport(0)
     local camNode = scene:CreateChild("Camera3D")
@@ -468,9 +499,14 @@ function Machine3D.Init(tycoon)
     BuildCoinPool()
 
     M.lastTheme = -1
+    M.lastThemeKey = ""
+    M.lastBulbPhase = -1
+    M.lastGuarded = nil
+    M.lastCamKey = ""
+    M.lastPegVer = -1
     M.active = true
     Machine3D.Update(0, tycoon, nil)
-    print("[Machine3D] 3D PBR coin-pusher ready")
+    print("[Machine3D] 3D PBR coin-pusher ready (optimized)")
     return true
 end
 
@@ -485,39 +521,50 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
     local boostOn = (tycoon.adBoostLeft or 0) > 0
     local feverOn = (tycoon.feverActive == true)
 
-    -- 1. 屏幕宽高自适应相机距离，确保竖屏手机左右霓虹立柱与前沿完整入框不裁切
+    -- 1. 屏幕宽高自适应相机距离（仅参数变化时更新节点矩阵并刷新平面快速投影表）
     local w = graphics and graphics:GetWidth() or 360
     local h = graphics and graphics:GetHeight() or 640
     local aspect = max(0.42, w / max(1, h))
-    local target = Vector3(0, 0.74, 0.06)
-    local dist = (aspect < 0.72) and min(10.2, 5.15 / aspect) or max(6.4, min(7.6, 5.5 / aspect))
     local sx = fx and (fx.shakeX or 0) * 0.008 or 0
     local sy = fx and (fx.shakeY or 0) * 0.008 or 0
-    local dir = Vector3(0, -0.49, 0.87):Normalized()
-    M.camNode.position = target - dir * dist + Vector3(sx, sy, 0)
-    M.camNode:LookAt(target + Vector3(sx * 0.4, sy * 0.4, 0))
-
-    -- 2. 主题配色 & 背板贴图同步
-    ApplyThemeColors(themeIdx, boostOn, feverOn)
-
-    -- 3. 跑马灯珠波浪闪烁
-    local phase = floor((timeSec or tycoon.clock or 0) * (feverOn and 12 or 5))
-    for _, b in ipairs(M.bulbs) do
-        local lit = ((b.idx + phase) % 3 == 0)
-        b.model.material = lit and M.bulbLitMat or M.bulbDimMat
+    local camKey = string.format("%.3f:%.3f:%.3f", aspect, sx, sy)
+    if camKey ~= M.lastCamKey then
+        M.lastCamKey = camKey
+        local target = Vector3(0, 0.74, 0.06)
+        local dist = (aspect < 0.72) and min(10.2, 5.15 / aspect) or max(6.4, min(7.6, 5.5 / aspect))
+        local dir = Vector3(0, -0.49, 0.87):Normalized()
+        M.camNode.position = target - dir * dist + Vector3(sx, sy, 0)
+        M.camNode:LookAt(target + Vector3(sx * 0.4, sy * 0.4, 0))
+        UpdateFastProjPlanes()
     end
 
-    -- 4. 动态护栏同步
+    -- 2. 主题配色 & 背板贴图同步（仅变化时提交着色器参数）
+    ApplyThemeColors(themeIdx, boostOn, feverOn)
+
+    -- 3. 跑马灯珠波浪闪烁（仅相位跳转时更新材质）
+    local phase = floor((timeSec or tycoon.clock or 0) * (feverOn and 12 or 5))
+    if phase ~= M.lastBulbPhase then
+        M.lastBulbPhase = phase
+        for _, b in ipairs(M.bulbs) do
+            local lit = ((b.idx + phase) % 3 == 0)
+            b.model.material = lit and M.bulbLitMat or M.bulbDimMat
+        end
+    end
+
+    -- 4. 动态护栏同步（仅开关状态切换时更新）
     local guarded = (phys.railGuard or 0) > 0.2
-    local gScaleY = guarded and 0.22 or 0.06
-    M.leftGuardNode.scale = Vector3(0.07, gScaleY, 0.78)
-    M.rightGuardNode.scale = Vector3(0.07, gScaleY, 0.78)
-    if guarded then
-        SetMatColor(M.guardMat, { 0.16, 0.96, 0.56 }, 1.0)
-        SetMatEmissive(M.guardMat, { 0.28, 1.5, 0.85 })
-    else
-        SetMatColor(M.guardMat, { 0.95, 0.28, 0.32 }, 1.0)
-        SetMatEmissive(M.guardMat, { 0.7, 0.12, 0.15 })
+    if guarded ~= M.lastGuarded then
+        M.lastGuarded = guarded
+        local gScaleY = guarded and 0.22 or 0.06
+        M.leftGuardNode.scale = Vector3(0.07, gScaleY, 0.78)
+        M.rightGuardNode.scale = Vector3(0.07, gScaleY, 0.78)
+        if guarded then
+            SetMatColor(M.guardMat, { 0.16, 0.96, 0.56 }, 1.0)
+            SetMatEmissive(M.guardMat, { 0.28, 1.5, 0.85 })
+        else
+            SetMatColor(M.guardMat, { 0.95, 0.28, 0.32 }, 1.0)
+            SetMatEmissive(M.guardMat, { 0.7, 0.12, 0.15 })
+        end
     end
 
     -- 5. 往复推板、发射器角度、移动中奖门位置同步
@@ -536,10 +583,10 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
         M.gateBeamNode.scale = Vector3(max(0.15, gHalfWorld * 2.0), 0.14, 0.06)
     end
 
-    -- 6. 钉阵位置 & 撞击脉冲缩放
+    -- 6. 钉阵位置 & 撞击脉冲缩放（仅版本变化或闪光期提交）
     SyncPegs3D(phys)
 
-    -- 7. 140 枚 3D 金属贴图硬币池更新（零分配）
+    -- 7. 90 枚 3D 金属贴图硬币池脏检查更新（静止硬币零矩阵写回）
     local activeIds = phys.activeIds or {}
     local coins = phys.coins or {}
     local cnt = min(#M.coinPool, phys.activeCount or #activeIds)
@@ -551,29 +598,42 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
                 slot.enabled = true
                 slot.node:SetDeepEnabled(true)
             end
-            local wp = LogicToWorld3D(c.x, c.y, c.zone, c.z, c.onPusher)
-            slot.node.position = wp
-
-            local dia = (c.r or S.COIN_RADIUS) * 2.0 * 0.0108
-            local thickScale = dia * (c.isRain and 0.92 or 1.05)
-            slot.node.scale = Vector3(dia, thickScale, dia)
-
-            local rotDeg = math.deg(c.rot or 0)
-            if c.zone == "slot" then
-                slot.node.rotation = Quaternion(-90, Vector3.RIGHT) * Quaternion(rotDeg, Vector3.UP)
-            elseif c.zone == "dropping" then
-                local prog = max(0, min(1, (c.y - S.DECK_BOT_Y) / max(1, S.DROP_END_Y - S.DECK_BOT_Y)))
-                slot.node.rotation = Quaternion(prog * 82, Vector3.RIGHT) * Quaternion(rotDeg, Vector3.UP)
-            else
-                slot.node.rotation = Quaternion(rotDeg, Vector3.UP)
+            local cx, cy, cz, czZone, cOnPush = c.x, c.y, c.z or 0, c.zone or "deck", c.onPusher == true
+            if czZone ~= slot.lastZone or cOnPush ~= slot.lastOnPusher
+                or (cx - slot.lastX) * (cx - slot.lastX) + (cy - slot.lastY) * (cy - slot.lastY) + (cz - slot.lastZ) * (cz - slot.lastZ) > 0.01 then
+                slot.lastX, slot.lastY, slot.lastZ = cx, cy, cz
+                slot.node.position = LogicToWorld3D(cx, cy, czZone, cz, cOnPush)
             end
+
+            local dia = (c.r or S.COIN_RADIUS) * 2.0 * 0.0096
+            if dia ~= slot.lastDia or czZone ~= slot.lastZone or c.isRain ~= slot.lastIsRain then
+                slot.lastDia = dia
+                slot.lastIsRain = c.isRain
+                local thickScale = dia * (c.isRain and 0.92 or 1.05)
+                slot.node.scale = Vector3(dia, thickScale, dia)
+            end
+
+            local crot = c.rot or 0
+            if czZone ~= slot.lastZone or (crot - slot.lastRot) * (crot - slot.lastRot) > 0.0004 then
+                slot.lastRot = crot
+                local rotDeg = math.deg(crot)
+                if czZone == "slot" then
+                    slot.node.rotation = Quaternion(-90, Vector3.RIGHT) * Quaternion(rotDeg, Vector3.UP)
+                elseif czZone == "dropping" then
+                    local prog = max(0, min(1, (cy - S.DECK_BOT_Y) / max(1, S.DROP_END_Y - S.DECK_BOT_Y)))
+                    slot.node.rotation = Quaternion(prog * 82, Vector3.RIGHT) * Quaternion(rotDeg, Vector3.UP)
+                else
+                    slot.node.rotation = Quaternion(rotDeg, Vector3.UP)
+                end
+            end
+            slot.lastZone = czZone
+            slot.lastOnPusher = cOnPush
 
             local k = c.kind or "gold"
             if slot.lastKind ~= k then
                 slot.lastKind = k
                 local cm = GetCoinMaterials(k)
                 slot.rim:SetMaterial(cm.rim)
-                slot.bevel:SetMaterial(cm.rim)
                 slot.face:SetMaterial(cm.face)
             end
         else
@@ -590,6 +650,31 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
             slot.node:SetDeepEnabled(false)
         end
     end
+end
+
+function Machine3D.ProjectFast(lx, ly, uiW, uiH)
+    if not M.active then return nil end
+    if ly <= S.DECK_TOP_Y and M.projSlot then
+        local p = M.projSlot
+        local tx = max(0, min(1, (lx - 56) / 248))
+        local ty = max(0, min(1, (S.DECK_TOP_Y - ly) / max(1, S.DECK_TOP_Y - S.SLOT_TOP)))
+        local bx = p[1] + tx * (p[3] - p[1])
+        local by = p[2] + tx * (p[4] - p[2])
+        local topX = p[5] + tx * (p[7] - p[5])
+        local topY = p[6] + tx * (p[8] - p[6])
+        return (bx + ty * (topX - bx)) * uiW, (by + ty * (topY - by)) * uiH
+    elseif M.projDeck then
+        local p = M.projDeck
+        local ty = max(0, min(1.15, (ly - S.DECK_TOP_Y) / max(1, S.DECK_BOT_Y - S.DECK_TOP_Y)))
+        local hw = Physics.TrapezoidHalfW(ly)
+        local tx = max(0, min(1, (lx - (180 - hw)) / max(1, hw * 2)))
+        local bx = p[1] + tx * (p[3] - p[1])
+        local by = p[2] + tx * (p[4] - p[2])
+        local topX = p[5] + tx * (p[7] - p[5])
+        local topY = p[6] + tx * (p[8] - p[6])
+        return (bx + ty * (topX - bx)) * uiW, (by + ty * (topY - by)) * uiH
+    end
+    return Machine3D.WorldToUi(lx, ly, (ly <= S.DECK_TOP_Y) and "slot" or "deck", 0, uiW, uiH)
 end
 
 function Machine3D.WorldToUi(lx, ly, zone, lz, uiW, uiH)
@@ -610,6 +695,8 @@ function Machine3D.Shutdown()
     M.bulbs = {}
     M.coinMats = {}
     M.pegMats = {}
+    M.projSlot = nil
+    M.projDeck = nil
 end
 
 return Machine3D

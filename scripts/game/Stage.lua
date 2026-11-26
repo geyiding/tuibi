@@ -51,6 +51,142 @@ function Stage:IsHolding()
     return self.holding_
 end
 
+local function DrawSlotSymbol(nvg, symIdx, cx, cy, r, font)
+    local syms = Config.SLOT_SYMBOLS
+    local cfg = syms and syms[symIdx]
+    local col = (cfg and cfg.col) or C.gold
+    if symIdx == 1 then
+        nvgBeginPath(nvg)
+        nvgCircle(nvg, cx, cy, r * 0.72)
+        nvgFillColor(nvg, Col(col, 255))
+        nvgFill(nvg)
+        nvgStrokeColor(nvg, Col(C.white, 210))
+        nvgStrokeWidth(nvg, 1.1)
+        nvgStroke(nvg)
+    elseif symIdx == 2 then
+        local d, lr = r * 0.30, r * 0.34
+        nvgFillColor(nvg, Col(col, 255))
+        nvgBeginPath(nvg); nvgCircle(nvg, cx - d, cy - d * 0.4, lr); nvgFill(nvg)
+        nvgBeginPath(nvg); nvgCircle(nvg, cx + d, cy - d * 0.4, lr); nvgFill(nvg)
+        nvgBeginPath(nvg); nvgCircle(nvg, cx - d * 0.65, cy + d * 0.75, lr); nvgFill(nvg)
+        nvgBeginPath(nvg); nvgCircle(nvg, cx + d * 0.65, cy + d * 0.75, lr); nvgFill(nvg)
+    elseif symIdx == 3 then
+        nvgBeginPath(nvg)
+        nvgMoveTo(nvg, cx + r * 0.15, cy - r * 0.78)
+        nvgLineTo(nvg, cx - r * 0.42, cy + r * 0.06)
+        nvgLineTo(nvg, cx + r * 0.04, cy + r * 0.06)
+        nvgLineTo(nvg, cx - r * 0.18, cy + r * 0.78)
+        nvgLineTo(nvg, cx + r * 0.46, cy - r * 0.08)
+        nvgLineTo(nvg, cx - r * 0.02, cy - r * 0.08)
+        nvgClosePath(nvg)
+        nvgFillColor(nvg, Col(col, 255))
+        nvgFill(nvg)
+    elseif symIdx == 4 then
+        nvgBeginPath(nvg)
+        nvgMoveTo(nvg, cx, cy - r * 0.78)
+        nvgLineTo(nvg, cx + r * 0.68, cy)
+        nvgLineTo(nvg, cx, cy + r * 0.78)
+        nvgLineTo(nvg, cx - r * 0.68, cy)
+        nvgClosePath(nvg)
+        nvgFillColor(nvg, Col(col, 255))
+        nvgFill(nvg)
+        nvgStrokeColor(nvg, Col(C.white, 210))
+        nvgStrokeWidth(nvg, 1.0)
+        nvgStroke(nvg)
+    elseif symIdx == 5 then
+        nvgBeginPath(nvg)
+        nvgMoveTo(nvg, cx - r * 0.65, cy + r * 0.50)
+        nvgLineTo(nvg, cx - r * 0.70, cy - r * 0.42)
+        nvgLineTo(nvg, cx - r * 0.25, cy + r * 0.05)
+        nvgLineTo(nvg, cx, cy - r * 0.60)
+        nvgLineTo(nvg, cx + r * 0.25, cy + r * 0.05)
+        nvgLineTo(nvg, cx + r * 0.70, cy - r * 0.42)
+        nvgLineTo(nvg, cx + r * 0.65, cy + r * 0.50)
+        nvgClosePath(nvg)
+        nvgFillColor(nvg, Col(col, 255))
+        nvgFill(nvg)
+    else
+        nvgBeginPath(nvg)
+        nvgCircle(nvg, cx, cy, r * 0.76)
+        nvgFillColor(nvg, Col(col, 255))
+        nvgFill(nvg)
+        nvgFontFace(nvg, font or "sans")
+        nvgFontSize(nvg, r * 1.45)
+        nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(nvg, Col(C.white, 255))
+        nvgText(nvg, cx, cy + 0.5, "7")
+    end
+end
+
+local function DrawSlotBar(nvg, run, t, font)
+    local bx, by, bw, bh = 102, 8, 156, 32
+    local spin = run.slotSpinning == true
+    local luckMult = run.luckMult or 1
+    local hot = spin or (luckMult > 1) or ((run.slotFlashT or 0) > 0)
+    local borderCol = (luckMult >= 25) and C.gold or (hot and C.magenta or C.cyan)
+
+    nvgBeginPath(nvg)
+    nvgRoundedRect(nvg, bx, by, bw, bh, 9)
+    nvgFillColor(nvg, Col(C.bgInset, hot and 235 or 195))
+    nvgFill(nvg)
+    nvgStrokeColor(nvg, Col(borderCol, hot and 245 or 165))
+    nvgStrokeWidth(nvg, hot and 1.8 or 1.2)
+    nvgStroke(nvg)
+
+    local reels = run.slotReels or { 1, 1, 1 }
+    local ratio = spin and max(0, min(1, 1 - (run.slotSpinT or 0) / max(0.01, run.slotSpinDur or 0.85))) or 1
+    local lockAt = { 0.45, 0.72, 0.95 }
+    local rx0 = bx + 16
+    local stepX = 32
+    for k = 1, 3 do
+        local cx = rx0 + (k - 1) * stepX
+        local cy = by + 16
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, cx - 12, cy - 11, 24, 22, 5)
+        nvgFillColor(nvg, Col({ 12, 16, 36 }, 235))
+        nvgFill(nvg)
+        local locked = (not spin) or (ratio >= lockAt[k])
+        local sym = locked and (reels[k] or 1) or (floor(t * 16 + k * 2) % 6 + 1)
+        local yOff = locked and 0 or ((floor(t * 48 + k * 7) % 5) - 2)
+        DrawSlotSymbol(nvg, sym, cx, cy + yOff, 10, font)
+    end
+
+    -- 右侧状态标识：排队数 / 抽奖中 / 待机
+    nvgFontFace(nvg, font or "sans")
+    nvgFontSize(nvg, 11)
+    nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    local q = run.slotQueue or 0
+    local sideTxt = spin and "抽奖中" or (q > 0 and ("待抽+" .. q) or ((luckMult > 1) and ("×" .. tostring(luckMult)) or "过门奖池"))
+    nvgFillColor(nvg, Col(hot and C.gold or C.textDim, 255))
+    nvgText(nvg, bx + 128, by + 16, sideTxt)
+
+    -- 中奖全局倍率倒计时条（仅当倍率 > 1x 时出现）
+    if luckMult > 1 and (run.luckTimer or 0) > 0 then
+        local px, py, pw, ph = 98, 43, 164, 19
+        local pCol = (luckMult >= 50) and C.gold or ((luckMult >= 10) and C.magenta or C.cyan)
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, px, py, pw, ph, 7)
+        nvgFillColor(nvg, Col(C.bgInset, 232))
+        nvgFill(nvg)
+        local prog = max(0, min(1, run.luckTimer / max(0.1, run.luckDur or 10)))
+        if prog > 0.02 then
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, px + 2, py + 2, (pw - 4) * prog, ph - 4, 5)
+            nvgFillColor(nvg, Col(pCol, 145))
+            nvgFill(nvg)
+        end
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, px, py, pw, ph, 7)
+        nvgStrokeColor(nvg, Col(pCol, 240))
+        nvgStrokeWidth(nvg, 1.3)
+        nvgStroke(nvg)
+        nvgFontSize(nvg, 11)
+        nvgFillColor(nvg, Col(C.white, 255))
+        nvgText(nvg, px + pw * 0.5, py + ph * 0.5 + 0.5,
+            string.format("%s · %ds", run.luckName or (tostring(luckMult) .. "倍"), max(1, math.ceil(run.luckTimer))))
+    end
+end
+
 function Stage:Render(nvg)
     local g = self.game
     if not g then return end
@@ -329,12 +465,11 @@ function Stage:Render(nvg)
         -- 2D 世界特效
         fx:RenderWorld(nvg, g.font)
     else
-        -- 3D 模式下先将世界坐标特效/暴击飘字精准投影至真 3D 机台对应屏幕坐标
+        -- 3D 模式下使用预计算角点仿射投影将世界坐标特效/暴击飘字投射至屏幕坐标
         local uiW = UI.GetWidth and UI.GetWidth() or l.w
         local uiH = UI.GetHeight and UI.GetHeight() or (l.y + l.h)
         fx:RenderWorld(nvg, g.font, function(lx, ly)
-            local zone = (ly <= S.DECK_TOP_Y) and "slot" or ((ly > S.DECK_BOT_Y) and "dropping" or "deck")
-            return Machine3D.WorldToUi(lx, ly, zone, 0, uiW, uiH)
+            return Machine3D.ProjectFast(lx, ly, uiW, uiH)
         end)
         nvgSave(nvg)
         nvgTranslate(nvg, ox, oy)
@@ -420,6 +555,9 @@ function Stage:Render(nvg)
         nvgFillColor(nvg, Col(C.gold, 255))
         nvgText(nvg, 55, 27, "×3 印钞中")
     end
+
+    -- 10.5 过门 3 轴抽奖机台与幸运狂潮倍率倒计时条
+    DrawSlotBar(nvg, run, t, g.font)
 
     -- 11. 狂欢边缘流光与横幅叠层（3D 特效已经在上面 RenderWorld 投射）
     if not is3D then

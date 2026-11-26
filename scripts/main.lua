@@ -157,12 +157,25 @@ local function MakeListener()
         Sfx.Play("pick", 0.9)
         game.hudDirty = true
     end
-    function l:OnPrestige(shares)
-        game.fx:OnPrestige(shares)
-        Sfx.Play("jackpot", 1.0)
-        if game.tycoon then
-            Music.Play("bgm_act" .. math.min(3, game.tycoon.stageTheme))
+    function l:OnSlotWin(prize)
+        game.fx:OnSlotWin(prize)
+        if prize and prize.mult and prize.mult >= 10 then
+            Sfx.Play("jackpot", 0.95)
+        elseif prize and prize.mult and prize.mult > 1 then
+            Sfx.Play("win", 0.85)
+        else
+            Sfx.Play("click", 0.5)
         end
+        game.hudDirty = true
+    end
+    function l:OnSkillPointsGain(gained, stepIdx)
+        game.fx:OnSkillPointsGain(gained)
+        Sfx.Play("pick", 0.72)
+        game.hudDirty = true
+    end
+    function l:OnPrestige(shares, bonusSp, roundName)
+        game.fx:OnPrestige(shares, bonusSp, roundName)
+        Sfx.Play("jackpot", 1.0)
         game.hudDirty = true
     end
     function l:OnAdReward(label)
@@ -231,18 +244,19 @@ local callbacks = {
     OnConfirmPrestige = function(isDouble)
         if not game.tycoon then return end
         if not isDouble then
-            game.tycoon:DoPrestige(false)
-            TycoonHud.CloseModal()
+            game.tycoon:DoCapitalIPO(false)
             PersistTycoon(true)
             TycoonHud.RefreshMain(game.tycoon)
+            TycoonHud.RefreshCurrentModal()
         else
-            local pending = game.tycoon:CalcPendingShares()
+            local rInfo = game.tycoon:GetNextIpoInfo()
             MockAd.Show("prestige_2x",
-                string.format("上市传奇股 ×2: +%s 股 (模拟广告)", Number.FormatNum(pending * 2)),
+                string.format("上市传奇股 ×2：获得 +%s 股 + %d 技能点（不清空财富）", Number.FormatNum((rInfo.shares or 0) * 2), rInfo.bonusSp or 0),
                 function()
                     if game.tycoon then
-                        game.tycoon:DoPrestige(true)
+                        game.tycoon:DoCapitalIPO(true)
                         PersistTycoon(true)
+                        TycoonHud.OpenModal("prestige")
                         TycoonHud.RefreshMain(game.tycoon)
                     end
                 end,
@@ -325,12 +339,12 @@ local callbacks = {
             TycoonHud.RefreshMain(game.tycoon)
         end
     end,
-    OnClaimOvertakeAd = function(bounty)
+    OnClaimOvertakeAd = function(spBounty)
         if not game.tycoon then return end
-        local bAmt = math.max(100, math.floor(bounty or 0))
+        local bAmt = math.max(1, math.floor(spBounty or 2))
         Sfx.Play("click")
         MockAd.Show("overtake_3x",
-            string.format("超越赏金 ×3 加倍：额外再得 +%s（模拟广告）", Number.FormatCash(bAmt * 2)),
+            string.format("超越技能点 ×3：额外再得 +%d 技能点（模拟广告）", bAmt * 2),
             function()
                 if game.tycoon then
                     game.tycoon:ClaimOvertakeAdBonus(bAmt)
@@ -558,9 +572,9 @@ function HandleUpdate(eventType, eventData)
         Machine3D.Update(dt, ty, fx, game.time)
     end
 
-    -- 增量 UI 节流刷新：每秒最多 10 次主 HUD、4 次弹窗内容（零控件重建）
+    -- 严格限频增量 UI 刷新（约 6 次/秒，消除每帧 60Hz HUD 重绘卡顿）
     game.refreshAccum = game.refreshAccum + dt
-    if ty and (game.hudDirty or game.refreshAccum >= 0.12) then
+    if ty and game.refreshAccum >= 0.16 then
         game.hudDirty = false
         game.refreshAccum = 0
         TycoonHud.RefreshMain(ty)

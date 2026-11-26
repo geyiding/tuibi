@@ -1,12 +1,12 @@
 -- ============================================================================
--- Number.lua  共用大数字与现金格式化（支持 万/亿/兆/京/垓/秭，无引擎依赖）
+-- Number.lua  共用大数字与现金格式化（支持 万/亿/万亿/京/垓/秭，无引擎依赖）
 -- ============================================================================
 
 local floor, max = math.floor, math.max
 
 local Number = {}
 
---- 格式化数值：950 -> "950", 1.2万, 1.23亿, 2.50兆, 1.20京, 3.40垓, 5.60秭
+--- 格式化数值：950 -> "950", 1.2万, 1.23亿, 2.50万亿, 1.20京, 3.40垓, 5.60秭
 function Number.FormatNum(n)
     n = tonumber(n) or 0
     if n ~= n or n == math.huge or n == -math.huge then return "0" end
@@ -21,13 +21,39 @@ function Number.FormatNum(n)
     elseif n >= 1e16 then
         return neg .. string.format("%.2f京", n / 1e16)
     elseif n >= 1e12 then
-        return neg .. string.format("%.2f兆", n / 1e12)
+        return neg .. string.format("%.2f万亿", n / 1e12)
     elseif n >= 1e8 then
         return neg .. string.format("%.2f亿", n / 1e8)
     elseif n >= 1e4 then
         return neg .. string.format("%.1f万", n / 1e4)
     end
     return neg .. tostring(floor(n + 0.5))
+end
+
+--- 世界排名数字格式化（60.00亿 / 5800.0万 / 1.50万 / 850）
+function Number.FormatWorldRank(rank)
+    local r = max(1, floor((tonumber(rank) or 6e9) + 0.5))
+    if r >= 1e8 then
+        return string.format("%.2f亿", r / 1e8)
+    elseif r >= 1e6 then
+        return string.format("%.1f万", r / 1e4)
+    elseif r >= 1e4 then
+        return string.format("%.2f万", r / 1e4)
+    end
+    return tostring(r)
+end
+
+--- 顶栏紧致排名胶囊文本（No.60.00亿 / No.5800万 / No.1.5万 / No.990）
+function Number.FormatRankBadge(rank)
+    local r = max(1, floor((tonumber(rank) or 6e9) + 0.5))
+    if r >= 1e8 then
+        return "No." .. string.format("%.2f亿", r / 1e8)
+    elseif r >= 1e6 then
+        return "No." .. string.format("%.0f万", r / 1e4)
+    elseif r >= 1e4 then
+        return "No." .. string.format("%.1f万", r / 1e4)
+    end
+    return "No." .. tostring(r)
 end
 
 --- 格式化现金："¥1.2万"

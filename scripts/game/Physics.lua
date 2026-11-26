@@ -14,8 +14,8 @@ local floor, min, max, abs, sqrt, sin, cos, pi =
 local Physics = {}
 Physics.__index = Physics
 
-local GRID_COLS = 12
-local GRID_ROWS = 16
+local GRID_COLS = 10
+local GRID_ROWS = 10
 local GRID_CELLS = GRID_COLS * GRID_ROWS
 local TWO_PI = pi * 2
 
@@ -84,6 +84,7 @@ function Physics.New(callbacks)
 
     -- 钉阵（可每关刷新特殊钉类型）
     self.pegs = {}
+    self.pegVersion = 0
     self:BuildPegs(4)
 
     -- 预分配空间哈希网格（零每帧分配）
@@ -96,6 +97,7 @@ function Physics.New(callbacks)
 end
 
 function Physics:BuildPegs(extraMultCount)
+    self.pegVersion = (self.pegVersion or 0) + 1
     local pegs = self.pegs
     for i = #pegs, 1, -1 do pegs[i] = nil end
     local rows = { 74, 112, 150, 188 }
@@ -181,12 +183,13 @@ function Physics:AllocCoinSlot()
     for i = 1, S.MAX_COINS do
         if not self.coins[i].active then return self.coins[i] end
     end
-    -- 已满 110 枚：优先回收最老且未带特殊倒计时的普通台面币为超频得分
+    -- 已满 MAX_COINS：保护前沿悬崖带 (y > 460)，优先超频回收后排/推板最老普通币
     local pick, bestScore = nil, math.huge
     for i = 1, S.MAX_COINS do
         local c = self.coins[i]
         if c.active and c.zone == "deck" then
-            local prio = c.spawnSeq + ((c.kind == "gold" or c.kind == "mini") and 0 or 50000)
+            local frontPen = (c.y > 460) and 200000 or 0
+            local prio = c.spawnSeq + frontPen + ((c.kind == "gold" or c.kind == "mini") and 0 or 50000)
             if prio < bestScore then
                 bestScore = prio
                 pick = c
@@ -263,28 +266,28 @@ function Physics:LaunchFromTop(kind, level, offsetAngleDeg)
     })
 end
 
---- 开局铺满密集交错推台基础币（覆盖 y=318..537 整张台面，墙到墙密排，推币立即连环跌落）
+--- 开局从推板前沿往悬崖铺满交错推台基础币（COIN_RADIUS=14.5 配合 72 枚刚性铺满整台，推币立即连环跌落）
 function Physics:SeedDeck(rng, poolKinds)
     local kinds = poolKinds or { "gold", "gold", "gold", "emerald", "split", "thunder" }
-    local yStart, yEnd = 318, 537
-    local rowStep = 21.8
+    local yStart, yEnd = 334, 536
+    local rowStep = 26.8
     local rIdx = 0
     local ty = yStart
     while ty <= yEnd do
         rIdx = rIdx + 1
-        local halfW = Physics.TrapezoidHalfW(ty) - 13
-        local spacing = 24.0
+        local halfW = Physics.TrapezoidHalfW(ty) - 15
+        local spacing = 30.0
         local count = max(5, floor((halfW * 2) / spacing) + 1)
-        local stagger = (rIdx % 2 == 0) and 6 or 0
+        local stagger = (rIdx % 2 == 0) and 7 or 0
         for k = 1, count do
             local frac = (count == 1) and 0.5 or ((k - 1) / (count - 1))
-            local jx = (rng and (rng() - 0.5) * 3.0) or 0
-            local jy = (rng and (rng() - 0.5) * 2.0) or 0
+            local jx = (rng and (rng() - 0.5) * 2.5) or 0
+            local jy = (rng and (rng() - 0.5) * 1.8) or 0
             local x = (180 - halfW + stagger) + frac * (halfW * 2 - stagger * 2) + jx
             local y = min(S.FRONT_DROP_Y - 2.5, ty + jy)
             local pickKind = kinds[((rIdx * 7 + k) % #kinds) + 1]
             if ty >= 510 and (k % 2 == 0) then pickKind = "gold" end
-            if self.activeCount < S.MAX_COINS - 25 then
+            if self.activeCount < S.MAX_COINS - 14 then
                 self:SpawnCoin({
                     kind = pickKind,
                     level = 1,
@@ -634,7 +637,7 @@ function Physics:Step(dt)
 
     if needSync then self:SyncActiveList() end
 
-    -- 3. 推台币-币 3 迭代位置分离与前向动量传导（空间网格加速，零内存分配）
+    -- 3. 推台币-币 5 迭代位置分离与前向动量传导（空间网格加速，零内存分配）
     self:ResolveDeckCollisions()
 end
 
@@ -654,7 +657,7 @@ function Physics:ResolveDeckCollisions()
     local pusherLeft = 180 - S.DECK_TOP_HALF + 4
     local pusherRight = 180 + S.DECK_TOP_HALF - 4
 
-    for _ = 1, 10 do
+    for _ = 1, 5 do
         for k = 1, GRID_CELLS do gridHead[k] = 0 end
         -- 入格
         for idx = 1, cnt do

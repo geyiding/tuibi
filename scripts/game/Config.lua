@@ -22,9 +22,9 @@ Config.STAGE = {
     LAUNCH_SPEED = 270,
     GRAVITY = 520,
     PEG_RADIUS = 5.0,
-    COIN_RADIUS = 12.0,
-    MINI_RADIUS = 8.4,
-    GIANT_RADIUS = 17.5,
+    COIN_RADIUS = 14.5,
+    MINI_RADIUS = 10.0,
+    GIANT_RADIUS = 20.5,
 
     -- 中奖门（与发射口同周期锁相）
     GATE_Y = 216,
@@ -46,10 +46,10 @@ Config.STAGE = {
     FRONT_DROP_Y = 542,
     DROP_END_Y = 576,
 
-    -- 性能硬上限
-    MAX_COINS = 140,
+    -- 性能硬上限（兼顾满台铺币视觉与移动端 60fps 流畅）
+    MAX_COINS = 92,
     STUCK_FUSE_SEC = 3.2,
-    SEED_COUNT = 96,
+    SEED_COUNT = 72,
 }
 
 -- 基础规则常量
@@ -418,59 +418,78 @@ for i = 1, 20 do
 end
 
 -- ============================================================================
--- 增量推币首富体系配置（100位全球富豪梯度榜 / 机台升级 / 22币 / 黑科技 / IPO天赋 / 广告位）
+-- 增量推币首富体系配置（真实世界60亿->前1000真名榜 / 技能点双轨成长 / 资本IPO / 三连老虎机）
 -- ============================================================================
 local Billionaires = require("game/Billionaires")
+local floor, max, log = math.floor, math.max, math.log
 
--- 1. 全球富豪排行榜（共 100 档，No.100 一路冲顶 No.1 马斯克，自动换幕与超豪弹窗）
+-- 1. 全球财富阶梯榜（前1000名之外为22档匿名阶层，进入世界前1000后解锁63位真实2026福布斯富豪）
 Config.RANKS = Billionaires.LIST
 
--- 2. 机台 8 项无限强化（4×2 网格，复用 relic_* 成品贴图）
+-- 1.5 财富阈值 -> 技能点（SP）双轨发放公式（钱只涨不跌专冲世界第一，全部升级花技能点）
+Config.SP_BASE_THRESHOLD = 200
+Config.SP_GROWTH = 1.47
+
+function Config.GetSpThreshold(stepIdx)
+    if not stepIdx or stepIdx < 1 then return 0 end
+    local raw = Config.SP_BASE_THRESHOLD * (Config.SP_GROWTH ^ (stepIdx - 1))
+    local exp = floor(log(raw, 10))
+    local step = 10 ^ max(1, exp - 1)
+    return floor(raw / step + 0.5) * step
+end
+
+function Config.GetSpReward(stepIdx, bonusLv)
+    local n = stepIdx or 1
+    local base = 3 + floor(n / 8) + ((n % 5 == 0) and 1 or 0)
+    return base + (bonusLv or 0)
+end
+
+-- 2. 机台 8 项无限强化（4×2 网格，纯技能点 SP 升级，绝不扣除现金）
 Config.MACHINE_UPGRADES = {
-    { id = "auto_rate",    name = "自动投币",   short = "自动射速", relic = "double_barrel", baseCost = 35,  growth = 1.42, maxLv = 60,
+    { id = "auto_rate",    name = "自动投币",   short = "自动射速", relic = "double_barrel", baseSp = 2, spStep = 1.3, spQuad = 0.16, maxLv = 25,
       desc = "每秒自动持续投币，等级越高永动射速越快。" },
-    { id = "pusher_turbo", name = "涡轮推板",   short = "推板马力", relic = "turbo_pusher",  baseCost = 60,  growth = 1.48, maxLv = 40,
+    { id = "pusher_turbo", name = "涡轮推板",   short = "推板马力", relic = "turbo_pusher",  baseSp = 2, spStep = 1.4, spQuad = 0.16, maxLv = 20,
       desc = "加快推板往复速度并加大前推力，金币瀑布更猛。" },
-    { id = "global_mult",  name = "印钞倍率",   short = "全币倍率", relic = "vip_card",      baseCost = 100, growth = 1.55, maxLv = 80,
-      desc = "全场所有掉落与特效收益每级永久 ×1.35。" },
-    { id = "multi_shot",   name = "多管齐射",   short = "双发齐射", relic = "first_surge",   baseCost = 280, growth = 1.75, maxLv = 30,
+    { id = "global_mult",  name = "印钞倍率",   short = "全币倍率", relic = "vip_card",      baseSp = 2, spStep = 1.4, spQuad = 0.16, maxLv = 40,
+      desc = "全场所有掉落与特效收益每级永久 ×1.24。" },
+    { id = "multi_shot",   name = "多管齐射",   short = "双发齐射", relic = "first_surge",   baseSp = 3, spStep = 1.9, spQuad = 0.16, maxLv = 15,
       desc = "每次自动或手点投币，高概率一次喷出 2~4 枚币。" },
-    { id = "crit_power",   name = "暴击增幅",   short = "暴击爆伤", relic = "crit_seal",     baseCost = 180, growth = 1.52, maxLv = 40,
+    { id = "crit_power",   name = "暴击增幅",   short = "暴击爆伤", relic = "crit_seal",     baseSp = 2, spStep = 1.5, spQuad = 0.16, maxLv = 20,
       desc = "大幅提升暴击触发率与金光暴击伤害倍数。" },
-    { id = "gate_master",  name = "黄金中奖门", short = "中奖门",   relic = "wide_gate",     baseCost = 220, growth = 1.55, maxLv = 35,
-      desc = "加宽移动中奖门，过门必爆现金雨与额外倍增。" },
-    { id = "peg_gold",     name = "黄金钉阵",   short = "黄金钉阵", relic = "golden_pegs",   baseCost = 150, growth = 1.50, maxLv = 40,
+    { id = "gate_master",  name = "黄金中奖门", short = "中奖门",   relic = "wide_gate",     baseSp = 3, spStep = 1.6, spQuad = 0.16, maxLv = 20,
+      desc = "加宽移动中奖门，大幅提升老虎机 10x/50x/100x 大奖概率！" },
+    { id = "peg_gold",     name = "黄金钉阵",   short = "黄金钉阵", relic = "golden_pegs",   baseSp = 2, spStep = 1.5, spQuad = 0.16, maxLv = 20,
       desc = "钉阵转化更多金色倍增钉，撞钉即爆即时现金。" },
-    { id = "fever_drive",  name = "狂欢超频",   short = "狂欢超频", relic = "fever_amp",     baseCost = 320, growth = 1.60, maxLv = 35,
+    { id = "fever_drive",  name = "狂欢超频",   short = "狂欢超频", relic = "fever_amp",     baseSp = 3, spStep = 1.7, spQuad = 0.16, maxLv = 20,
       desc = "加快狂欢槽充能，延长狂欢时间并狂撒金币雨。" },
 }
 Config.MACHINE_BY_ID = {}
 for _, m in ipairs(Config.MACHINE_UPGRADES) do Config.MACHINE_BY_ID[m.id] = m end
 
--- 3. 22 种代币渐进解锁与升级表（开局只有标准金币，点亮后立即上台）
+-- 3. 22 种代币循序解锁与技能点升级表（需按顺序逐枚解锁，5~8小时长线节奏）
 Config.COIN_TIERS = {
-    { id = "gold",        unlockCost = 0,       baseValue = 12,     upBase = 40,     upGrowth = 1.65, maxLv = 20 },
-    { id = "emerald",     unlockCost = 120,     baseValue = 32,     upBase = 160,    upGrowth = 1.68, maxLv = 20 },
-    { id = "split",       unlockCost = 550,     baseValue = 85,     upBase = 650,    upGrowth = 1.70, maxLv = 20 },
-    { id = "heavy",       unlockCost = 2400,    baseValue = 220,    upBase = 2800,   upGrowth = 1.72, maxLv = 20 },
-    { id = "thunder",     unlockCost = 1.1e4,   baseValue = 620,    upBase = 1.2e4,  upGrowth = 1.74, maxLv = 20 },
-    { id = "bomb",        unlockCost = 5e4,     baseValue = 1800,   upBase = 5.5e4,  upGrowth = 1.75, maxLv = 20 },
-    { id = "spring",      unlockCost = 2.4e5,   baseValue = 5500,   upBase = 2.6e5,  upGrowth = 1.76, maxLv = 20 },
-    { id = "magnet",      unlockCost = 1.2e6,   baseValue = 1.7e4,  upBase = 1.3e6,  upGrowth = 1.78, maxLv = 20 },
-    { id = "ruby",        unlockCost = 6e6,     baseValue = 5.5e4,  upBase = 6.5e6,  upGrowth = 1.78, maxLv = 20 },
-    { id = "neon",        unlockCost = 3.2e7,   baseValue = 1.8e5,  upBase = 3.5e7,  upGrowth = 1.80, maxLv = 20 },
-    { id = "frost",       unlockCost = 1.8e8,   baseValue = 6.5e5,  upBase = 2e8,    upGrowth = 1.80, maxLv = 20 },
-    { id = "ghost",       unlockCost = 1e9,     baseValue = 2.4e6,  upBase = 1.1e9,  upGrowth = 1.82, maxLv = 20 },
-    { id = "jackpot7",    unlockCost = 6.5e9,   baseValue = 9.5e6,  upBase = 7e9,    upGrowth = 1.82, maxLv = 20 },
-    { id = "blackhole",   unlockCost = 4.5e10,  baseValue = 3.8e7,  upBase = 5e10,   upGrowth = 1.84, maxLv = 20 },
-    { id = "giant",       unlockCost = 3.2e11,  baseValue = 1.6e8,  upBase = 3.5e11, upGrowth = 1.85, maxLv = 20 },
-    { id = "nuke",        unlockCost = 2.5e12,  baseValue = 7.5e8,  upBase = 2.8e12, upGrowth = 1.86, maxLv = 20 },
-    { id = "midas",       unlockCost = 2.2e13,  baseValue = 4e9,    upBase = 2.5e13, upGrowth = 1.88, maxLv = 20, parents = { "gold", "ruby" } },
-    { id = "thor",        unlockCost = 1.8e14,  baseValue = 2.2e10, upBase = 2e14,   upGrowth = 1.88, maxLv = 20, parents = { "heavy", "thunder" } },
-    { id = "supernova",   unlockCost = 1.6e15,  baseValue = 1.3e11, upBase = 1.8e15, upGrowth = 1.90, maxLv = 20, parents = { "bomb", "neon" } },
-    { id = "hydra",       unlockCost = 1.5e16,  baseValue = 8e11,   upBase = 1.7e16, upGrowth = 1.90, maxLv = 20, parents = { "split", "spring" } },
-    { id = "singularity", unlockCost = 1.2e17,  baseValue = 5e12,   upBase = 1.4e17, upGrowth = 1.92, maxLv = 20, parents = { "blackhole", "magnet" } },
-    { id = "carnival",    unlockCost = 8e17,    baseValue = 3.5e13, upBase = 9e17,   upGrowth = 1.94, maxLv = 20, parents = { "jackpot7", "emerald" } },
+    { id = "gold",        unlockSp = 0,  baseValue = 2.5,    upBaseSp = 2,  upStepSp = 1.0, maxLv = 15 },
+    { id = "emerald",     unlockSp = 3,  baseValue = 6.5,    upBaseSp = 2,  upStepSp = 1.0, maxLv = 15 },
+    { id = "split",       unlockSp = 4,  baseValue = 17.0,   upBaseSp = 3,  upStepSp = 1.1, maxLv = 15 },
+    { id = "heavy",       unlockSp = 5,  baseValue = 44.0,   upBaseSp = 3,  upStepSp = 1.2, maxLv = 15 },
+    { id = "thunder",     unlockSp = 6,  baseValue = 115.0,  upBaseSp = 4,  upStepSp = 1.3, maxLv = 15 },
+    { id = "bomb",        unlockSp = 8,  baseValue = 300.0,  upBaseSp = 4,  upStepSp = 1.4, maxLv = 15 },
+    { id = "spring",      unlockSp = 10, baseValue = 780.0,  upBaseSp = 5,  upStepSp = 1.5, maxLv = 15 },
+    { id = "magnet",      unlockSp = 12, baseValue = 2050.0, upBaseSp = 5,  upStepSp = 1.6, maxLv = 15 },
+    { id = "ruby",        unlockSp = 14, baseValue = 5400.0, upBaseSp = 6,  upStepSp = 1.8, maxLv = 15 },
+    { id = "neon",        unlockSp = 16, baseValue = 1.42e4, upBaseSp = 7,  upStepSp = 2.0, maxLv = 15 },
+    { id = "frost",       unlockSp = 18, baseValue = 3.75e4, upBaseSp = 8,  upStepSp = 2.2, maxLv = 15 },
+    { id = "ghost",       unlockSp = 20, baseValue = 9.80e4, upBaseSp = 9,  upStepSp = 2.4, maxLv = 15 },
+    { id = "jackpot7",    unlockSp = 22, baseValue = 2.60e5, upBaseSp = 10, upStepSp = 2.6, maxLv = 15 },
+    { id = "blackhole",   unlockSp = 24, baseValue = 6.80e5, upBaseSp = 11, upStepSp = 2.8, maxLv = 15 },
+    { id = "giant",       unlockSp = 26, baseValue = 1.80e6, upBaseSp = 12, upStepSp = 3.0, maxLv = 15 },
+    { id = "nuke",        unlockSp = 28, baseValue = 4.80e6, upBaseSp = 14, upStepSp = 3.2, maxLv = 15 },
+    { id = "midas",       unlockSp = 32, baseValue = 1.30e7, upBaseSp = 16, upStepSp = 3.5, maxLv = 15, parents = { "gold", "ruby" } },
+    { id = "thor",        unlockSp = 36, baseValue = 3.50e7, upBaseSp = 18, upStepSp = 3.8, maxLv = 15, parents = { "heavy", "thunder" } },
+    { id = "supernova",   unlockSp = 40, baseValue = 9.50e7, upBaseSp = 20, upStepSp = 4.2, maxLv = 15, parents = { "bomb", "neon" } },
+    { id = "hydra",       unlockSp = 44, baseValue = 2.60e8, upBaseSp = 22, upStepSp = 4.6, maxLv = 15, parents = { "split", "spring" } },
+    { id = "singularity", unlockSp = 50, baseValue = 7.20e8, upBaseSp = 25, upStepSp = 5.0, maxLv = 15, parents = { "blackhole", "magnet" } },
+    { id = "carnival",    unlockSp = 56, baseValue = 2.00e9, upBaseSp = 30, upStepSp = 5.5, maxLv = 15, parents = { "jackpot7", "emerald" } },
 }
 Config.COIN_TIER_BY_ID = {}
 for idx, t in ipairs(Config.COIN_TIERS) do
@@ -478,37 +497,88 @@ for idx, t in ipairs(Config.COIN_TIERS) do
     Config.COIN_TIER_BY_ID[t.id] = t
 end
 
--- 4. 黑科技 12 项一次性里程碑（使用其余 12 张 relic_* 贴图，买到立即质感跃升）
+-- 4. 黑科技 12 项一次性里程碑（纯技能点研发，永久提升全盘物理与乘区）
 Config.TECH_UPGRADES = {
-    { id = "rail_guard",  name = "激光护栏",   relic = "rail_guard",  cost = 600,     mult = 1.4, desc = "永久开启合金侧壁护栏防侧漏，全币收益 ×1.4。" },
-    { id = "metronome",   name = "连击共振仪", relic = "metronome",   cost = 3500,    mult = 1.5, desc = "连击窗延长至7秒且每次连击加速叠加倍率，总收益 ×1.5。" },
-    { id = "medkit",      name = "智能回收器", relic = "medkit",      cost = 1.8e4,   mult = 1.6, desc = "每落10枚币直接额外返现金红包，总收益 ×1.6。" },
-    { id = "big_pouch",   name = "高频供币仓", relic = "big_pouch",   cost = 9e4,     mult = 1.8, desc = "推台初始铺币加密且全币产值 ×1.8。" },
-    { id = "bankbook",    name = "复利金库锁", relic = "bankbook",    cost = 5e5,     mult = 2.0, desc = "每秒被动吃利息复利，全币产值翻倍 ×2.0。" },
-    { id = "mag_lip",     name = "磁力集束唇", relic = "mag_lip",     cost = 3e6,     mult = 2.2, desc = "前沿吸金加速跌落，爆分倍率 ×2.2。" },
-    { id = "powder_keg",  name = "工业炸药库", relic = "powder_keg",  cost = 2e7,     mult = 2.4, desc = "所有炸弹/核爆/脉冲范围与收益 ×2.4。" },
-    { id = "tesla_coil",  name = "超导特斯拉", relic = "tesla_coil",  cost = 1.5e8,   mult = 2.6, desc = "闪电链额外 +2 跳且每次跳电增幅 ×2.6。" },
-    { id = "clover",      name = "四叶草财神", relic = "clover",      cost = 1.2e9,   mult = 2.8, desc = "中奖门金币雨概率暴涨，全场产值 ×2.8。" },
-    { id = "recycler",    name = "重力回流爪", relic = "recycler",    cost = 1e10,    mult = 3.0, desc = "侧漏全部转化为回收奖金，总收益 ×3.0。" },
-    { id = "overclock",   name = "超频量子核", relic = "overclock",   cost = 1.2e11,  mult = 3.5, desc = "满台溢出超频回收变成 4 倍暴利，总收益 ×3.5。" },
-    { id = "prism",       name = "彩虹棱镜矩阵",relic = "prism",      cost = 2e12,    mult = 4.5, desc = "解锁终极棱镜增幅，全印钞机器效率 ×4.5！" },
+    { id = "rail_guard",  name = "激光护栏",   relic = "rail_guard",  costSp = 4,  mult = 1.22, desc = "永久开启合金侧壁护栏防侧漏，全币收益 ×1.22。" },
+    { id = "metronome",   name = "连击共振仪", relic = "metronome",   costSp = 6,  mult = 1.22, desc = "连击窗延长至4秒且加速叠加倍率，总收益 ×1.22。" },
+    { id = "medkit",      name = "智能回收器", relic = "medkit",      costSp = 8,  mult = 1.24, desc = "每落10枚币直接额外返现金红包，总收益 ×1.24。" },
+    { id = "big_pouch",   name = "高频供币仓", relic = "big_pouch",   costSp = 10, mult = 1.24, desc = "推台初始铺币加密且全币产值 ×1.24。" },
+    { id = "bankbook",    name = "复利金库锁", relic = "bankbook",    costSp = 13, mult = 1.26, desc = "每秒按产值派发被动复利，全币产值 ×1.26。" },
+    { id = "mag_lip",     name = "磁力集束唇", relic = "mag_lip",     costSp = 16, mult = 1.26, desc = "前沿吸金加速跌落，爆分倍率 ×1.26。" },
+    { id = "powder_keg",  name = "工业炸药库", relic = "powder_keg",  costSp = 20, mult = 1.28, desc = "所有炸弹/核爆/脉冲范围与收益 ×1.28。" },
+    { id = "tesla_coil",  name = "超导特斯拉", relic = "tesla_coil",  costSp = 24, mult = 1.30, desc = "闪电链额外 +2 跳且每次跳电增幅 ×1.30。" },
+    { id = "clover",      name = "四叶草财神", relic = "clover",      costSp = 28, mult = 1.32, desc = "大幅拔高 10x/50x/100x 老虎机大奖概率，产值 ×1.32！" },
+    { id = "recycler",    name = "重力回流爪", relic = "recycler",    costSp = 34, mult = 1.35, desc = "侧漏全部转化为回收奖金，总收益 ×1.35。" },
+    { id = "overclock",   name = "超频量子核", relic = "overclock",   costSp = 40, mult = 1.40, desc = "满台溢出超频回收变成 4 倍暴利，总收益 ×1.40。" },
+    { id = "prism",       name = "彩虹棱镜矩阵",relic = "prism",      costSp = 48, mult = 1.48, desc = "解锁终极棱镜增幅，全印钞机器效率 ×1.48！" },
 }
 Config.TECH_BY_ID = {}
 for _, t in ipairs(Config.TECH_UPGRADES) do Config.TECH_BY_ID[t.id] = t end
 
--- 5. IPO 上市转生 4 大永久天赋（消耗传奇声望股，跨转生永久保留）
+-- 5. 资本融资 / 敲钟上市里程碑（方案 A：不清空财富、币种与机台，达标敲钟白领传奇股 + 技能点）
+Config.IPO_ROUNDS = {
+    { id = 1,  name = "天使轮融资",     targetWealth = 5e4,      shares = 2,  bonusSp = 4  },
+    { id = 2,  name = "Pre-A 轮扩产",   targetWealth = 4e5,      shares = 3,  bonusSp = 5  },
+    { id = 3,  name = "A 轮霓虹集团",   targetWealth = 3e6,      shares = 4,  bonusSp = 6  },
+    { id = 4,  name = "B 轮跨城联营",   targetWealth = 2.5e7,    shares = 5,  bonusSp = 8  },
+    { id = 5,  name = "C 轮百亿独角兽", targetWealth = 2e8,      shares = 6,  bonusSp = 10 },
+    { id = 6,  name = "D 轮金融巨鳄",   targetWealth = 1.5e9,    shares = 8,  bonusSp = 12 },
+    { id = 7,  name = "港股敲钟上市",   targetWealth = 8e9,      shares = 10, bonusSp = 15 },
+    { id = 8,  name = "纳斯达克上市",   targetWealth = 2.5e10,   shares = 12, bonusSp = 18 },
+    { id = 9,  name = "千亿资本帝国",   targetWealth = 1.2e11,   shares = 15, bonusSp = 22 },
+    { id = 10, name = "全球金融寡头",   targetWealth = 6e11,     shares = 18, bonusSp = 26 },
+    { id = 11, name = "星际能源财团",   targetWealth = 2.5e12,   shares = 24, bonusSp = 32 },
+    { id = 12, name = "世界首富加冕钟", targetWealth = 6.041e12, shares = 35, bonusSp = 45 },
+}
+
+function Config.GetIpoRound(roundIdx)
+    local idx = max(1, floor(roundIdx or 1))
+    if idx <= #Config.IPO_ROUNDS then
+        return Config.IPO_ROUNDS[idx]
+    end
+    local extra = idx - #Config.IPO_ROUNDS
+    return {
+        id = idx,
+        name = "宇宙霸主第 " .. tostring(extra) .. " 轮增发",
+        targetWealth = 6.041e12 * (5 ^ extra),
+        shares = 35 + extra * 12,
+        bonusSp = 45 + extra * 15,
+    }
+end
+
+-- 4 大永久天赋（消耗传奇声望股，永久保留叠加）
 Config.PRESTIGE_TALENTS = {
-    { id = "angel_fund",  name = "天使启动金", relic = "big_pouch",    baseCost = 2, growth = 1.8, maxLv = 20,
-      desc = "每次上市转生保留前 Lv 种已解锁高阶币并自带启动资金。" },
-    { id = "golden_dna",  name = "黄金基因链", relic = "bankbook",     baseCost = 2, growth = 2.0, maxLv = 25,
-      desc = "所有硬币基础售价每级永久 ×1.8。" },
-    { id = "perpetual",   name = "永动超马达", relic = "turbo_pusher", baseCost = 3, growth = 2.0, maxLv = 15,
-      desc = "自动投币与推板物理速率每级永久 +20%。" },
-    { id = "tycoon_crit", name = "首富暴击心", relic = "crit_seal",    baseCost = 3, growth = 2.0, maxLv = 20,
-      desc = "全局暴击倍率每级永久 +1.5 倍，满屏紫金跳字。" },
+    { id = "angel_fund",  name = "资本红利",   relic = "big_pouch",    baseCost = 2, growth = 1.85, maxLv = 15,
+      desc = "每次达到财富阈值额外多送 +1 技能点（跨轮永久生效）。" },
+    { id = "golden_dna",  name = "黄金基因链", relic = "bankbook",     baseCost = 2, growth = 1.85, maxLv = 20,
+      desc = "所有硬币基础产值每级永久 ×1.28。" },
+    { id = "perpetual",   name = "永动超马达", relic = "turbo_pusher", baseCost = 3, growth = 1.95, maxLv = 15,
+      desc = "自动投币与推板物理速率每级永久 +14%。" },
+    { id = "tycoon_crit", name = "首富暴击心", relic = "crit_seal",    baseCost = 3, growth = 1.95, maxLv = 20,
+      desc = "全局暴击倍率每级永久 +0.8 倍，满屏紫金跳字。" },
 }
 Config.PRESTIGE_BY_ID = {}
 for _, p in ipairs(Config.PRESTIGE_TALENTS) do Config.PRESTIGE_BY_ID[p.id] = p end
+
+-- 5.5 街机三连老虎机（过移动中奖门触发旋转，限时爆发 2x~100x 全局掉落狂潮）
+Config.SLOT_SYMBOLS = {
+    { id = "coin",  name = "金币", col = { 255, 212, 62 }  },
+    { id = "clover",name = "幸运", col = { 76, 232, 138 }  },
+    { id = "bolt",  name = "霹雳", col = { 82, 224, 255 }  },
+    { id = "gem",   name = "红宝", col = { 255, 92, 146 }  },
+    { id = "crown", name = "皇冠", col = { 255, 186, 48 }  },
+    { id = "seven", name = "777",  col = { 246, 94, 255 }  },
+}
+
+Config.SLOT_PRIZES = {
+    miss         = { id = "miss",         mult = 1,   dur = 0,  label = "差一点点",         col = { 176, 188, 216 }, rain = 1  },
+    pair         = { id = "pair",         mult = 2,   dur = 10, label = "对子小奖 ×2!",     col = { 82, 224, 255 },  rain = 3  },
+    triple_low   = { id = "triple_low",   mult = 5,   dur = 12, label = "幸运五倍 ×5!",     col = { 76, 232, 138 },  rain = 6  },
+    triple_bolt  = { id = "triple_bolt",  mult = 10,  dur = 12, label = "霹雳十倍 ×10!",    col = { 72, 212, 255 },  rain = 8,  lightning = true },
+    triple_gem   = { id = "triple_gem",   mult = 25,  dur = 15, label = "红宝狂潮 ×25!",    col = { 255, 96, 178 },  rain = 10 },
+    triple_crown = { id = "triple_crown", mult = 50,  dur = 15, label = "皇冠暴富 ×50!",    col = { 255, 206, 56 },  rain = 12, vault = 1 },
+    jackpot_777  = { id = "jackpot_777",  mult = 100, dur = 15, label = "777大满贯 ×100!!", col = { 255, 118, 255 }, rain = 16, vault = 2 },
+}
 
 -- 6. 6 个商业级激励模拟广告位（完整 UI + 冷却 + 3秒试看弹窗，先接入 MockAd 不碰真实 SDK）
 Config.AD_PLACEMENTS = {
@@ -538,14 +608,14 @@ Config.AD_PLACEMENTS = {
         desc = "看广告把本次离线挂机赚到的推币现金直接翻 2 倍落袋！",
     },
     prestige_2x = {
-        id = "prestige_2x", title = "IPO 双倍传奇股", short = "双倍上市", cooldown = 0,
+        id = "prestige_2x", title = "上市双倍传奇股", short = "双倍上市", cooldown = 0,
         iconKind = "boss", iconKey = "gatekeeper", inWelfare = false,
-        desc = "本次上市转生获得的永久传奇股数量直接 ×2，起步起飞！",
+        desc = "敲钟上市不清空任何财富与币种，并让本次传奇股直接 ×2！",
     },
     overtake_3x = {
-        id = "overtake_3x", title = "超越赏金 ×3 暴富", short = "超越×3", cooldown = 0,
+        id = "overtake_3x", title = "超越技能点 ×3", short = "技能点×3", cooldown = 0,
         iconKind = "coin", iconKey = "midas", inWelfare = false,
-        desc = "看模拟广告立刻把刚刚超越世界富豪的祝贺赏金直接翻 3 倍！",
+        desc = "看模拟广告立刻把超越世界排名获赠的技能点直接翻 3 倍！",
     },
 }
 Config.AD_WELFARE_ORDER = { "boost_3x", "instant_fever", "vault_drop", "airdrop_5x" }
