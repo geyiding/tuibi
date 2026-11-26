@@ -42,16 +42,11 @@ local function BuildSettingsModal(cb)
         label = "游戏音效", value = true,
         onChange = function(_, v) if cb.OnToggleSfx then cb.OnToggleSfx(v) end end,
     }
-    r.togHaptic = UI.Toggle {
-        label = "震动反馈", value = true,
-        onChange = function(_, v) if cb.OnToggleHaptic then cb.OnToggleHaptic(v) end end,
-    }
     local audioCard = NeoFrame {
-        style = "card", width = "100%", padding = 10, gap = 8,
+        style = "card", width = "100%", padding = 10,
         flexDirection = "column",
         children = {
             UI.Row { width = "100%", justifyContent = "space-between", alignItems = "center", children = { r.togMusic, r.togSfx } },
-            UI.Row { width = "100%", alignItems = "center", children = { r.togHaptic } },
         },
     }
 
@@ -86,7 +81,7 @@ local function BuildSettingsModal(cb)
 
     -- 3. 兑换码区
     r.codeField = UI.TextField {
-        placeholder = "输入兑换码 (如 RICH2026)", flexGrow = 1, flexBasis = 0, height = 40, fontSize = 13,
+        placeholder = "输入兑换码", flexGrow = 1, flexBasis = 0, height = 40, fontSize = 13,
         onChange = function(_, v) st.codeText = v or "" end,
     }
     r.redeemBtn = NeoButton {
@@ -95,7 +90,9 @@ local function BuildSettingsModal(cb)
             if cb.OnRedeemCode then cb.OnRedeemCode(st.codeText) end
         end,
     }
-    r.redeemStatus = UI.Label { text = "兑换码: CARNIVAL2026 / COIN888 / RICH2026", fontSize = 12, fontColor = U.textDim, maxLines = 1 }
+    r.redeemStatus = UI.Label {
+        text = "", fontSize = 12, fontColor = U.textDim, whiteSpace = "normal", width = "100%", visible = false,
+    }
     local codeCard = NeoFrame {
         style = "card", width = "100%", padding = 10, gap = 6,
         flexDirection = "column",
@@ -105,22 +102,33 @@ local function BuildSettingsModal(cb)
         },
     }
 
-    -- 4. 一键存档返回
+    -- 4. 底部操作：左侧重置游戏（触发二次确认），右侧保存并继续
+    r.resetGameBtn = NeoButton {
+        text = "重置游戏", variant = "danger", flexGrow = 1, flexBasis = 0, minHeight = 44, fontSize = 14,
+        onClick = function() if cb.OnRequestResetGame then cb.OnRequestResetGame() end end,
+    }
     r.quitRunBtn = NeoButton {
-        text = "保存并继续", variant = "dark", width = "54%", minWidth = 148, minHeight = 44, alignSelf = "center",
+        text = "保存并继续", variant = "dark", flexGrow = 1, flexBasis = 0, minHeight = 44, fontSize = 14,
         onClick = function() if cb.OnSaveAndQuitRun then cb.OnSaveAndQuitRun() end end,
+    }
+    local botRow = UI.Row {
+        width = "100%", gap = 10,
+        children = { r.resetGameBtn, r.quitRunBtn },
     }
 
     local frame = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 385, height = 516, padding = 14, gap = 10,
+        style = "panel", width = "92%", maxWidth = 385, padding = 14, gap = 10,
         flexDirection = "column", justifyContent = "space-between",
-        children = { header, audioCard, saveCard, codeCard, r.quitRunBtn },
+        pointerEvents = "auto",
+        onClick = function() end,
+        children = { header, audioCard, saveCard, codeCard, botRow },
     }
 
     return UI.Panel {
         width = "100%", height = "100%", position = "absolute", top = 0, left = 0,
         backgroundColor = U.overlay, visible = false, pointerEvents = "auto",
         flexDirection = "column", justifyContent = "center", alignItems = "center",
+        onClick = function() if cb.OnCloseSettings then cb.OnCloseSettings() end end,
         children = { frame },
     }
 end
@@ -158,10 +166,48 @@ local function BuildCloudFailModal(cb)
     }
 end
 
+-- 重置游戏二次确认弹窗（点遮罩不关闭，防止误触）
+local function BuildConfirmResetModal(cb)
+    local frame = NeoFrame {
+        style = "panel", width = "88%", maxWidth = 360, padding = 18, gap = 14,
+        flexDirection = "column", alignItems = "center",
+        pointerEvents = "auto",
+        onClick = function() end,
+        children = {
+            NeoIcon { kind = "icon", key = "shield", size = 48, tint = C.red },
+            UI.Label { text = "确认重置游戏？", fontSize = 19, fontWeight = "bold", fontColor = U.red },
+            UI.Label {
+                text = "将清空所有财富、币种、机台、黑科技、上市进度与兑换码记录，并同步重置本地与云端存档，重新从零开始！\n（音乐与音效设置将保留）",
+                fontSize = 13, fontColor = U.textDim, whiteSpace = "normal", textAlign = "center", width = "100%",
+            },
+            UI.Row {
+                width = "100%", gap = 10,
+                children = {
+                    NeoButton {
+                        text = "取消", variant = "dark", flexGrow = 1, flexBasis = 0, minHeight = 46,
+                        onClick = function() if cb.OnCancelResetGame then cb.OnCancelResetGame() end end,
+                    },
+                    NeoButton {
+                        text = "确认重置", variant = "danger", flexGrow = 1, flexBasis = 0, minHeight = 46,
+                        onClick = function() if cb.OnConfirmResetGame then cb.OnConfirmResetGame() end end,
+                    },
+                },
+            },
+        },
+    }
+    return UI.Panel {
+        width = "100%", height = "100%", position = "absolute", top = 0, left = 0,
+        backgroundColor = U.overlay, visible = false, pointerEvents = "auto",
+        flexDirection = "column", justifyContent = "center", alignItems = "center",
+        children = { frame },
+    }
+end
+
 function SettingsHud.BuildModals(cb)
     st.cb = cb
     st.modals.settings = BuildSettingsModal(cb)
     st.modals.cloudFail = BuildCloudFailModal(cb)
+    st.modals.confirmReset = BuildConfirmResetModal(cb)
     return st.modals
 end
 
@@ -170,7 +216,6 @@ function SettingsHud.Refresh(prefs, saveStatus, inRun)
     if prefs then
         if r.togMusic.SetValue then r.togMusic:SetValue(prefs.music ~= false) end
         if r.togSfx.SetValue then r.togSfx:SetValue(prefs.sfx ~= false) end
-        if r.togHaptic.SetValue then r.togHaptic:SetValue(prefs.haptic ~= false) end
     end
     if saveStatus then
         SetLbl(r.lblLocalTime, saveStatus.localText)
@@ -184,8 +229,18 @@ end
 
 function SettingsHud.SetRedeemFeedback(ok, msg)
     local r = st.refs
-    SetLbl(r.redeemStatus, msg or "")
+    local text = msg or ""
+    SetLbl(r.redeemStatus, text)
     r.redeemStatus:SetStyle({ fontColor = ok and U.green or U.red })
+    r.redeemStatus:SetVisible(text ~= "")
+end
+
+function SettingsHud.ClearRedeemFeedback()
+    local r = st.refs
+    st.codeText = ""
+    if r.codeField and r.codeField.SetText then r.codeField:SetText("") end
+    SetLbl(r.redeemStatus, "")
+    r.redeemStatus:SetVisible(false)
 end
 
 function SettingsHud.SetCloudFailReason(reason)

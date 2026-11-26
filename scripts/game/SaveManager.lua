@@ -444,6 +444,34 @@ function SaveManager.RetryCloudSync()
     SaveManager.StartupSync(state.onCloudReadyCb, state.onCloudFailCb)
 end
 
+--- 重置全部游戏进度（生成全新存档并递增 saveSeq 同步写回本地与云端，保留 prefs 设置）
+function SaveManager.ResetAll(freshTycoonState, onDone)
+    local nextSeq = math.max((data and data.saveSeq) or 0, 0) + 1
+    data = SaveManager.DefaultData()
+    data.saveSeq = nextSeq
+    data.savedAt = ServerNow()
+    data.tycoon = freshTycoonState
+
+    state.cloudBlocked = false
+    state.cloudChecked = SaveManager.IsCloudAvailable()
+    state.syncPending = false
+    state.localFailed = false
+    state.cloudFailed = false
+    state.localTimer = 0
+    state.cloudTimer = 0
+
+    local localOk = SaveManager.SaveLocal({ keepTimestamp = true, force = true })
+    if not SaveManager.IsCloudAvailable() then
+        state.cloudSavedAt = 0
+        if state.onStatusCb then state.onStatusCb(SaveManager.GetStatus()) end
+        if onDone then onDone(localOk, false) end
+        return
+    end
+    SaveManager.SaveCloud(function(cloudOk, msg)
+        if onDone then onDone(localOk, cloudOk, msg) end
+    end)
+end
+
 -- ----------------------------------------------------------------------------
 -- 自动保存定时器与 10 秒客户端看门狗（dt 已钳制 <= 0.05）
 -- ----------------------------------------------------------------------------

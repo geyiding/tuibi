@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Physics.lua  纯 Lua 2D 推币机与钉阵物理引擎（零引擎依赖，lupa 可直接压测）
 --   · 预分配 MAX_COINS = 110 扁平对象池 + 12×16 空间哈希网格（零每帧建表）
---   · 顶部摆动发射 → 钉阵碰撞 → 往复斜口中奖门 → 2.5D 梯形推台多米诺挤压
+--   · 顶部摆动发射 → 钉阵碰撞 → 往复斜口幸运门 → 2.5D 梯形推台多米诺挤压
 --   · 支持特殊功能钉、狂欢金币雨、侧漏保护、防卡死保险丝、满台溢出超频
 -- ============================================================================
 
@@ -467,7 +467,7 @@ function Physics:Step(dt)
     if dt > 0.05 then dt = 0.05 end
     self.time = self.time + dt
 
-    -- 1. 机械周期更新（摆动发射口 + 独立扫掠中奖门 + 机械推板）
+    -- 1. 机械周期更新（摆动发射口 + 独立扫掠幸运门 + 机械推板）
     local gRate = (1 / S.GATE_CYCLE) * self.gateCycleScale
     self.launchPhase = (self.launchPhase + dt * gRate) % 1
     self.gatePhase = (self.gatePhase + dt * (1 / (S.GATE_CYCLE * 1.37)) * self.gateCycleScale) % 1
@@ -570,7 +570,7 @@ function Physics:Step(dt)
                     end
                 end
 
-                -- 中奖门斜沿与穿越检测
+                -- 幸运门斜沿与穿越检测
                 if not c.gateChecked and prevY < S.GATE_Y and c.y >= S.GATE_Y then
                     c.gateChecked = true
                     if not self.gateClosed and c.x >= gateLeftEdge and c.x <= gateRightEdge then

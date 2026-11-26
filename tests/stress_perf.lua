@@ -5,7 +5,7 @@
 local Config = require("game/Config")
 local Tycoon = require("game/Tycoon")
 
-local ty = Tycoon.New(nil, { seed = 777 })
+local ty = Tycoon.New(nil, { seed = 2026 })
 ty.cash = 1e20
 ty.lifetimeCash = 1e20
 ty.skillPoints = 5000

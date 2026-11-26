@@ -144,6 +144,25 @@ end
 function OvertakePopup:SetFont(f) self.font_ = f end
 function OvertakePopup:IsOpen() return self.on_ or self.pending_ ~= nil end
 
+function OvertakePopup:Reset()
+    self.on_ = false
+    self.age_ = 0
+    self.closing_ = -1
+    self.item_ = nil
+    self.tier_ = 1
+    self.count_ = 1
+    self.sp_ = 0
+    self.punch_ = 0
+    self.pending_ = nil
+    self.pendingCount_ = 0
+    self.pendingSp_ = 0
+    self.stamped_ = false
+    self.btnSp_ = nil
+    self.lastT_ = nil
+    for i = 1, #self.btns_ do self.btns_[i].w = 0 end
+    self:SetVisible(false)
+end
+
 local function ApplyContent(self, item, count, sp)
     self.item_ = item
     self.count_ = count
@@ -792,10 +811,16 @@ function OvertakePopup:Render(nvg)
     nvgFontSize(nvg, nfs)
     nvgFillColor(nvg, Col(greyK > 0 and GREY or C.white, A))
     nvgText(nvg, rx + cardW * 0.5, cy0 + 110 * u, self.txtName_)
-    nvgFontSize(nvg, 12 * u)
+    local rkFs = 12 * u
+    local rkw = EstTextW(self.txtRivalRank_, rkFs)
+    if rkw > cardW - 10 * u then rkFs = rkFs * (cardW - 10 * u) / rkw end
+    nvgFontSize(nvg, rkFs)
     nvgFillColor(nvg, Col(C.muted, A))
     nvgText(nvg, rx + cardW * 0.5, cy0 + 130 * u, self.txtRivalRank_)
-    nvgFontSize(nvg, 13 * u)
+    local rcFs = 13 * u
+    local rcw = EstTextW(self.txtRivalCash_, rcFs)
+    if rcw > cardW - 10 * u then rcFs = rcFs * (cardW - 10 * u) / rcw end
+    nvgFontSize(nvg, rcFs)
     nvgFillColor(nvg, Col(GOLD, floor(A * (greyK > 0 and 0.6 or 1))))
     nvgText(nvg, rx + cardW * 0.5, cy0 + cardH - 18 * u, self.txtRivalCash_)
     -- 已超越印章（0.5s 砸上）

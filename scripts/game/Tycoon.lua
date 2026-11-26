@@ -50,7 +50,7 @@ function Tycoon.New(fxListener, opts)
     self.rankIdx = 0      -- 0 = 第80亿名起点，依次冲破 22 档匿名阶层 -> 世界前 1000 真名榜
     self.stageTheme = 1
 
-    -- 街机三连老虎机（过中奖门 9 秒限流转奖，稀缺爆发 1.5x~100x）
+    -- 街机幸运三连机（过幸运门 9 秒限流转动，稀缺爆发 1.5x~100x）
     self.slotQueue = 0
     self.slotCd = 0
     self.slotSpinning = false
@@ -272,7 +272,7 @@ function Tycoon:InvalidateCaches()
     self._avgVal = nil
 end
 
---- 临时爆发倍率（连击 × 狂欢 × 3x印钞 × 老虎机），供结算与长期CPS去噪共用
+--- 临时爆发倍率（连击 × 狂欢 × 3x印钞 × 幸运三连），供结算与长期CPS去噪共用
 function Tycoon:GetTempMult()
     local comboFactor = self:HasTech("metronome") and 0.012 or 0.008
     local comboM = 1 + min(100, self.combo) * comboFactor
@@ -313,7 +313,7 @@ function Tycoon:GetEstimatedCPS()
     return rate * self:GetAvgUnlockedCoinValue() * mult * 0.92
 end
 
---- 不含临时加成（连击/狂欢/老虎机/印钞）的基准产值：飘字分级参照，倍率越高字越大越炸
+--- 不含临时加成（连击/狂欢/幸运三连/印钞）的基准产值：飘字分级参照，倍率越高字越大越炸
 function Tycoon:GetBaselineCPS()
     local rate = self:GetAutoRate(true) * (1 + min(0.75, (self.machineLv.multi_shot or 0) * 0.05))
     return rate * self:GetAvgUnlockedCoinValue() * self:GetPermMult() * 0.92
@@ -764,7 +764,7 @@ function Tycoon:ResolveSlotSpin(pending)
         self.luckDur = max(self.luckDur or prize.dur, prize.dur)
     end
 
-    -- 老虎机奖励空投金币雨 / 闪电 / 45倍金库巨币
+    -- 幸运三连奖励空投金币雨 / 闪电 / 45倍金库巨币
     local rainCnt = prize.rain or 0
     local hi = self:GetHighestUnlockedCoin()
     for k = 1, rainCnt do
@@ -809,7 +809,7 @@ function Tycoon:HandleGateWin(coin)
     end
     self:AwardCash(self:GetCoinUnitValue(coin.kind, coin.level) * (0.18 + gateLv * 0.025), coin.x, coin.y, "gate", true)
     local queued = self:QueueSlotSpin()
-    local rewardName = queued and string.format("过门 ×%d + 老虎机!", dropCnt) or string.format("过门落币 ×%d!", dropCnt)
+    local rewardName = queued and string.format("过门 ×%d + 幸运三连!", dropCnt) or string.format("过门落币 ×%d!", dropCnt)
     Emit(self.fx, "OnGateWin", coin, rewardName)
 end
 
@@ -1361,7 +1361,7 @@ function Tycoon:Update(dt)
         end
     end
 
-    -- 街机老虎机旋转与限时倍率倒计时
+    -- 街机幸运三连旋转与限时倍率倒计时
     if self.slotFlashT > 0 then
         self.slotFlashT = max(0, self.slotFlashT - dt)
     end

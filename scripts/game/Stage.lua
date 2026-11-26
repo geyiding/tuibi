@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Stage.lua  推币机舞台控件（3D 机台之上的屏幕空间机台 HUD + 2D 兜底机台）
---   · 倍率霓虹招牌：挂在 3D 机台顶棚位置，大号总倍率 + 实时增益来源芯片（连击/狂欢/老虎机/印钞）
---   · 老虎机滚轮：真实滚动 + 依次落定回弹 + 幸运倍率倒计时光条
+--   · 倍率霓虹招牌：挂在 3D 机台顶棚位置，大号总倍率 + 实时增益来源芯片（连击/狂欢/三连/印钞）
+--   · 幸运三连机滚轮：真实滚动 + 依次落定回弹 + 幸运倍率倒计时光条
 --   · 狂欢能量玻璃管 / 连击计时光环 / 传说币闪烁星光 / 点击涟漪
 --   · 所有锚点来自 Machine3D 投影（随屏幕比例自适应），2D 兜底模式用逻辑坐标映射
 -- ============================================================================
@@ -125,7 +125,7 @@ function Stage:ToScreen(lx, ly)
 end
 
 -- ----------------------------------------------------------------------------
--- 老虎机符号
+-- 幸运三连符号
 -- ----------------------------------------------------------------------------
 local function DrawSlotSymbol(nvg, symIdx, cx, cy, r, font)
     local syms = Config.SLOT_SYMBOLS
@@ -176,10 +176,18 @@ local function DrawSlotSymbol(nvg, symIdx, cx, cy, r, font)
         nvgFillColor(nvg, Col(col, 255))
         nvgFill(nvg)
     else
-        nvgFontFace(nvg, font or "sans")
-        nvgFontSize(nvg, r * 1.7)
-        nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-        OutlinedText(nvg, cx, cy + 0.5, "7", col, 255, 1.4)
+        nvgBeginPath(nvg)
+        DrawStarPath(nvg, cx, cy, r * 0.85, 0, 0.34)
+        nvgFillColor(nvg, Col(col, 255))
+        nvgFill(nvg)
+        nvgBeginPath(nvg)
+        nvgMoveTo(nvg, cx, cy - r * 0.36)
+        nvgLineTo(nvg, cx + r * 0.30, cy)
+        nvgLineTo(nvg, cx, cy + r * 0.36)
+        nvgLineTo(nvg, cx - r * 0.30, cy)
+        nvgClosePath(nvg)
+        nvgFillColor(nvg, Col(C.white, 240))
+        nvgFill(nvg)
     end
 end
 Stage.DrawSlotSymbol = DrawSlotSymbol
@@ -364,7 +372,7 @@ function Stage:DrawMachine2D(nvg, run, phys, t, accent, trim, themeIdx, boostOn,
         nvgFill(nvg)
     end
 
-    -- 移动中奖门
+    -- 移动幸运门
     local gx = phys.gateX
     local gy = S.GATE_Y
     local gHalf = phys.gateClosed and 2 or (S.GATE_BASE_HALF * phys.gateWidthScale)
@@ -473,7 +481,7 @@ end
 -- 倍率霓虹招牌
 -- ----------------------------------------------------------------------------
 local CHIP_COLS = { C.cyan, C.magenta, C.gold, C.green }
-local CHIP_HEAD = { "连击", "狂欢", "老虎机", "印钞" }
+local CHIP_HEAD = { "连击", "狂欢", "三连", "印钞" }
 
 function Stage:DrawMultSign(nvg, run, fx, cx, cy, u, t, dt, font)
     -- 1. 显示值追随实际值（增益上涨时快速滚动，过期回落时稍慢）
@@ -628,7 +636,7 @@ function Stage:DrawMultSign(nvg, run, fx, cx, cy, u, t, dt, font)
 end
 
 -- ----------------------------------------------------------------------------
--- 老虎机滚轮 + 幸运倍率倒计时
+-- 幸运三连滚轮 + 幸运倍率倒计时
 -- ----------------------------------------------------------------------------
 function Stage:DrawSlotReels(nvg, run, cx, cy, u, t, font)
     local spin = run.slotSpinning == true
@@ -709,7 +717,7 @@ function Stage:DrawSlotReels(nvg, run, cx, cy, u, t, font)
     local sideKey = (spin and "s" or "i") .. tostring(q) .. ":" .. tostring(luckMult)
     if sideKey ~= self.slotSideKey_ then
         self.slotSideKey_ = sideKey
-        self.slotSideTxt_ = spin and "抽奖中" or (q > 0 and ("待抽+" .. q) or ((luckMult > 1) and ("×" .. Number.FormatMul(luckMult)) or "过门抽奖"))
+        self.slotSideTxt_ = spin and "转动中" or (q > 0 and ("待转+" .. q) or ((luckMult > 1) and ("×" .. Number.FormatMul(luckMult)) or "过门三连"))
     end
     nvgFontFace(nvg, font or "sans")
     nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)

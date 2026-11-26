@@ -173,7 +173,7 @@ function Art.DrawCoin(nvg, kind, cx, cy, r, level, squashY, rot, frost, fuseT, i
         nvgStrokeWidth(nvg, 1.4)
         nvgStroke(nvg)
     else
-        -- 经典竖条 / 方孔 / 777
+        -- 经典竖条 / 方孔 / 星钻
         nvgRect(nvg, cx - sr * 0.16, cy - sr * 0.7, sr * 0.32, sr * 1.4)
         nvgFillColor(nvg, Col(pal.dark, 185))
         nvgFill(nvg)

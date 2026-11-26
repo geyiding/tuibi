@@ -431,6 +431,7 @@ local callbacks = {
     -- 系统设置与双端存档
     OnOpenSettings = function()
         Sfx.Play("click")
+        SettingsHud.ClearRedeemFeedback()
         SettingsHud.Refresh(SaveManager.GetPrefs(), SaveManager.GetStatus(), true)
         TycoonHud.OpenModal("settings")
     end,
@@ -450,11 +451,6 @@ local callbacks = {
         SaveManager.SavePrefs()
         Sfx.SetEnabled(prefs.sfx)
         Sfx.Play("click")
-    end,
-    OnToggleHaptic = function(on)
-        local prefs = SaveManager.GetPrefs()
-        prefs.haptic = (on == true)
-        SaveManager.SavePrefs()
     end,
     OnManualSave = function()
         Sfx.Play("click")
@@ -485,12 +481,61 @@ local callbacks = {
         PersistTycoon(true)
         TycoonHud.CloseModal()
     end,
+    OnRequestResetGame = function()
+        Sfx.Play("click")
+        TycoonHud.OpenModal("confirmReset")
+    end,
+    OnCancelResetGame = function()
+        Sfx.Play("click")
+        SettingsHud.Refresh(SaveManager.GetPrefs(), SaveManager.GetStatus(), true)
+        TycoonHud.OpenModal("settings")
+    end,
+    OnConfirmResetGame = function()
+        Sfx.Play("click")
+        MockAd.CancelPending()
+        game.saveDirty = false
+        game.saveDirtyAccum = 0
+        game.snapshotAccum = 0
+        game.refreshAccum = 0
+        game.modalRefreshAccum = 0
+        game.ladderIdx = 0
+        game.ladderSilent = false
+        game.pendingBounty = 0
+        if game.fx then game.fx:Reset() end
+
+        game.tycoon = Tycoon.New(listener, { seed = os.time() })
+        _G.__TYCOON = game.tycoon
+
+        TycoonHud.ResetState()
+        SaveManager.ResetAll(game.tycoon:ExportState(os.time()), function()
+            if TycoonHud.GetCurModal() == "settings" then
+                SettingsHud.Refresh(SaveManager.GetPrefs(), SaveManager.GetStatus(), true)
+            end
+        end)
+        Machine3D.ForceResync()
+        if Machine3D.IsActive() then
+            Machine3D.Update(0, game.tycoon, game.fx, game.time)
+        end
+        Music.Play("bgm_act1")
+        TycoonHud.RefreshMain(game.tycoon)
+    end,
     OnCloudConfirmFresh = function()
         Sfx.Play("click")
-        TycoonHud.CloseModal()
+        MockAd.CancelPending()
+        game.saveDirty = false
+        game.saveDirtyAccum = 0
+        game.ladderIdx = 0
+        game.ladderSilent = false
+        game.pendingBounty = 0
+        if game.fx then game.fx:Reset() end
         SaveManager.ConfirmStartFresh()
         game.tycoon = Tycoon.New(listener, { seed = os.time() })
         _G.__TYCOON = game.tycoon
+        TycoonHud.ResetState()
+        Machine3D.ForceResync()
+        if Machine3D.IsActive() then
+            Machine3D.Update(0, game.tycoon, game.fx, game.time)
+        end
         Music.Play("bgm_act1")
         TycoonHud.RefreshMain(game.tycoon)
     end,
@@ -556,7 +601,7 @@ function Start()
     }
 
     local extraModals = SettingsHud.BuildModals(callbacks)
-    local root = TycoonHud.Build(game.stage, callbacks, extraModals.settings, extraModals.cloudFail, {
+    local root = TycoonHud.Build(game.stage, callbacks, extraModals.settings, extraModals.cloudFail, extraModals.confirmReset, {
         fx = game.fx,
         font = game.font,
         getTime = function() return game.time end,
@@ -652,7 +697,7 @@ function HandleUpdate(eventType, eventData)
     end
 
     local ty = game.tycoon
-    local simPaused = (curModal == "mockAd" or curModal == "cloudFail" or curModal == "offline")
+    local simPaused = (curModal == "mockAd" or curModal == "cloudFail" or curModal == "offline" or curModal == "confirmReset")
     if ty and not simPaused then
         if not curModal and game.stage and game.stage:IsHolding() then
             ty:ManualShoot()
@@ -709,7 +754,7 @@ function HandleUpdate(eventType, eventData)
         TycoonHud.RefreshMain(ty)
     end
 
-    if curModal and curModal ~= "settings" and curModal ~= "cloudFail" and curModal ~= "mockAd" and curModal ~= "offline" then
+    if curModal and curModal ~= "settings" and curModal ~= "cloudFail" and curModal ~= "mockAd" and curModal ~= "offline" and curModal ~= "confirmReset" then
         game.modalRefreshAccum = game.modalRefreshAccum + dt
         if game.modalRefreshAccum >= 0.25 then
             game.modalRefreshAccum = 0

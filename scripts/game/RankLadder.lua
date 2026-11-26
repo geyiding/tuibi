@@ -7,6 +7,7 @@
 -- ============================================================================
 
 local Billionaires = require("game/Billionaires")
+local Number = require("game/Number")
 
 local floor, max, min, log = math.floor, math.max, math.min, math.log
 
@@ -44,7 +45,7 @@ local RIVALS = {
     { 3.40e5, "私募基金合伙人",     "我的量化模型算不出你的爆率！",               { 2, "angular", "part",  { 80, 60, 40 },  "shades",  "none",     "suit",    { 24, 28, 40 },    "btc" } },
     { 1.60e5, "省会地产大亨",       "盖了半座城的楼，被你一台推币机超了！",       { 3, "square",  "bald",  { 0, 0, 0 },     "none",    "goatee",   "suit",    { 60, 40, 24 },    "crown" } },
     { 7.20e4, "独角兽创始人",       "估值吹了十轮，现金流还不如你！",             { 2, "oval",    "wild",  { 40, 30, 26 },  "vr",      "stubble",  "hoodie",  { 30, 30, 34 },    "rocket" } },
-    { 3.30e4, "游戏公司老板",       "我做了一辈子抽卡，没见过这么爽的爆率！",     { 3, "round",   "swept", { 30, 30, 34 },  "headset", "none",     "tee",     { 60, 40, 120 },   "steam" } },
+    { 3.30e4, "游戏公司老板",       "我做了一辈子游戏，没见过这么爽的掉币！",     { 3, "round",   "swept", { 30, 30, 34 },  "headset", "none",     "tee",     { 60, 40, 120 },   "steam" } },
     { 1.60e4, "上市集团董事长",     "敲钟那天都没你现在风光！",                   { 3, "square",  "silver", { 200, 200, 206 }, "none",  "none",     "royal",   { 120, 20, 40 },   "crown" } },
     { 7.50e3, "跨国航运巨头",       "全球的货轮加起来，运不完你的金币！",         { 2, "angular", "silver", { 220, 222, 226 }, "none",  "full",     "suit",    { 20, 34, 60 },    "rocket" } },
     { 3.80e3, "顶级对冲基金经理",   "我对冲了所有风险，唯独没对冲你！",           { 2, "oval",    "bald",  { 0, 0, 0 },     "shades",  "none",     "suit",    { 24, 24, 30 },    "btc" } },
@@ -104,28 +105,16 @@ function RankLadder.CountPassed(wealth)
     return lo
 end
 
---- 世界排名中文分级格式：59亿8326万 / 3826万4512 / 4512
+--- 世界排名精确到个位千分位：5,983,260,000 / 38,264,512 / 4,512
 function RankLadder.FormatRank(rank)
     local r = max(1, floor((tonumber(rank) or 1) + 0.5))
-    if r >= 1e8 then
-        return string.format("%d亿%04d万", floor(r / 1e8), floor((r % 1e8) / 1e4))
-    elseif r >= 1e4 then
-        return string.format("%d万%04d", floor(r / 1e4), r % 10000)
-    end
-    return tostring(r)
+    return Number.FormatExactInt(r)
 end
 
---- 静态标签用的简写：59亿2000万 / 8000万 / 7万2000 / 990
+--- 静态标签用的世界排名精确格式（同个位千分位，统一全链路视觉风格）
 function RankLadder.FormatRankShort(rank)
     local r = max(1, floor((tonumber(rank) or 1) + 0.5))
-    if r >= 1e8 then
-        local a, b = floor(r / 1e8), floor((r % 1e8) / 1e4)
-        return (b > 0) and string.format("%d亿%d万", a, b) or string.format("%d亿", a)
-    elseif r >= 1e4 then
-        local a, b = floor(r / 1e4), r % 10000
-        return (b > 0) and string.format("%d万%d", a, b) or string.format("%d万", a)
-    end
-    return tostring(r)
+    return Number.FormatExactInt(r)
 end
 
 return RankLadder

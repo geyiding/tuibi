@@ -2,7 +2,7 @@
 -- Machine3D.lua  《推币机的狂欢》真 3D PBR 街机推币机舞台（全兼容引擎内置几何体）
 --   · 使用 Models/Box.mdl / Cylinder.mdl / Sphere.mdl / Plane.mdl / Torus.mdl 组装，
 --     零第三方几何构建 API 依赖，兼容本地窗口与云端 Web 全版本 UrhoX 引擎
---   · 包含金属倒角机身、往复推板、摆动发射炮口、移动中奖门、发光钉阵、24 颗3D跑马灯球、
+--   · 包含金属倒角机身、往复推板、摆动发射炮口、移动幸运门、发光钉阵、24 颗3D跑马灯球、
 --     亚克力防护侧玻璃及 140 枚立体金属贴图硬币池
 -- ============================================================================
 
@@ -344,7 +344,7 @@ local function BuildCabinet()
     end
 end
 
--- 构建 3D 往复推板 + 顶部摆动发射器 + 中奖移动门
+-- 构建 3D 往复推板 + 顶部摆动发射器 + 幸运移动门
 local function BuildAnimatedMechanisms()
     local box, cyl = M.models.box, M.models.cyl
 
@@ -366,8 +366,8 @@ local function BuildAnimatedMechanisms()
     AddPart(M.launcherNode, "Barrel", box, M.mats.chrome,        Vector3(0, -0.14, 0), Vector3(0.18, 0.26, 0.18))
     AddPart(M.launcherNode, "Muzzle", cyl, M.mats.neonSecondary, Vector3(0, -0.28, 0), Vector3(0.16, 0.08, 0.16), nil, false)
 
-    -- 3. 移动中奖门
-    M.gateNode = M.scene:CreateChild("JackpotGate")
+    -- 3. 移动幸运门
+    M.gateNode = M.scene:CreateChild("LuckyGate")
     M.gateNode.position = Vector3(0, 0.51, 1.31)
     M.gateLeftNode  = AddPart(M.gateNode, "GateLeft",  box, M.mats.neonSecondary, Vector3(-0.32, 0, 0), Vector3(0.16, 0.22, 0.20))
     M.gateRightNode = AddPart(M.gateNode, "GateRight", box, M.mats.neonSecondary, Vector3(0.32, 0, 0),  Vector3(0.16, 0.22, 0.20))
@@ -665,7 +665,7 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
         end
     end
 
-    -- 5. 往复推板、发射器角度、移动中奖门位置同步
+    -- 5. 往复推板、发射器角度、移动幸运门位置同步
     local pusherFrontZ = 1.50 - ((phys.pusherY or S.PUSHER_Y_MIN) - S.DECK_TOP_Y) * 0.01
     M.pusherNode.position = Vector3(0, 0.0, pusherFrontZ)
 
@@ -781,6 +781,30 @@ function Machine3D.WorldToUi(lx, ly, zone, lz, uiW, uiH)
     local wp = LogicToWorld3D(lx, ly, zone or "deck", lz or 0, false)
     local pt = M.cam:WorldToScreenPoint(wp)
     return pt.x * uiW, pt.y * uiH
+end
+
+function Machine3D.ForceResync()
+    M.lastPegVer = -1
+    M.lastThemeKey = ""
+    M.lastTheme = -1
+    M.lastBulbPhase = -1
+    M.lastGuarded = nil
+    M.lastLightB = -1
+    M.lastLightKey = -1
+    M.feverPhase = -1
+    for i = 1, #M.coinPool do
+        local slot = M.coinPool[i]
+        slot.enabled = false
+        slot.lastKind = ""
+        slot.lastDia = -1
+        slot.lastZone = ""
+        slot.lastOnPusher = nil
+        slot.lastX, slot.lastY, slot.lastZ = -9999, -9999, -9999
+        slot.lastRot = -999
+        if slot.node then
+            slot.node:SetDeepEnabled(false)
+        end
+    end
 end
 
 function Machine3D.Shutdown()

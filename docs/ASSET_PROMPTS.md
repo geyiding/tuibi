@@ -72,7 +72,7 @@ Row 3 Right: luxurious faceted crimson ruby gemstone coin #EC3862 set inside an 
 | 左 | 中 | 右 |
 |---|---|---|
 | `[1,1]` `coin_neon.png` (狂热霓虹) | `[1,2]` `coin_frost.png` (冰晶棱币) | `[1,3]` `coin_ghost.png` (幽灵穿影) |
-| `[2,1]` `coin_jackpot7.png` (777轮盘币) | `[2,2]` `coin_blackhole.png` (黑洞奇点) | `[2,3]` `coin_giant.png` (黄金巨人) |
+| `[2,1]` `coin_jackpot7.png` (星耀幸运币) | `[2,2]` `coin_blackhole.png` (黑洞奇点) | `[2,3]` `coin_giant.png` (黄金巨人) |
 | `[3,1]` `coin_nuke.png` (核能烈焰) | `[3,2]` `coin_mini.png` (银分身) | `[3,3]` `coin_slag.png` (熔渣废币) |
 
 #### 一键复制英文 Prompt（图集 2 · 进阶与衍生 9 币）
@@ -81,7 +81,7 @@ Clean 3x3 grid sheet of 9 distinct game coin icons arranged neatly with generous
 Row 1 Left: ultra-bright neon hot-pink disc coin #FF44DC with electric cyan outer rim and glowing five-point party star emblem;
 Row 1 Center: icy translucent cyan sapphire coin #76EEFF featuring a geometric six-point snowflake crystal inside frosted glass;
 Row 1 Right: semi-translucent ethereal ice-lavender ghost coin #AED2FF with a cute mischievous glowing spectral flame emblem;
-Row 2 Left: gilded Vegas jackpot casino coin #FFD72E with neon pink-red marquee rim and glowing ornate golden 7 motif in center;
+Row 2 Left: gilded cosmic arcade star coin #FFD72E with neon pink-red marquee rim and glowing ornate golden 8-point star gem motif in center;
 Row 2 Center: cosmic singularity obsidian black-hole void core coin surrounded by swirling neon violet-magenta accretion vortex #9C56FF;
 Row 2 Right: massive extra-thick royal gold medallion coin #FFB224 with a bold golden king crown relief and double chamfered rim;
 Row 3 Left: fiery molten magma nuke coin #FF4C2A encased in dark titanium ring with glowing radioactive flame trefoil emblem;
@@ -95,7 +95,7 @@ Row 3 Right: rough volcanic dark iron slag coin #6A5E5C oozing bright glowing mo
 第一行左：荧光粉紫狂热霓虹硬币，带电青外圈与中央五角狂欢星徽记；
 第一行中：冰蓝晶莹蓝宝石冰晶币，中央嵌几何六角冰晶雪花；
 第一行右：幽蓝淡紫半透明幻影幽灵币，中央微光俏皮灵能小火苗；
-第二行左：传奇黄金 777 轮盘币，红粉霓虹跑马灯圈与中心金色幸运数字 7；
+第二行左：传奇星耀幸运币，红粉霓虹跑马灯圈与中心金色闪耀星钻徽记；
 第二行中：漆黑黑洞奇点核心币，四周环绕霓虹紫粉吸积盘漩涡；
 第二行右：特大号双层切边皇家黄金巨人重币，正面厚实皇冠浮雕；
 第三行左：黑钛外环裹烈焰红核的核能烈焰硬币，中央发光辐射火焰纹；
@@ -114,7 +114,7 @@ Row 3 Right: rough volcanic dark iron slag coin #6A5E5C oozing bright glowing mo
 |---|---|---|
 | `[1,1]` `coin_vault.png` (装甲金库币) | `[1,2]` `coin_midas.png` (点金圣王) | `[1,3]` `coin_thor.png` (雷神之锤) |
 | `[2,1]` `coin_supernova.png` (超新星爆) | `[2,2]` `coin_hydra.png` (无限分身) | `[2,3]` `coin_singularity.png` (奇点涡轮) |
-| `[3,1]` `coin_carnival.png` (狂欢大满贯) | `[3,2]` `relic_first_surge.png` (遗物·首冲引擎) | `[3,3]` `relic_prism.png` (遗物·霓虹棱镜) |
+| `[3,1]` `coin_carnival.png` (狂欢盛典币) | `[3,2]` `relic_first_surge.png` (遗物·首冲引擎) | `[3,3]` `relic_prism.png` (遗物·霓虹棱镜) |
 
 #### 一键复制英文 Prompt（图集 3 · 进化传说 7 币 + 2 终极遗物）
 ```text
@@ -125,7 +125,7 @@ Row 1 Right: electrified storm coin #62E4FF with heavy gold rim framing a glowin
 Row 2 Left: cosmic starburst coin #FF5CAE with blinding white-gold fusion core radiating magenta and orange shockwaves;
 Row 2 Center: bio-cyber emerald mint coin #52F8AE with interlocking three-way infinity spiral blades and glowing aqua crystal core;
 Row 2 Right: deep cosmic ultraviolet turbine coin #964AFF with glowing cyan magnetic blades spinning around a dark void center;
-Row 3 Left: ultimate prismatic rainbow-gold grand jackpot coin #FFCC40 with cyan-magenta aurora glaze and 8-point firework star;
+Row 3 Left: ultimate prismatic rainbow-gold star carnival coin #FFCC40 with cyan-magenta aurora glaze and 8-point firework star;
 Row 3 Center (gadget): glowing orange-cyan rocket turbocharger engine core brimming with stylized neon ignition flame bursts;
 Row 3 Right (gadget): floating precision-cut holographic diamond crystal prism refracting beams of cyan, magenta and gold light.
 ```
@@ -139,7 +139,7 @@ Row 3 Right (gadget): floating precision-cut holographic diamond crystal prism r
 第二行左：超新星爆粉金恒星币，白金耀核向四周爆开品红橙色星环；
 第二行中：无限分身翡翠晶核币，翠绿荧光三向无限循环螺旋刃；
 第二行右：奇点涡轮紫电币，深黑虚空中心外旋一圈发光荧光青电磁扇叶；
-第三行左：狂欢大满贯幻彩终极金币，金彩极光釉面与八芒庆典星徽；
+第三行左：狂欢盛典幻彩终极金币，金彩极光釉面与八芒庆典星徽；
 第三行中（独立装备图标）：喷涌炽橙与电青尾焰的迷你火箭涡轮增压引擎核；
 第三行右（独立装备图标）：悬浮半空的精切七彩全息钻石棱镜，折射青、品红、金色光束。
 ```
@@ -154,7 +154,7 @@ Row 3 Right (gadget): floating precision-cut holographic diamond crystal prism r
 | 左 | 中 | 右 |
 |---|---|---|
 | `[1,1]` `relic_rail_guard.png` (合金护栏) | `[1,2]` `relic_turbo_pusher.png` (涡轮活塞) | `[1,3]` `relic_golden_pegs.png` (黄金倍增钉) |
-| `[2,1]` `relic_wide_gate.png` (宽口中奖门) | `[2,2]` `relic_metronome.png` (连击节拍器) | `[2,3]` `relic_medkit.png` (救急芯片) |
+| `[2,1]` `relic_wide_gate.png` (宽口幸运门) | `[2,2]` `relic_metronome.png` (连击节拍器) | `[2,3]` `relic_medkit.png` (救急芯片) |
 | `[3,1]` `relic_big_pouch.png` (大额币袋) | `[3,2]` `relic_bankbook.png` (复利金库) | `[3,3]` `relic_crit_seal.png` (暴击印章) |
 
 #### 一键复制英文 Prompt（图集 4 · 遗物 A 组 9 件）
@@ -177,7 +177,7 @@ Row 3 Right: fiery crimson-gold wax and metal stamp seal #FF5260 shaped like an 
 第一行左：荧光青金属街机挡板护栏，四角带金螺栓；
 第一行中：镀铬液压弹簧活塞推进器，泛翡翠绿动能光；
 第一行右：三颗并排的亮黄金弹珠台倍增撞钉，带青金星火；
-第二行左：袖珍青粉双色霓虹发光中奖门拱框；
+第二行左：袖珍青粉双色霓虹发光幸运门拱框；
 第二行中：赛博未来风节拍器，中央一根发光荧光青闪电摆针；
 第二行右：圆润火红色赛博机械爱心微芯片，金引脚配纯白十字标；
 第三行左：鼓囊囊深靛蓝皮革街机金币束口袋，袋口溢出金币；
@@ -237,7 +237,7 @@ Row 3 Right: dual-fan neon gold #FFD240 and crimson #FF5260 cyber GPU cooling he
 |---|---|---|
 | `[1,1]` `ui/panel.png` (弹窗大框 `256×256`) | `[1,2]` `ui/card.png` (商店/奖励卡 `192×192`) | `[1,3]` `ui/slot.png` (小槽位 `128×128`) |
 | `[2,1]` `ui/button.png` (金橙立体主按钮 `256×96`) | `[2,2]` `ui/plate.png` (顶栏底条 `256×96`) | `[2,3]` `ui/cloth.png` (底栏底板 `256×96`) |
-| `[3,1]` `ui/banner.png` (标题飘带 `256×80`) | `[3,2]` `machine/pusher_bar.png` (往复推台 `512×128`) | `[3,3]` `machine/gate_badge.png` (中奖门 `160×64`) |
+| `[3,1]` `ui/banner.png` (标题飘带 `256×80`) | `[3,2]` `machine/pusher_bar.png` (往复推台 `512×128`) | `[3,3]` `machine/gate_badge.png` (幸运门 `160×64`) |
 
 #### 一键复制英文 Prompt（图集 6 · UI 九宫格件 + 机台组件）
 ```text
@@ -250,7 +250,7 @@ Row 2 Center: sleek horizontal dark slate metallic header bar plate #181E3C with
 Row 2 Right: horizontal brushed deep-navy bottom control bar plate #121834 with glowing hot-magenta top neon stripe #FF48B2, clean center;
 Row 3 Left: bold bright electric cyan ribbon banner plate #38E0FF with white inner trim and chunky 3D bottom lip, clean empty center;
 Row 3 Center: top-down 2.5D isometric arcade coin-pusher sliding shelf bar, purple-slate platform with glowing magenta front lip #FF48B2 and steel edge stripes;
-Row 3 Right: futuristic neon jackpot gate arch bracket with twin glowing magenta bumpers framing a bright gold light beam chute.
+Row 3 Right: futuristic neon lucky gate arch bracket with twin glowing magenta bumpers framing a bright gold light beam chute.
 ```
 
 #### 一键复制中文 Prompt（图集 6 · 国内生图工具直出）
@@ -264,7 +264,7 @@ Row 3 Right: futuristic neon jackpot gate arch bracket with twin glowing magenta
 第二行右：横向拉丝深蓝底栏金属底座条，顶边一条霓虹粉品红灯带；
 第三行左：电光青立体飘带标题横幅底图，内圈白线点缀；
 第三行中：2.5D 微俯视推币机推板台，紫灰金属平台加超亮荧光品红推进前唇；
-第三行右：左右双品红撞柱加中间金色光柱的街机中奖门机关组件。
+第三行右：左右双品红撞柱加中间金色光柱的街机幸运门机关组件。
 ```
 
 > 放好以上 7 张 UI PNG 后，在 [`scripts/game/Skin.lua`](../scripts/game/Skin.lua#L17) 填入：
@@ -288,7 +288,7 @@ Row 3 Right: futuristic neon jackpot gate arch bracket with twin glowing magenta
 | 左 | 中 | 右 |
 |---|---|---|
 | `[1,1]` `machine/backdrop_act1.png` (1幕·霓虹游艺厅) | `[1,2]` `machine/backdrop_act2.png` (2幕·黄金熔炉) | `[1,3]` `machine/backdrop_act3.png` (3幕·赛博金库) |
-| `[2,1]` `events/event_gold_altar.png` (黄金祭坛) | `[2,2]` `events/event_scrap_smith.png` (机台改造匠) | `[2,3]` `events/event_lucky_wheel.png` (午夜赌局) |
+| `[2,1]` `events/event_gold_altar.png` (黄金祭坛) | `[2,2]` `events/event_scrap_smith.png` (机台改造匠) | `[2,3]` `events/event_lucky_wheel.png` (午夜奇遇) |
 | `[3,1]` `events/event_neon_spring.png` (狂欢充能站) | `[3,2]` `events/event_magnet_trap.png` (废料清道夫) | `[3,3]` `events/event_vault_crack.png` (加密金库门) |
 
 #### 一键复制英文 Prompt（图集 7 · 3 幕背板 + 6 大奇遇场景插画）
@@ -297,9 +297,9 @@ Tight 3x3 collage grid of 9 dark neon cyber-arcade scene panels with crisp clean
 Row 1 Left: Act 1 Neon Arcade Hall coin-pusher backboard texture, deep purple-navy cyber grid with glowing cyan #38E0FF and magenta #FF48B2 side neon rails and dark uncluttered center;
 Row 1 Center: Act 2 Molten Gold Furnace machine backboard texture, bronze-obsidian industrial foundry wall with glowing orange magma pipes on edges and dark center;
 Row 1 Right: Act 3 Cyber Vault machine backboard texture, obsidian armored vault steel wall with violet #A672FF and radiant gold laser lock lines on sides and clean dark center;
-Row 2 Left: ancient glowing golden slot-machine altar #FFD240 in a purple temple with twin cyan and crimson coin light beams;
+Row 2 Left: ancient glowing golden arcade prize altar #FFD240 in a purple temple with twin cyan and crimson coin light beams;
 Row 2 Center: cozy workshop where a friendly goblin-robot mechanic with glowing cyan goggles #38E0FF forges glowing golden coins on an anvil;
-Row 2 Right: extravagant neon hot-magenta #FF48B2 and gold roulette fortune wheel spinning in midnight velvet spotlight with floating casino chips;
+Row 2 Right: extravagant neon hot-magenta #FF48B2 and gold surprise gift chest overflowing with glowing star crystals in midnight velvet spotlight;
 Row 3 Left: vertical glowing magenta #FF48B2 and violet #A672FF plasma battery energy fountain bubbling with golden sparks inside an arcade bay;
 Row 3 Center: giant violet electromagnetic crane lifting dull dark iron coins into a glowing cyan #38E0FF vortex over gleaming gold coins;
 Row 3 Right: massive armored gold cyber bank vault door slightly cracked open with crisscrossing cyan lasers and golden treasure light pouring out.
@@ -313,7 +313,7 @@ Row 3 Right: massive armored gold cyber bank vault door slightly cracked open wi
 第一行右：第3幕「赛博金库」机台背板——黑曜石装甲金库门板，两侧紫金激光防线，正中暗调留空；
 第二行左：「黄金祭坛」奇遇——幽紫神殿里发出金青粉光束的双投币孔古老黄金祭坛；
 第二行中：「机台改造匠」奇遇——戴荧光青护目镜的友善机械哥布林铁匠在霓虹铁砧前锻造金币；
-第二行右：「午夜赌局」奇遇——暗夜聚光灯下旋转的粉金奢华幸运转盘与飞舞筹码；
+第二行右：「午夜奇遇」奇遇——暗夜聚光灯下璀璨发光的粉金神秘奇遇宝箱与飞舞星光金币；
 第三行左：「狂欢充能站」奇遇——紫粉发光等离子能量柱喷泉，冒泡飞出金星火花；
 第三行中：「废料清道夫」奇遇——巨型紫色工业电磁铁吊爪抓走废铁渣币、留下闪亮金币；
 第三行右：「加密金库门」奇遇——厚重黄金装甲金库大门微开一道缝，射出青色激光与耀眼金光。
@@ -325,14 +325,14 @@ Row 3 Right: massive armored gold cyber bank vault door slightly cracked open wi
 
 - **出图比例 & 建议分辨率**：`16:9` 或 `3:1` 宽屏横排（推荐 `2048×1152` 或 `2400×800`，从左到右等距横排 3 位 Boss，脚本自动抠白底输出 `256×256` 透明 PNG）
 - **切分对照**：
-  - 左 1/3 -> `assets/image/boss/boss_gatekeeper.png`（第 1 幕 · 铁闸庄家）
+  - 左 1/3 -> `assets/image/boss/boss_gatekeeper.png`（第 1 幕 · 铁闸守卫）
   - 中 1/3 -> `assets/image/boss/boss_furnace.png`（第 2 幕 · 熔金巨轮）
   - 右 1/3 -> `assets/image/boss/boss_vaultbeast.png`（第 3 幕 · 终极吞金兽）
 
 #### 一键复制英文 Prompt（图集 8 · 3 大 Boss 三连图）
 ```text
 Clean 3-column horizontal lineup sheet of 3 distinct arcade boss character portraits arranged side by side from left to right with wide empty spacing between each character, NO divider lines, NO borders, isolated on a flat solid pure white #FFFFFF background (no shadow cast on white). Consistent 2.5D stylized neon arcade pop-art style, 45-degree glossy toy-metallic shading, bold dark ink outlines #090B16, zero text, zero watermark:
-Left portrait: The Iron Gatekeeper, imposing armored cyber-casino robot torso wearing a neon gold crown #FFD240, glowing electric cyan visor eyes #38E0FF, and heavy laser-barrier gauntlets;
+Left portrait: The Iron Gatekeeper, imposing armored cyber-arcade robot torso wearing a neon gold crown #FFD240, glowing electric cyan visor eyes #38E0FF, and heavy laser-barrier gauntlets;
 Center portrait: Molten Furnace Wheel, giant heavy cyber-foundry rotary core machine bursting with glowing orange-gold magma gears #FFD240, molten slag vents, and fiery red core #FF5260;
 Right portrait: Cyber Vault Leviathan, menacing armored purple-and-gold mechanical dragon-mimic chest beast #A672FF with glowing vault combination dial jaw, sharp golden teeth, and neon cyan energy veins.
 ```
@@ -340,7 +340,7 @@ Right portrait: Cyber Vault Leviathan, menacing armored purple-and-gold mechanic
 #### 一键复制中文 Prompt（图集 8 · 国内生图工具直出）
 ```text
 横向一字等距排开的 3 位守关 Boss 立绘三连拼图（左中右三等分，彼此留宽白间距，不画分割线不画框），纯白无杂质背景 #FFFFFF（无底影），无任何文字字母。统一 2.5D 霓虹街机潮酷波普风格，亮泽厚涂金属反光与粗黑深蓝描边 #090B16：
-左侧：第1幕Boss「铁闸庄家」——威严的重装甲赛博游艺机甲半身像，头戴霓虹金冠，发光电青目镜，双手戴激光护闸拳套；
+左侧：第1幕Boss「铁闸守卫」——威严的重装甲赛博游艺机甲半身像，头戴霓虹金冠，发光电青目镜，双手戴激光护闸拳套；
 中间：第2幕Boss「熔金巨轮」——巨大厚重的蒸汽赛博熔炉巨轮核心，燃烧着橘红岩浆齿轮与喷吐熔金渣的排气口；
 右侧：第3幕终极Boss「终极吞金兽」——凶悍的紫金机械巨龙金库宝箱怪，下颌是发光金库密码转盘与闪亮金牙，周身游走荧光青能量脉络。
 ```
@@ -357,8 +357,8 @@ A tight 3x3 square grid collage divided cleanly by thin dark border lines into 9
 Top-left: close-up radiant classic gold coin descending through cyan neon glow;
 Top-center: electric sky-blue thunder coin striking glowing pachinko pins with crackling lightning arcs;
 Top-right: faceted crimson ruby coin stacked against a massive crowned golden giant medallion;
-Middle-left: hot-pink bouncy neon coin soaring through a glowing magenta jackpot gate arch;
-Center focal panel: dramatic hero view of a neon cyber coin-pusher shelf overflowing with shimmering gold, emerald and rainbow 777 jackpot coins cascading off the edge pushed by a glowing magenta bar;
+Middle-left: hot-pink bouncy neon coin soaring through a glowing magenta lucky gate arch;
+Center focal panel: dramatic hero view of a neon cyber coin-pusher shelf overflowing with shimmering gold, emerald and rainbow star carnival coins cascading off the edge pushed by a glowing magenta bar;
 Middle-right: stylized cartoon orange bomb coin detonating a bright fiery shockwave scattering coins into the air;
 Bottom-left: translucent emerald jade four-leaf clover coin glowing with mint aurora sparks;
 Bottom-center: cosmic violet black-hole vortex coin pulling orbiting gold tokens in a neon spiral;
@@ -372,8 +372,8 @@ Consistent vibrant arcade lighting, ultra-crisp 2.5D stylized game icon quality.
 [左上] 亮金色经典街机金币伴随荧光青尾迹落下；
 [上中] 天蓝霹雳闪电币撞击霓虹弹珠钉迸发蓝色电弧；
 [上右] 奢华红宝石币与皇家金冠巨币交叠闪耀；
-[左中] 高弹荧光粉币穿过发光的品红中奖门激起星光；
-[正中C位] 霓虹推币机台前沿爆发瀑布式金币潮，发光品红推板把海量金币与777幻彩大满贯币推落悬崖；
+[左中] 高弹荧光粉币穿过发光的品红幸运门激起星光；
+[正中C位] 霓虹推币机台前沿爆发瀑布式金币潮，发光品红推板把海量金币与星耀幻彩盛典币推落悬崖；
 [右中] 卡通炸弹与烈焰核心币引爆耀眼冲击波炸飞金币；
 [左下] 翡翠绿四叶草幸运币散发柔和极光绿环；
 [下中] 紫色黑洞奇点漩涡硬币将周边金币吸入螺旋轨道；
@@ -388,7 +388,7 @@ Consistent vibrant arcade lighting, ultra-crisp 2.5D stylized game icon quality.
 #### 一键复制英文 Prompt（16:9 横版宣传图）
 ```text
 16:9 horizontal widescreen key art illustration for a 2.5D stylized Neon Arcade Roguelike Coin-Pusher game, ultra-vibrant cyber pop-art 45-degree glossy lighting, bold crisp dark ink outlines #090B16.
-Composition weighted heavily to the right and bottom-right: an angled heroic view of a towering futuristic cyber-arcade coin-pusher machine glowing with electric cyan #38E0FF and hot magenta #FF48B2 neon rails. Hundreds of glossy gold coins, emerald clover tokens, crackling blue lightning coins, fiery bomb coins, and a gleaming rainbow 777 jackpot centerpiece burst forward off the sliding neon pusher shelf like an unstoppable golden waterfall cascade, sending luminous sparkles and energy arcs spraying toward the camera.
+Composition weighted heavily to the right and bottom-right: an angled heroic view of a towering futuristic cyber-arcade coin-pusher machine glowing with electric cyan #38E0FF and hot magenta #FF48B2 neon rails. Hundreds of glossy gold coins, emerald clover tokens, crackling blue lightning coins, fiery bomb coins, and a gleaming rainbow star centerpiece burst forward off the sliding neon pusher shelf like an unstoppable golden waterfall cascade, sending luminous sparkles and energy arcs spraying toward the camera.
 Top-left corner composition rule: keep the upper-left 35% of the frame clean, spacious, deep dark midnight-blue cyber twilight sky (#0A0C1A) with only soft out-of-focus bokeh neon lights as a dedicated empty negative-space title safe zone.
 Zero text, zero letters, zero logos, zero UI HUD elements anywhere in the artwork.
 ```
@@ -396,7 +396,7 @@ Zero text, zero letters, zero logos, zero UI HUD elements anywhere in the artwor
 #### 一键复制中文 Prompt（16:9 横版宣传图 · 国内直出）
 ```text
 16:9 横版高清游戏主视觉宣传插画，2.5D 霓虹街机潮酷波普风格，厚涂硬边深色描边与晶莹糖果高光质感。
-构图重心置于画面右侧与右下方：大透视角度展示一座闪耀着荧光青与霓虹品红灯管的未来赛博推币机台，发光推板猛烈推出层层叠叠的金色硬币海啸，夹杂着闪电蓝币的跳跃电弧、爆炸火红币的冲击火花、翡翠幸运币以及悬浮在潮头最亮眼的幻彩777大满贯币，成百上千枚硬币正如黄金瀑布般向镜头前方倾泻爆发！
+构图重心置于画面右侧与右下方：大透视角度展示一座闪耀着荧光青与霓虹品红灯管的未来赛博推币机台，发光推板猛烈推出层层叠叠的金色硬币海啸，夹杂着闪电蓝币的跳跃电弧、爆炸火红币的冲击火花、翡翠幸运币以及悬浮在潮头最亮眼的幻彩星耀盛典币，成百上千枚硬币正如黄金瀑布般向镜头前方倾泻爆发！
 关键安全区约束：画面左上角 35% 区域必须保持干净深邃的暗夜藏青虚化霓虹散景留白，留作后期排版游戏主标题的安全空区，不要画满复杂前景物。
 画面中绝对不要生成任何文字、字母、水印或游戏UI边框。
 ```
@@ -408,19 +408,19 @@ Zero text, zero letters, zero logos, zero UI HUD elements anywhere in the artwor
 #### 一键复制完整连续英文视频 Prompt（16:9 · 15 秒）
 ```text
 15-second continuous high-energy 16:9 stylized 2.5D neon arcade game showcase trailer, ultra-smooth 60fps camera work, glossy cyber-pop art style with deep midnight navy backdrop (#0A0C1A), electric cyan (#38E0FF), hot magenta (#FF48B2), and glowing gold (#FFD240) VFX, zero UI text overlays:
-[0s-3s Opening Aim & Pin Drop] Dynamic vertical tilt down a sleek cyber coin-pusher arcade cabinet: a gleaming gold coin drops from the top chute, zigzags cleanly down glowing cyan and amber pachinko pegs emitting bright sparks, and threads dead-center through a sliding neon magenta jackpot gate archway.
+[0s-3s Opening Aim & Pin Drop] Dynamic vertical tilt down a sleek cyber coin-pusher arcade cabinet: a gleaming gold coin drops from the top chute, zigzags cleanly down glowing cyan and amber pachinko pegs emitting bright sparks, and threads dead-center through a sliding neon magenta lucky gate archway.
 [3s-7s Escalation & Elemental Chain Reaction] The camera glides lower toward the metallic pusher shelf packed wall-to-wall with shimmering coins; an electric blue thunder coin lands and arcs jagged cyan lightning chains across 6 neighboring coins while an orange bomb coin detonates a punchy warm shockwave pushing the front row to the brink.
 [7s-12s Fever Climax Waterfall] The entire arcade cabinet borders flash brilliant gold-pink Fever mode; the glowing magenta pusher bar surges rapidly forward as a dazzling torrent of fifty golden and emerald coins pours from above like a waterfall, unleashing a colossal avalanche of glittering coins spilling nonstop off the front ledge in slow-motion bursts of golden light rays.
-[12s-15s Hero Finale Freeze] The camera pulls back slightly with triumphant confetti sparks and rainbow aurora glow radiating around a gleaming central 777 mega-coin emerging over the overflowing vault tray, landing in a clean dramatic final hero hold with open dark bokeh room on the upper side for end-slate logo placement.
+[12s-15s Hero Finale Freeze] The camera pulls back slightly with triumphant confetti sparks and rainbow aurora glow radiating around a gleaming central prismatic star mega-coin emerging over the overflowing vault tray, landing in a clean dramatic final hero hold with open dark bokeh room on the upper side for end-slate logo placement.
 ```
 
 #### 分段精调备查（四幕时间戳对照）
 | 时间轴 | 阶段名 | 镜头与主体动作 | 配合音频/后期花字建议 |
 |---|---|---|---|
-| `0s – 3s` | **摆动狙门开局** | 镜头随顶槽金币坠落，连撞霓虹钉迸火星后直穿滑动品红中奖门 | `peg1` → `peg_mult` → `gate_win` |
+| `0s – 3s` | **摆动狙门开局** | 镜头随顶槽金币坠落，连撞霓虹钉迸火星后直穿滑动品红幸运门 | `peg1` → `peg_mult` → `gate_win` |
 | `3s – 7s` | **连锁元素引爆** | 镜头下压对准推台：霹雳币劈 5 段闪电、炸弹币震荡掀推整排前币 | `zap` + `explode` + 鼓点切入 |
 | `7s – 12s` | **Fever 狂欢瀑布** | 全机台暴闪金粉边框，推板超频急进 + 五十枚金币雨瀑布式倾泻 | `fever` + `crit` + `drop` 连响 |
-| `12s – 15s` | **777 大满贯定格** | 拉远定格幻彩 777 巨币海啸，上方留出暗青虚化空区贴 Logo | `jackpot` + `win` + 片尾标题 |
+| `12s – 15s` | **星耀盛典定格** | 拉远定格幻彩星耀巨币海啸，上方留出暗青虚化空区贴 Logo | `jackpot` + `win` + 片尾标题 |
 
 ---
 

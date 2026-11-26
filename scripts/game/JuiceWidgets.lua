@@ -12,7 +12,27 @@ local Fx = require("game/Fx")
 local C = Skin.C
 local Col = Skin.Col
 local floor, min, max, sin, abs = math.floor, math.min, math.max, math.sin, math.abs
-local OutlinedText, SetAdditive, EstTextW, DrawMiniCoin = Fx.OutlinedText, Fx.SetAdditive, Fx.EstTextW, Fx.DrawMiniCoin
+local OutlinedText, SetAdditive, DrawMiniCoin = Fx.OutlinedText, Fx.SetAdditive, Fx.DrawMiniCoin
+
+--- 精细位宽估算（逗号/小数点较窄，避免长串个位数字被过度压缩）
+local function EstExactW(s, fs)
+    local w = 0
+    local i, n = 1, #s
+    while i <= n do
+        local b = s:byte(i)
+        if b == 44 or b == 46 then
+            w = w + fs * 0.30
+            i = i + 1
+        elseif b < 128 then
+            w = w + fs * 0.56
+            i = i + 1
+        else
+            w = w + fs
+            if b >= 240 then i = i + 4 elseif b >= 224 then i = i + 3 else i = i + 2 end
+        end
+    end
+    return w
+end
 
 local JuiceWidgets = {}
 
@@ -81,6 +101,19 @@ end
 
 function CashCounter:SetFont(f) self.font_ = f end
 
+function CashCounter:ResetDisplay()
+    self.shown_ = -1
+    self.txt_ = "¥0"
+    self.txtAcc_ = 1
+    self.cpsTxt_ = "¥0/秒"
+    self.cpsAcc_ = 99
+    self.cpsLast_ = 0
+    self.cpsUp_ = 0
+    self.punch_ = 0
+    self.glow_ = 0
+    self.lastT_ = nil
+end
+
 function CashCounter:Render(nvg)
     local l = self:GetAbsoluteLayout()
     if l.w <= 0 or l.h <= 0 then return end
@@ -140,15 +173,19 @@ function CashCounter:Render(nvg)
         SetAdditive(nvg, false)
     end
 
+    -- 金币图标 + 现金数字 + 每秒产值（裁剪在控件区域内，长串数字自适应缩字号不溢出）
+    nvgSave(nvg)
+    nvgIntersectScissor(nvg, l.x, l.y, l.w, l.h)
+
     -- 金币图标（旋转 + 冲击放大）
     local ps = 1 + self.punch_ * 0.35
     DrawMiniCoin(nvg, ix, iy, iconR * ps, self.spin_, 255)
 
     -- 现金数字
     local tx = ix + iconR + 6
-    local avail = l.x + l.w - tx
+    local avail = max(40, l.x + l.w - tx - 4)
     local fs = 21 * (1 + self.punch_ * 0.16)
-    local tw = EstTextW(self.txt_, fs)
+    local tw = EstExactW(self.txt_, fs)
     if tw > avail then fs = fs * avail / tw end
     nvgFontFace(nvg, self.font_)
     nvgTextAlign(nvg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
@@ -157,12 +194,16 @@ function CashCounter:Render(nvg)
     OutlinedText(nvg, tx, iy, self.txt_, col, 255, 1.6)
 
     -- 每秒产值（上涨时绿色闪一下 + 上箭头）
-    nvgFontSize(nvg, 12)
+    local cpsFs = 12
+    local cpsAvail = max(36, avail - 14)
+    local cpsW = EstExactW(self.cpsTxt_, cpsFs)
+    if cpsW > cpsAvail then cpsFs = cpsFs * cpsAvail / cpsW end
+    nvgFontSize(nvg, cpsFs)
     local cc = (self.cpsUp_ > 0.05) and CPS_UP or C.cyan
     nvgFillColor(nvg, Col(cc, 255))
     nvgText(nvg, tx, l.y + h * 0.82, self.cpsTxt_)
     if self.cpsUp_ > 0.05 then
-        local ax = tx + EstTextW(self.cpsTxt_, 12) + 8
+        local ax = tx + min(cpsAvail, cpsW) + 8
         local ay = l.y + h * 0.82 - self.cpsUp_ * 4
         nvgBeginPath(nvg)
         nvgMoveTo(nvg, ax, ay - 5)
@@ -172,6 +213,7 @@ function CashCounter:Render(nvg)
         nvgFillColor(nvg, Col(CPS_UP, floor(255 * min(1, self.cpsUp_ * 2))))
         nvgFill(nvg)
     end
+    nvgRestore(nvg)
 end
 
 -- ----------------------------------------------------------------------------
@@ -210,6 +252,18 @@ function RankTicker:Init(props)
 end
 
 function RankTicker:SetFont(f) self.font_ = f end
+
+function RankTicker:ResetDisplay()
+    self.shownLog_ = nil
+    self.txt_ = ""
+    self.chars_ = {}
+    self.prevChars_ = {}
+    self.changeT_ = {}
+    self.fmtAcc_ = 1
+    self.punch_ = 0
+    self.up_ = 0
+    self.lastT_ = nil
+end
 
 local function SplitChars(s, out)
     local n = 0
@@ -293,17 +347,23 @@ function RankTicker:Render(nvg)
     nvgFontFace(nvg, self.font_)
     nvgTextAlign(nvg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
     -- 左侧小标签
-    local lx = l.x + 10
-    nvgFontSize(nvg, 12)
+    local lx = l.x + 8
+    nvgFontSize(nvg, 11)
     nvgFillColor(nvg, Col(C.muted, 255))
     nvgText(nvg, lx, l.y + h * 0.5, "世界")
-    lx = lx + 28
+    lx = lx + 26
 
-    -- 数字区（自适应字号，确保“第…名”整体放得下）
-    local fs = 17 * (1 + self.punch_ * 0.18)
-    local body = "第" .. self.txt_ .. "名"
-    local avail = l.x + l.w - 22 - lx
-    local bw = EstTextW(body, fs)
+    -- 数字区（按精确字符宽度自适应缩放，8,000,000,000 长串全显示不截断）
+    local fs = 16 * (1 + self.punch_ * 0.14)
+    local avail = max(40, l.x + l.w - 19 - lx)
+    local bodyUnits = 1.72
+    for i = 1, #self.chars_ do
+        local b = self.chars_[i]:byte(1)
+        if b == 44 then bodyUnits = bodyUnits + 0.30
+        elseif b < 128 then bodyUnits = bodyUnits + 0.56
+        else bodyUnits = bodyUnits + 0.90 end
+    end
+    local bw = bodyUnits * fs
     if bw > avail then fs = fs * avail / bw end
     local cy = l.y + h * 0.5
     nvgSave(nvg)
@@ -316,10 +376,12 @@ function RankTicker:Render(nvg)
     local col = (self.punch_ > 0.4) and C.white or C.gold
     for i = 1, #self.chars_ do
         local ch = self.chars_[i]
-        local isDigit = ch:byte(1) < 128
-        local cw = isDigit and fs * 0.6 or fs
+        local b = ch:byte(1)
+        local isNum = (b >= 48 and b <= 57)
+        local isComma = (b == 44)
+        local cw = isComma and (fs * 0.30) or ((b < 128) and (fs * 0.56) or fs)
         local age = t - (self.changeT_[i] or -9)
-        if age < ROLL_DUR and isDigit then
+        if age < ROLL_DUR and isNum then
             local e = age / ROLL_DUR
             local slide = fs * 0.75
             nvgFillColor(nvg, Col(col, floor(255 * (1 - e))))
@@ -327,7 +389,8 @@ function RankTicker:Render(nvg)
             nvgFillColor(nvg, Col(col, floor(255 * e)))
             nvgText(nvg, x, cy + slide * (1 - e), ch)
         else
-            nvgFillColor(nvg, Col(isDigit and col or C.white, 255))
+            local cCol = isNum and col or (isComma and C.muted or C.white)
+            nvgFillColor(nvg, Col(cCol, 255))
             nvgText(nvg, x, cy, ch)
         end
         x = x + cw

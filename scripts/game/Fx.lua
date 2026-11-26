@@ -4,7 +4,7 @@
 --   · 粒子：辉光点 / 火花拖尾 / 四芒星 / 翻转金币 / 彩纸（SoA 预分配，零每帧建表）
 --   · 冲击环 / 闪光盘 / 锯齿闪电（三层辉光）
 --   · 飞币入账：掉落处金币沿弧线飞进顶部现金计数器（计数器被“砸”一下）
---   · 倍率令牌：狂欢 / 老虎机 / 印钞 / 连击 / 永久 增益化作“×N”令牌飞入倍率招牌
+--   · 倍率令牌：狂欢 / 三连 / 印钞 / 连击 / 永久 增益化作“×N”令牌飞入倍率招牌
 --   · 中央重磅印章：FEVER / 大奖 / 超越 / 解锁 / 上市，带光芒、残影、冲击波
 --   · 全屏闪光、狂欢霓虹暗角、热度边缘光、屏震、顿帧、镜头冲击（供 Machine3D 读取）
 -- ============================================================================
@@ -182,7 +182,7 @@ function Fx.New()
     self.flashCol = GOLD
     self.feverGlow = 0
     self.feverOn = false
-    self.heat = 0            -- 0..1 临时倍率热度（连击 × 狂欢 × 老虎机 × 印钞）
+    self.heat = 0            -- 0..1 临时倍率热度（连击 × 狂欢 × 三连 × 印钞）
     self.comboPop = 0
     self.kick = 0            -- 镜头冲击（Machine3D 读取做 FOV 收缩）
     self.lightFlash = 0      -- 机台点光闪烁强度
@@ -296,6 +296,67 @@ function Fx.New()
     self.rankHits = 0
     self.liveRankTxt = ""
     return self
+end
+
+--- 原地重置所有瞬态特效（保留 Stage / HUD / FxLayer 持有的同一 Fx 引用与锚点）
+function Fx:Reset()
+    self.time = 0
+    self.trauma = 0
+    self.shakeX, self.shakeY = 0, 0
+    self.hitstop = 0
+    self.flashA = 0
+    self.flashCol = GOLD
+    self.feverGlow = 0
+    self.feverOn = false
+    self.heat = 0
+    self.comboPop = 0
+    self.kick = 0
+    self.lightFlash = 0
+    self.lightCol = GOLD
+    self.activePopCount = 0
+    self.modalOpen = false
+    self.shakeBudget = 0.8
+    self.flashBudget = 160
+    self.kickBudget = 1.0
+    self.hitstopCd = 0
+    self.lastSlotStampM = 1
+    self.lastSlotStampT = -99
+
+    self.cashHits = 0
+    self.cashHitTier = 0
+    self.multHits = 0
+    self.multHitCol = GOLD
+    self.rankHits = 0
+    self.liveRankTxt = ""
+
+    self.mtInit = false
+    self.mtFever = false
+    self.mtLuck = 1
+    self.mtAd = false
+    self.mtComboStep = 0
+    self.mtPerm = 1
+    self.multTotal = 1
+    self.multTemp = 1
+
+    for i = 1, MAX_P do self.pLife[i] = 0 end
+    self.pCursor = 0
+    for i = 1, MAX_RINGS do self.rings[i].life = 0 end
+    self.ringCursor = 0
+    for i = 1, MAX_BOLTS do self.bolts[i].life = 0 end
+    self.boltCursor = 0
+    for i = 1, MAX_POPS do self.pops[i].life = 0 end
+    self.popCursor = 0
+    for i = 1, MAX_SPOPS do self.spops[i].life = 0 end
+    self.spopCursor = 0
+    for i = 1, MAX_FLY do self.fly[i].on = false end
+    self.flyCursor = 0
+    for i = 1, MAX_TOK do self.tokens[i].on = false end
+    self.tokCursor = 0
+    self.stamp.on = false
+    for i = 1, MAX_STAMP_Q do self.stampQ[i].on = false end
+    self.banner.t = 0
+    self.banner.dur = 0
+    self.banner.text = ""
 end
 
 --- 预算化强反馈：force=true 用于里程碑级事件（FEVER / 大奖 / 上市）
@@ -711,7 +772,7 @@ function Fx:TrackMult(ty)
         self:Token(self.ancFeverX, self.ancFeverY, "狂欢 ×2.2", MAGENTA)
     end
     if luck > self.mtLuck + 0.01 then
-        self:Token(self.ancSlotX, self.ancSlotY, "老虎机 ×" .. Number.FormatMul(luck), (luck >= 25) and GOLD or CYAN)
+        self:Token(self.ancSlotX, self.ancSlotY, "三连 ×" .. Number.FormatMul(luck), (luck >= 25) and GOLD or CYAN)
     end
     if ad and not self.mtAd then
         self:Token(self.ancAdX, self.ancAdY, "印钞 ×3", GREEN)
@@ -768,7 +829,7 @@ function Fx:OnGateWin(coin, rewardName)
     self:Ring(sx, sy, 8, 70, GOLD, 0.45, 4)
     self:Ring(sx, sy, 2, 40, HOT, 0.25, 0, true)
     self:Burst(sx, sy, 18, GOLD, 200, 3.2, 4)
-    self:UiPop(sx, sy - 18, rewardName or "中奖门!", GOLD, 17)
+    self:UiPop(sx, sy - 18, rewardName or "幸运门!", GOLD, 17)
     self:AddTrauma(0.2)
     self.lightFlash = max(self.lightFlash, 0.6)
     self.lightCol = GOLD
@@ -873,7 +934,7 @@ function Fx:OnJackpot777(x, y)
     local sx, sy = self:S(x, y)
     self:CoinFountain(sx, sy, 10, 1.3)
     self:Burst(sx, sy, 20, GOLD, 240, 3.4, 5)
-    self:Stamp("777!", "轮盘大奖 · 金币雨", GOLD, 3, 1.2)
+    self:Stamp("星耀爆发!", "星耀幸运 · 金币雨", GOLD, 3, 1.2)
     self:AddFlash(90, GOLD)
 end
 
@@ -899,7 +960,7 @@ function Fx:OnSlotWin(prize)
         self.lastSlotStampT = self.time
     end
     if m >= 50 then
-        self:Stamp(m >= 100 and "JACKPOT!!" or "皇冠暴富!", "全场收益 ×" .. tostring(m), (m >= 100) and MAGENTA or GOLD, 5, 2.2, true, "slot")
+        self:Stamp(m >= 100 and "百倍狂潮!!" or "皇冠暴富!", "全场收益 ×" .. tostring(m), (m >= 100) and MAGENTA or GOLD, 5, 2.2, true, "slot")
         self:CoinFountain(sx, sy, 16, 1.5)
         self:Burst(sx, sy, 30, col, 300, 4, 8)
         self:Confetti(40, 0, self.screenW, -10)
@@ -939,8 +1000,8 @@ function Fx:OnSkillPointsGain(gained)
         p.text = "+" .. tostring(p.spSum) .. " 技能点"
         return
     end
-    -- 落点：顶栏第二行“技能点”胶囊右侧（不压现金数字与每秒产值）
-    self:UiPop(self.ancCashX + 40, self.ancCashY + 78, "+" .. tostring(gained) .. " 技能点", GREEN, 15)
+    -- 落点：底部升级栏上方居中（不再遮挡顶部资产数字）
+    self:UiPop(self.screenW * 0.5, self.screenH - 110, "+" .. tostring(gained) .. " 技能点", GREEN, 15)
     p = self.spops[self.spopCursor]
     p.isSp = true
     p.spSum = gained
@@ -1296,28 +1357,36 @@ function Fx:RenderPops(nvg, font)
                 local f = min(1, (p.life / p.max) * 2.2)
                 local a = floor(255 * f)
                 local fs = p.size * ws * sc
+                local maxPopW = self.screenW * 0.80
+                local estW = p.tw * ws * sc
+                if estW > maxPopW and estW > 0 then
+                    fs = fs * (maxPopW / estW)
+                end
+                local dispScale = fs / max(1, p.size)
+                local twDisp = p.tw * dispScale
+                local pxDraw = max(twDisp * 0.5 + 8, min(self.screenW - twDisp * 0.5 - 8, p.x))
                 local tCol = p.col
                 if p.tier >= 5 then tCol = Rainbow(self.time * 10 + i) end
                 -- T5 星爆光芒底（只给大数字，克制尺寸防止洗白画面）
                 if p.tier >= 5 then
                     SetAdditive(nvg, true)
-                    DrawRays(nvg, p.x, p.y, fs * 0.3, fs * 1.7, 10, self.time * 1.6 + i, tCol, floor(a * 0.32))
+                    DrawRays(nvg, pxDraw, p.y, fs * 0.3, fs * 1.7, 10, self.time * 1.6 + i, tCol, floor(a * 0.32))
                     SetAdditive(nvg, false)
                 end
                 nvgFontSize(nvg, fs)
                 if p.tier >= 3 then
-                    OutlinedText(nvg, p.x, p.y, p.text, tCol, a, max(1.5, fs * 0.09))
+                    OutlinedText(nvg, pxDraw, p.y, p.text, tCol, a, max(1.5, fs * 0.09))
                 else
                     nvgFillColor(nvg, Col(INK, floor(a * 0.85)))
-                    nvgText(nvg, p.x + 1.2, p.y + 1.6, p.text)
+                    nvgText(nvg, pxDraw + 1.2, p.y + 1.6, p.text)
                     nvgFillColor(nvg, Col(tCol, a))
-                    nvgText(nvg, p.x, p.y, p.text)
+                    nvgText(nvg, pxDraw, p.y, p.text)
                 end
                 -- 暴击角标
                 if p.crit and p.tier >= 3 then
                     local cfs = max(11, fs * 0.42)
                     nvgFontSize(nvg, cfs)
-                    OutlinedText(nvg, p.x, p.y - fs * 0.78, "暴击!", ORANGE, a, 1.4)
+                    OutlinedText(nvg, pxDraw, p.y - fs * 0.78, "暴击!", ORANGE, a, 1.4)
                 end
                 -- ×倍率戳（延迟 0.1s 砸上）
                 if p.multW > 0 and p.age > 0.08 then
@@ -1326,8 +1395,8 @@ function Fx:RenderPops(nvg, font)
                     local cfs = (13 + p.tier) * ws * msc
                     local mw = p.multW * ws * msc
                     local mh = cfs * 1.35
-                    local mx = p.x + p.tw * ws * sc * 0.5 + mw * 0.5 + 4
-                    if mx + mw * 0.5 > self.screenW - 6 then mx = p.x - p.tw * ws * sc * 0.5 - mw * 0.5 - 4 end
+                    local mx = pxDraw + twDisp * 0.5 + mw * 0.5 + 4
+                    if mx + mw * 0.5 > self.screenW - 6 then mx = pxDraw - twDisp * 0.5 - mw * 0.5 - 4 end
                     local my = p.y + fs * 0.08
                     nvgSave(nvg)
                     nvgTranslate(nvg, mx, my)
@@ -1428,7 +1497,7 @@ function Fx:RenderStamp(nvg, w, h, font)
     local A = floor(255 * a)
     local cx, cy = w * 0.5, h * 0.36
     local col = st.col
-    if st.big and st.title:find("JACKPOT") then col = Rainbow(self.time * 12) end
+    if st.big and st.title:find("百倍") then col = Rainbow(self.time * 12) end
     local bandH = (st.big and 96 or 74)
 
     -- 光芒 + 暗带
@@ -1519,22 +1588,19 @@ function Fx:RenderScreenFx(nvg, w, h)
     end
 end
 
---- 主渲染入口（FxLayer 每帧调用；弹窗打开时只画 UI 购买特效）
+--- 主渲染入口（FxLayer 每帧调用；任何弹窗打开时完全静默让位，绝不穿透弹窗跳特效）
 function Fx:Render(nvg, w, h, font, modalOpen)
     self.screenW, self.screenH = w, h
     self.modalOpen = modalOpen == true
-    if not modalOpen then
-        self:RenderScreenFx(nvg, w, h)
-        self:RenderRingsBolts(nvg)
-        self:RenderParticles(nvg)
-        self:RenderPops(nvg, font)
-        self:RenderFly(nvg)
-        self:RenderStamp(nvg, w, h, font)
-    else
-        self:RenderRingsBolts(nvg)
-        self:RenderParticles(nvg)
-        self:RenderPops(nvg, font)
+    if modalOpen then
+        return
     end
+    self:RenderScreenFx(nvg, w, h)
+    self:RenderRingsBolts(nvg)
+    self:RenderParticles(nvg)
+    self:RenderPops(nvg, font)
+    self:RenderFly(nvg)
+    self:RenderStamp(nvg, w, h, font)
 end
 
 -- 兼容旧调用（Stage 不再直接绘制特效；保留给旧测试）

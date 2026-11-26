@@ -13,7 +13,7 @@ local floor, min, max = math.floor, math.min, math.max
 -- ----------------------------------------------------------------------------
 local function runPhysicsDiag(mode, seed)
     local ty = Tycoon.New(nil, { seed = seed })
-    -- 置入中盘常见构筑（验证高投币量下的掉币效率、撞钉限制、老虎机限流与狂欢冷却）
+    -- 置入中盘常见构筑（验证高投币量下的掉币效率、撞钉限制、幸运三连限流与狂欢冷却）
     ty.cash = 1e6
     ty.lifetimeCash = 1e6
     ty.skillPoints = 4000
@@ -171,7 +171,7 @@ assert(diagAgg.click2s.frontShare >= 0.60,
 assert(diagAgg.idle.feverUptime >= 0.12 and diagAgg.idle.feverUptime <= 0.28,
     string.format("挂机狂欢在线率目标 15%%~25%% (允许 12%%~28%%), 当前 %.1f%%", diagAgg.idle.feverUptime * 100))
 assert(diagAgg.click2s.avgLuckMult <= 12.0,
-    string.format("老虎机均值倍率必须 <= 12x, 当前 %.2fx", diagAgg.click2s.avgLuckMult))
+    string.format("幸运三连均值倍率必须 <= 12x, 当前 %.2fx", diagAgg.click2s.avgLuckMult))
 assert(diagAgg.hold.gcKbPerSec < 50.0,
     string.format("每帧 GC 分配过高: %.2f KB/s >= 50 KB/s", diagAgg.hold.gcKbPerSec))
 

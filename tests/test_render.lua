@@ -1,6 +1,6 @@
 -- ============================================================================
 -- tests/test_render.lua  渲染层纯 Lua 回归测试（严格校验 Skin.Col / Stage / Fx / AvatarArt）
---   · 覆盖 Stage:Render（待机 / 老虎机旋转 / 100x狂潮 / Fever / 全部22+种硬币）
+--   · 覆盖 Stage:Render（待机 / 三连机旋转 / 100x狂潮 / Fever / 全部22+种硬币）
 --   · 覆盖 Fx 全部回调 + RenderWorld/RenderOverlay、AvatarArt 85 档头像、Skin 全样式
 --   · 任何 nil 颜色表、缺失 Skin.C 键或绘制层 nil 索引错误都将立即断言失败
 -- ============================================================================
@@ -91,7 +91,7 @@ for idx, rk in ipairs(Config.RANKS) do
 end
 AvatarArt.Draw("nvg_stub", nil, 60, 60, 32, {})
 
--- 3. Stage:Render 在待机 / 老虎机旋转 / 100x 狂潮 / 狂欢 / 全硬币种类下的完整渲染校验
+-- 3. Stage:Render 在待机 / 三连机旋转 / 100x 狂潮 / 狂欢 / 全硬币种类下的完整渲染校验
 local ty = Tycoon.New(nil, { seed = 20261126 })
 local fx = Fx.New()
 local game = {
@@ -115,7 +115,7 @@ ty.adBoostLeft = 0
 ty.feverActive = false
 stg:Render("nvg_stub")
 
--- (b) 过门抽奖旋转中 + 待抽队列 + 第1~3符号
+-- (b) 过门三连旋转中 + 待转队列 + 第1~3符号
 ty.slotSpinning = true
 ty.slotSpinT = 0.25
 ty.slotSpinDur = 0.85
@@ -123,13 +123,19 @@ ty.slotQueue = 3
 ty.slotReels = { 1, 2, 3 }
 stg:Render("nvg_stub")
 
--- (c) 锁定第4~6符号 + 100倍大满贯狂潮倒计时条 + 连击 + Fever + 广告×3 + 手点金环
+-- (c) 锁定第4~6符号（确认符号6星钻不绘制“7”）+ 100倍星耀狂潮倒计时条 + 连击 + Fever + 广告×3 + 手点金环
+local sawDigit7 = false
+local prevNvgText = _G.nvgText
+_G.nvgText = function(ctx, x, y, str)
+    if str == "7" then sawDigit7 = true end
+    return prevNvgText(ctx, x, y, str)
+end
 ty.slotSpinning = false
 ty.slotReels = { 4, 5, 6 }
 ty.luckMult = 100
 ty.luckTimer = 14.2
 ty.luckDur = 15
-ty.luckName = "777大满贯 ×100!!"
+ty.luckName = "星耀大满旋 ×100!!"
 ty.feverActive = true
 ty.feverDur = 10.0
 ty.feverTimer = 5.0
@@ -139,6 +145,8 @@ for i, tier in ipairs(Config.COIN_TIERS) do
     ty.physics:SpawnCoin({ kind = tier.id, level = (i % 15) + 1, x = 80 + (i % 7) * 32, y = 340 + math.floor(i / 7) * 32, zone = "deck", fromManual = (i == 1) })
 end
 stg:Render("nvg_stub")
+_G.nvgText = prevNvgText
+assert(not sawDigit7, "符号6必须绘制几何星钻，严禁输出数字 7")
 -- (d) 狂欢冷却倒计时管 + 1.5x 小奖
 ty.feverActive = false
 ty.fever = 0
@@ -151,7 +159,7 @@ stg:Render("nvg_stub")
 -- 4. Fx 全回调与 2D / 3D 投射渲染路径校验
 fx:OnPegHit({ x = 180, y = 120 }, { x = 180, y = 120, kind = "mult" })
 fx:OnScore(2500, 180, 120, true, 12, "drop", 500)
-fx:OnGateWin({ x = 180, y = 216 }, "过门 ×2 + 老虎机!")
+fx:OnGateWin({ x = 180, y = 216 }, "过门 ×2 + 幸运三连!")
 fx:OnUnlockCoin(Config.COINS.midas)
 fx:OnPrestige(4, 6, "A 轮霓虹集团")
 fx:OnRankUp(Config.RANKS[#Config.RANKS])
@@ -185,13 +193,13 @@ fx2.toScreen = function(x, y) return x, y + 100 end
 fx2:TrackMult(ty2)                                 -- 初始化基线
 ty2.combo = 60; ty2:TriggerFever(false); ty2.luckMult = 100; ty2.luckTimer = 15; ty2.luckDur = 15; ty2.adBoostLeft = 30
 ty2.machineLv.global_mult = 3; ty2:InvalidateCaches()
-fx2:TrackMult(ty2)                                 -- 狂欢 / 老虎机 / 印钞 / 连击 / 永久 五种令牌
+fx2:TrackMult(ty2)                                 -- 狂欢 / 幸运三连 / 印钞 / 连击 / 永久 五种令牌
 local tokOn = 0
 for i = 1, #fx2.tokens do if fx2.tokens[i].on then tokOn = tokOn + 1 end end
 assert(tokOn >= 4, "倍率增益必须生成飞向招牌的令牌, got " .. tokOn)
 assert(fx2.multTotal > 1000, "极值态总倍率应 > 1000")
 assert(fx2.heat > 0.9, "极值态热度应接近 1")
--- 基准产值不含临时加成：×100 老虎机期间单次掉落应冲上高阶飘字
+-- 基准产值不含临时加成：×100 幸运三连期间单次掉落应冲上高阶飘字
 local base = ty2:GetBaselineCPS()
 assert(base > 0 and base < ty2:GetEstimatedCPS(), "基准产值必须剔除临时加成")
 assert(Fx.CalcTier(base * 0.5 * 100, base) == 5, "临时 ×100 时普通掉落应达到 T5")
@@ -226,7 +234,15 @@ for f = 1, 90 do
     cc:Render("nvg_stub")
     layer:Render("nvg_stub")
 end
-fx2:Render("nvg_stub", 360, 667, "sans", true)     -- 弹窗打开态
+-- 弹窗打开态：Fx:Render 必须立即跳过，不可在弹窗上方继续跳特效
+local modalDrawCalls = 0
+local pBeg, pTxt, pCir = _G.nvgBeginPath, _G.nvgText, _G.nvgCircle
+_G.nvgBeginPath = function(...) modalDrawCalls = modalDrawCalls + 1; return pBeg(...) end
+_G.nvgText = function(...) modalDrawCalls = modalDrawCalls + 1; return pTxt(...) end
+_G.nvgCircle = function(...) modalDrawCalls = modalDrawCalls + 1; return pCir(...) end
+fx2:Render("nvg_stub", 360, 667, "sans", true)
+_G.nvgBeginPath, _G.nvgText, _G.nvgCircle = pBeg, pTxt, pCir
+assert(modalDrawCalls == 0, "弹窗打开态 Fx:Render 严禁绘制任何全屏特效/飘字, calls=" .. modalDrawCalls)
 assert(fx2.cashHits == 0, "飞币砸中计数必须被现金计数器消费")
 assert(compositeCalls > 0, "发光特效应使用叠加混合")
 
@@ -278,10 +294,10 @@ for i = 1, RankLadder.COUNT do
         assert(wr <= it.rank, "身边人阈值反推必须与实时排名一致: " .. it.name)
     end
 end
-assert(RankLadder.FormatRank(5.98e9) == "59亿8000万")
-assert(RankLadder.FormatRank(38264512) == "3826万4512")
-assert(RankLadder.FormatRank(4512) == "4512")
-assert(RankLadder.FormatRankShort(8e7) == "8000万" and RankLadder.FormatRankShort(72000) == "7万2000")
+assert(RankLadder.FormatRank(5.98e9) == "5,980,000,000")
+assert(RankLadder.FormatRank(38264512) == "38,264,512")
+assert(RankLadder.FormatRank(4512) == "4,512")
+assert(RankLadder.FormatRankShort(8e7) == "80,000,000" and RankLadder.FormatRankShort(72000) == "72,000")
 assert(RankLadder.CountPassed(0) == 0 and RankLadder.CountPassed(1e15) == RankLadder.COUNT)
 
 local fx3 = Fx.New()
@@ -289,7 +305,7 @@ local ty3 = Tycoon.New(fx3, { seed = 9 })
 ty3.lifetimeCash = 4e5; ty3.cash = 4e5
 local rt = setmetatable({}, JuiceWidgets.RankTicker)
 rt:Init({ getTycoon = function() return ty3 end, getTime = function() return fx3.time end, fx = fx3 })
-rt.GetAbsoluteLayout = function() return { x = 8, y = 110, w = 168, h = 32 } end
+rt.GetAbsoluteLayout = function() return { x = 8, y = 110, w = 212, h = 32 } end
 for f = 1, 40 do fx3:Update(1 / 60); ty3.lifetimeCash = ty3.lifetimeCash * 1.02; rt:Render("nvg_stub") end
 assert(fx3.liveRankTxt:find("第") ~= nil, "实时排名文字必须写入 Fx")
 -- 超越弹窗：六档 × 合并连超 × 技能点赏金按钮 × 弹窗排队 × 自动收起
@@ -344,5 +360,11 @@ for _, i in ipairs({ 1, 20, 40, 56, 70, RankLadder.COUNT - 3 }) do
     pop.GetAbsoluteLayout = function() return { x = 0, y = 0, w = 360, h = 667 } end
     run(1.2)
 end
+
+-- 重置态清理方法校验
+cc:ResetDisplay()
+rt:ResetDisplay()
+pop:Reset()
+assert(not pop:IsOpen() and pop.pending_ == nil, "OvertakePopup:Reset 必须清空弹窗与排队队列")
 
 print("[test_render] ALL PASS! ranks_drawn=" .. tostring(#Config.RANKS) .. " coins_drawn=" .. tostring(#Config.COIN_TIERS))

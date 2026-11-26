@@ -89,6 +89,10 @@ local function MakeCloseBtn(onClose)
 end
 
 local function MakeModalWrap(inner, closeOnOverlay)
+    if inner and inner.props then
+        if inner.props.pointerEvents == nil then inner.props.pointerEvents = "auto" end
+        if inner.props.onClick == nil then inner.props.onClick = function() end end
+    end
     return UI.Panel {
         width = "100%", height = "100%", position = "absolute", top = 0, left = 0,
         backgroundColor = U.overlay, visible = false, pointerEvents = "auto",
@@ -104,30 +108,47 @@ local function MakeModalWrap(inner, closeOnOverlay)
     }
 end
 
--- B1 固定高度三段隔离详情框（顶部标题 + 中间滚动说明 + 右侧买操作钮）
+-- B1 固定高度两行详情框（顶部全宽标题 + 底部图标/可滚动说明/买操作钮，彻底杜绝窄列挤压裁剪）
 local function MakeDetailBar(iconKind, iconKey, btnText, btnVar, onAction)
-    local ic = NeoIcon { kind = iconKind, key = iconKey, size = 50, flexShrink = 0 }
-    local title = UI.Label { text = "", fontSize = 15, fontWeight = "bold", fontColor = U.gold, maxLines = 1, flexShrink = 0 }
+    local ic = NeoIcon { kind = iconKind, key = iconKey, size = 46, flexShrink = 0 }
+    local title = UI.Label { text = "", fontSize = 14, fontWeight = "bold", fontColor = U.gold, width = "100%", flexShrink = 0 }
     local desc = UI.Label { text = "", fontSize = 12, fontColor = U.textDim, whiteSpace = "normal", width = "100%" }
     local scroll = UI.ScrollView {
-        width = "100%", height = 62, scrollY = true, overflow = "hidden",
+        flexGrow = 1, flexBasis = 0, minWidth = 0, height = "100%", scrollY = true, overflow = "hidden",
         children = { desc },
     }
     local btn = NeoButton {
-        text = btnText, variant = btnVar or "primary", minWidth = 96, minHeight = 46, paddingHorizontal = 8, fontSize = 13,
+        text = btnText, variant = btnVar or "primary", minWidth = 92, minHeight = 44, paddingHorizontal = 8, fontSize = 13,
         flexShrink = 0,
         onClick = onAction,
     }
     local bar = NeoFrame {
-        style = "card", width = "100%", height = 120, padding = 8, gap = 8,
-        flexDirection = "row", alignItems = "center",
+        style = "card", width = "100%", height = 112, padding = 8, gap = 6,
+        flexDirection = "column", overflow = "hidden",
         children = {
-            ic,
-            UI.Column { flexGrow = 1, flexBasis = 0, flexShrink = 1, height = 92, gap = 4, overflow = "hidden", children = { title, scroll } },
-            btn,
+            UI.Panel { width = "100%", overflow = "hidden", flexShrink = 0, children = { title } },
+            UI.Row {
+                width = "100%", flexGrow = 1, flexBasis = 0, minHeight = 0, alignItems = "center", gap = 8, overflow = "hidden",
+                children = { ic, scroll, btn },
+            },
         },
     }
     return bar, ic, title, desc, btn
+end
+
+-- 弹窗内独立技能点信息栏（左：可用技能点；右：下档财富阈值）
+local function MakeSpBar()
+    local spLbl = UI.Label { text = "可用技能点: 0", fontSize = 12, fontWeight = "bold", fontColor = U.gold, flexShrink = 0 }
+    local nextLbl = UI.Label { text = "", fontSize = 11, fontColor = U.cyan, width = "100%", textAlign = "right" }
+    local bar = NeoFrame {
+        style = "slot", width = "100%", height = 30, paddingHorizontal = 8,
+        flexDirection = "row", alignItems = "center", gap = 6, overflow = "hidden",
+        children = {
+            spLbl,
+            UI.Panel { flexGrow = 1, flexBasis = 0, minWidth = 0, overflow = "hidden", children = { nextLbl } },
+        },
+    }
+    return bar, spLbl, nextLbl
 end
 
 -- ----------------------------------------------------------------------------
@@ -135,13 +156,6 @@ end
 -- ----------------------------------------------------------------------------
 local function BuildMainPage(stageWidget, cb)
     local r = st.refs
-    r.lblSp = UI.Label { text = "技能点:0", fontSize = 12, fontWeight = "bold", fontColor = U.gold, maxLines = 1, textAlign = "center" }
-    local spPill = NeoFrame(Widgets.PressFx {
-        style = "slot", height = 34, minWidth = 72, paddingHorizontal = 6,
-        flexDirection = "row", justifyContent = "center", alignItems = "center",
-        children = { r.lblSp },
-        onClick = function() TycoonHud.OpenModal("coins") end,
-    })
 
     -- 滚动现金计数器（飞币砸中冲击 + 金光 + 每秒产值上涨绿闪）
     local juice = st.juice or {}
@@ -167,7 +181,7 @@ local function BuildMainPage(stageWidget, cb)
 
     local row1 = UI.Row {
         width = "100%", height = 64, alignItems = "center", paddingLeft = 8, paddingRight = 104, gap = 6,
-        children = { spPill, cashCol, helpBtn, gearBtn },
+        children = { cashCol, helpBtn, gearBtn },
     }
 
     -- 实时世界排名（里程表滚动，点击打开财富榜）
@@ -179,7 +193,7 @@ local function BuildMainPage(stageWidget, cb)
         font = juice.font,
     }
     local rankTickerWrap = UI.Panel(Widgets.PressFx {
-        width = 168, flexShrink = 0, height = 32,
+        width = 212, flexShrink = 0, height = 32,
         onClick = function() TycoonHud.OpenModal("ranks") end,
         children = { r.rankTicker },
     })
@@ -303,11 +317,12 @@ end
 local function BuildMachineModal(cb)
     local r = st.refs
     local closeBtn = MakeCloseBtn(function() TycoonHud.CloseModal() end)
-    r.machSpLbl = UI.Label { text = "技能点:0", fontSize = 11, fontWeight = "bold", fontColor = U.cyan, maxLines = 1, flexShrink = 1 }
     local header = UI.Row {
         width = "100%", height = 40, alignItems = "center", gap = 6,
-        children = { UI.Label { text = "机台暴走改装", fontSize = 17, fontWeight = "bold", fontColor = U.gold }, r.machSpLbl, UI.Spacer(), closeBtn },
+        children = { UI.Label { text = "机台暴走改装", fontSize = 17, fontWeight = "bold", fontColor = U.gold }, UI.Spacer(), closeBtn },
     }
+    local spBar, spLbl, nextLbl = MakeSpBar()
+    r.machSpLbl, r.machNextLbl = spLbl, nextLbl
 
     r.modeBtns = {}
     local modes = { { m = 1, lbl = "×1" }, { m = 10, lbl = "×10" }, { m = 0, lbl = "最大" } }
@@ -329,13 +344,13 @@ local function BuildMachineModal(cb)
     local cNodes = {}
     for i = 1, 8 do
         local def = Config.MACHINE_UPGRADES[i]
-        local ic = NeoIcon { kind = "relic", key = def.relic, size = 44 }
-        local nm = UI.Label { text = def.short, fontSize = 12, fontWeight = "bold", fontColor = U.text, maxLines = 1, width = "100%", textAlign = "center" }
-        local lv = UI.Label { text = "Lv.0", fontSize = 12, fontColor = U.cyan, maxLines = 1 }
+        local ic = NeoIcon { kind = "relic", key = def.relic, size = 42 }
+        local nm = UI.Label { text = def.short, fontSize = 12, fontWeight = "bold", fontColor = U.text, width = "100%", textAlign = "center" }
+        local lv = UI.Label { text = "Lv.0", fontSize = 12, fontColor = U.cyan, width = "100%", textAlign = "center" }
         local cell = NeoFrame(Widgets.PressFx {
             style = "slot", skin = { rarity = "common", selected = false, afford = false },
-            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 104, padding = 4, gap = 2,
-            flexDirection = "column", alignItems = "center", justifyContent = "center",
+            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 96, padding = 4, gap = 2,
+            overflow = "hidden", flexDirection = "column", alignItems = "center", justifyContent = "center",
             children = { ic, nm, lv },
             onClick = function() st.machSel = i; TycoonHud.RefreshMachine() end,
         })
@@ -353,7 +368,7 @@ local function BuildMachineModal(cb)
     local panel = NeoFrame {
         style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 8,
         flexDirection = "column", justifyContent = "space-between",
-        children = { header, modeRow, grid, UI.Spacer(), detBar },
+        children = { header, spBar, modeRow, grid, UI.Spacer(), detBar },
     }
     return MakeModalWrap(panel, true)
 end
@@ -363,26 +378,27 @@ end
 -- ----------------------------------------------------------------------------
 local function BuildCoinsModal(cb)
     local r = st.refs
-    r.coinCountLbl = UI.Label { text = "1/22", fontSize = 12, fontColor = U.cyan, maxLines = 1 }
-    r.coinSpLbl = UI.Label { text = "技能点:0", fontSize = 11, fontWeight = "bold", fontColor = U.gold, maxLines = 1, flexShrink = 1 }
+    r.coinCountLbl = UI.Label { text = "1/22", fontSize = 12, fontColor = U.cyan, flexShrink = 0 }
     local header = UI.Row {
         width = "100%", height = 40, alignItems = "center", gap = 6,
         children = {
             UI.Label { text = "币种进化", fontSize = 17, fontWeight = "bold", fontColor = U.gold },
-            r.coinCountLbl, r.coinSpLbl, UI.Spacer(), MakeCloseBtn(function() TycoonHud.CloseModal() end),
+            r.coinCountLbl, UI.Spacer(), MakeCloseBtn(function() TycoonHud.CloseModal() end),
         },
     }
+    local spBar, spLbl, nextLbl = MakeSpBar()
+    r.coinSpLbl, r.coinNextLbl = spLbl, nextLbl
 
     r.coinCells = {}
     local cNodes = {}
     for i = 1, 12 do
-        local ic = NeoIcon { kind = "coin", key = "gold", size = 44 }
-        local nm = UI.Label { text = "金币", fontSize = 12, fontWeight = "bold", fontColor = U.text, maxLines = 1, width = "100%", textAlign = "center" }
-        local sub = UI.Label { text = "Lv.1", fontSize = 12, fontColor = U.gold, maxLines = 1 }
+        local ic = NeoIcon { kind = "coin", key = "gold", size = 40 }
+        local nm = UI.Label { text = "金币", fontSize = 12, fontWeight = "bold", fontColor = U.text, width = "100%", textAlign = "center" }
+        local sub = UI.Label { text = "Lv.1", fontSize = 12, fontColor = U.gold, width = "100%", textAlign = "center" }
         local cell = NeoFrame(Widgets.PressFx {
             style = "slot", skin = { rarity = "common", selected = false, afford = false },
-            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 98, padding = 4, gap = 2,
-            flexDirection = "column", alignItems = "center", justifyContent = "center",
+            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 88, padding = 4, gap = 2,
+            overflow = "hidden", flexDirection = "column", alignItems = "center", justifyContent = "center",
             children = { ic, nm, sub },
             onClick = function() st.coinSel = i; TycoonHud.RefreshCoins() end,
         })
@@ -420,9 +436,9 @@ local function BuildCoinsModal(cb)
     r.coinDetIc, r.coinDetTitle, r.coinDetDesc, r.coinDetBtn = detIc, detTitle, detDesc, detBtn
 
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 8,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 6,
         flexDirection = "column", justifyContent = "space-between",
-        children = { header, grid, pageRow, detBar },
+        children = { header, spBar, grid, pageRow, detBar },
     }
     return MakeModalWrap(panel, true)
 end
@@ -432,27 +448,28 @@ end
 -- ----------------------------------------------------------------------------
 local function BuildTechModal(cb)
     local r = st.refs
-    r.techCountLbl = UI.Label { text = "0/12", fontSize = 12, fontColor = U.green, maxLines = 1 }
-    r.techSpLbl = UI.Label { text = "技能点:0", fontSize = 11, fontWeight = "bold", fontColor = U.gold, maxLines = 1, flexShrink = 1 }
+    r.techCountLbl = UI.Label { text = "0/12", fontSize = 12, fontColor = U.green, flexShrink = 0 }
     local header = UI.Row {
         width = "100%", height = 40, alignItems = "center", gap = 6,
         children = {
             UI.Label { text = "黑科技", fontSize = 17, fontWeight = "bold", fontColor = U.gold },
-            r.techCountLbl, r.techSpLbl, UI.Spacer(), MakeCloseBtn(function() TycoonHud.CloseModal() end),
+            r.techCountLbl, UI.Spacer(), MakeCloseBtn(function() TycoonHud.CloseModal() end),
         },
     }
+    local spBar, spLbl, nextLbl = MakeSpBar()
+    r.techSpLbl, r.techNextLbl = spLbl, nextLbl
 
     r.techCells = {}
     local cNodes = {}
     for i = 1, 12 do
         local t = Config.TECH_UPGRADES[i]
-        local ic = NeoIcon { kind = "relic", key = t.relic, size = 42 }
-        local nm = UI.Label { text = t.name, fontSize = 12, fontWeight = "bold", fontColor = U.text, maxLines = 1, width = "100%", textAlign = "center" }
-        local stLbl = UI.Label { text = "未研", fontSize = 12, fontColor = U.gold, maxLines = 1 }
+        local ic = NeoIcon { kind = "relic", key = t.relic, size = 40 }
+        local nm = UI.Label { text = t.name, fontSize = 12, fontWeight = "bold", fontColor = U.text, width = "100%", textAlign = "center" }
+        local stLbl = UI.Label { text = "未研", fontSize = 12, fontColor = U.gold, width = "100%", textAlign = "center" }
         local cell = NeoFrame(Widgets.PressFx {
             style = "slot", skin = { rarity = "rare", selected = false, afford = false },
-            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 94, padding = 4, gap = 2,
-            flexDirection = "column", alignItems = "center", justifyContent = "center",
+            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 90, padding = 4, gap = 2,
+            overflow = "hidden", flexDirection = "column", alignItems = "center", justifyContent = "center",
             children = { ic, nm, stLbl },
             onClick = function() st.techSel = i; TycoonHud.RefreshTech() end,
         })
@@ -468,9 +485,9 @@ local function BuildTechModal(cb)
     r.techDetIc, r.techDetTitle, r.techDetDesc, r.techDetBtn = detIc, detTitle, detDesc, detBtn
 
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 8,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 6,
         flexDirection = "column", justifyContent = "space-between",
-        children = { header, grid, UI.Spacer(), detBar },
+        children = { header, spBar, grid, UI.Spacer(), detBar },
     }
     return MakeModalWrap(panel, true)
 end
@@ -480,25 +497,30 @@ end
 -- ----------------------------------------------------------------------------
 local function BuildPrestigeModal(cb)
     local r = st.refs
-    r.presEraLbl = UI.Label { text = "不清空财富", fontSize = 11, fontWeight = "bold", fontColor = U.green, maxLines = 1 }
+    r.presEraLbl = UI.Label { text = "不清空财富", fontSize = 11, fontWeight = "bold", fontColor = U.green, flexShrink = 1 }
+    r.presSpLbl = UI.Label { text = "点:0", fontSize = 12, fontWeight = "bold", fontColor = U.gold, flexShrink = 0 }
     local header = UI.Row {
         width = "100%", height = 40, alignItems = "center", gap = 6,
         children = {
             UI.Label { text = "资本上市敲钟", fontSize = 17, fontWeight = "bold", fontColor = U.gold },
             r.presEraLbl,
+            r.presSpLbl,
             UI.Spacer(), MakeCloseBtn(function() TycoonHud.CloseModal() end),
         },
     }
 
-    r.presSharesLbl = UI.Label { text = "传奇股：0", fontSize = 14, fontWeight = "bold", fontColor = U.gold, maxLines = 1 }
-    r.presPendLbl = UI.Label { text = "下轮融资：+0 股 · +0 点", fontSize = 12, fontColor = U.cyan, maxLines = 1 }
-    r.presNextLbl = UI.Label { text = "★ 绝不清空现金、机台与已解币种", fontSize = 11, fontColor = U.green, maxLines = 1 }
+    r.presSharesLbl = UI.Label { text = "传奇股：0", fontSize = 13, fontWeight = "bold", fontColor = U.gold, whiteSpace = "normal", width = "100%" }
+    r.presPendLbl = UI.Label { text = "下轮融资：+0 股 · +0 点", fontSize = 12, fontColor = U.cyan, whiteSpace = "normal", width = "100%" }
+    r.presNextLbl = UI.Label { text = "★ 绝不清空现金、机台与已解币种", fontSize = 11, fontColor = U.green, whiteSpace = "normal", width = "100%" }
     local topCard = NeoFrame {
-        style = "card", width = "100%", height = 86, padding = 10, gap = 10,
+        style = "card", width = "100%", minHeight = 92, padding = 8, gap = 8, overflow = "hidden",
         flexDirection = "row", alignItems = "center",
         children = {
-            NeoIcon { kind = "boss", key = "vaultbeast", size = 56, flexShrink = 0 },
-            UI.Column { flexGrow = 1, flexBasis = 0, gap = 3, children = { r.presSharesLbl, r.presPendLbl, r.presNextLbl } },
+            NeoIcon { kind = "boss", key = "vaultbeast", size = 54, flexShrink = 0 },
+            UI.Column {
+                flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, overflow = "hidden", gap = 3,
+                children = { r.presSharesLbl, r.presPendLbl, r.presNextLbl },
+            },
         },
     }
 
@@ -506,14 +528,20 @@ local function BuildPrestigeModal(cb)
     local tNodes = {}
     for i = 1, 4 do
         local p = Config.PRESTIGE_TALENTS[i]
-        local ic = NeoIcon { kind = "relic", key = p.relic, size = 44, flexShrink = 0 }
-        local nm = UI.Label { text = p.name, fontSize = 13, fontWeight = "bold", fontColor = U.text, maxLines = 1 }
-        local lv = UI.Label { text = "Lv.0 · 2股", fontSize = 12, fontColor = U.cyan, maxLines = 1 }
+        local ic = NeoIcon { kind = "relic", key = p.relic, size = 42, flexShrink = 0 }
+        local nm = UI.Label { text = p.name, fontSize = 13, fontWeight = "bold", fontColor = U.text, width = "100%" }
+        local lv = UI.Label { text = "Lv.0 · 2股", fontSize = 12, fontColor = U.cyan, width = "100%" }
         local cell = NeoFrame(Widgets.PressFx {
             style = "slot", skin = { rarity = "epic", selected = false, afford = false },
-            flexGrow = 1, flexBasis = 0, minWidth = 0, height = 80, padding = 8, gap = 8,
+            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 74, padding = 6, gap = 6, overflow = "hidden",
             flexDirection = "row", alignItems = "center",
-            children = { ic, UI.Column { flexGrow = 1, flexBasis = 0, gap = 2, children = { nm, lv } } },
+            children = {
+                ic,
+                UI.Column {
+                    flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, overflow = "hidden", gap = 2,
+                    children = { nm, lv },
+                },
+            },
             onClick = function() st.talentSel = i; TycoonHud.RefreshPrestige() end,
         })
         r.talentCells[i] = { cell = cell, ic = ic, nm = nm, lv = lv }
@@ -525,7 +553,6 @@ local function BuildPrestigeModal(cb)
         local p = Config.PRESTIGE_TALENTS[st.talentSel]
         if p and cb.OnBuyTalent then cb.OnBuyTalent(p.id) end
     end)
-    detBar:SetStyle({ height = 96 })
     r.talDetIc, r.talDetTitle, r.talDetDesc, r.talDetBtn = detIc, detTitle, detDesc, detBtn
 
     r.presNormalBtn = NeoButton {
@@ -543,7 +570,7 @@ local function BuildPrestigeModal(cb)
     local botRow = UI.Row { width = "100%", gap = 6, children = { r.presNormalBtn, r.presAdBtn, r.presAscendBtn } }
 
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 8,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 6,
         flexDirection = "column", justifyContent = "space-between",
         children = { header, topCard, tGrid, detBar, botRow },
     }
@@ -570,11 +597,11 @@ local function BuildWelfareModal(cb)
         local pid = Config.AD_WELFARE_ORDER[i]
         local def = Config.AD_PLACEMENTS[pid]
         local ic = NeoIcon { kind = def.iconKind, key = def.iconKey, size = 56 }
-        local nm = UI.Label { text = def.short, fontSize = 14, fontWeight = "bold", fontColor = U.text, maxLines = 1 }
-        local cd = UI.Label { text = "可免费看", fontSize = 12, fontColor = U.green, maxLines = 1 }
+        local nm = UI.Label { text = def.short, fontSize = 14, fontWeight = "bold", fontColor = U.text, width = "100%", textAlign = "center" }
+        local cd = UI.Label { text = "可免费看", fontSize = 12, fontColor = U.green, width = "100%", textAlign = "center" }
         local card = NeoFrame(Widgets.PressFx {
             style = "card", skin = { rarity = "rare", selected = false, afford = true },
-            flexGrow = 1, flexBasis = 0, height = 132, padding = 8, gap = 4,
+            flexGrow = 1, flexBasis = 0, height = 132, padding = 8, gap = 4, overflow = "hidden",
             flexDirection = "column", alignItems = "center", justifyContent = "center",
             children = { ic, nm, cd },
             onClick = function() st.welfareSel = i; TycoonHud.RefreshWelfare() end,
@@ -595,7 +622,7 @@ local function BuildWelfareModal(cb)
         flexDirection = "column", justifyContent = "space-between",
         children = {
             header,
-            UI.Label { text = "模拟激励广告位：点击亮卡立即体验商业化增益", fontSize = 12, fontColor = U.cyan, textAlign = "center" },
+            UI.Label { text = "模拟激励广告位：点击亮卡立即体验商业化增益", fontSize = 12, fontColor = U.cyan, width = "100%", whiteSpace = "normal", textAlign = "center" },
             grid,
             UI.Spacer(),
             detBar,
@@ -605,7 +632,7 @@ local function BuildWelfareModal(cb)
 end
 
 -- ----------------------------------------------------------------------------
--- 7. 全球财富排行榜弹窗（80亿名 -> 前1000强真实福布斯富豪榜，前1000才显示真名与真实身价）
+-- 7. 全球财富排行榜弹窗（80亿名 -> 前1,000强真实福布斯富豪榜，前1,000才显示真名与真实身价）
 -- ----------------------------------------------------------------------------
 -- 财富榜 = 超越阶梯（富豪榜 85 档 + 身边人 34 位），第 1 页为世界首富，末页为起步
 local function CalcRankLocatePage(ty)
@@ -621,46 +648,48 @@ local function BuildRanksModal()
     local header = UI.Row {
         width = "100%", height = 38, alignItems = "center", gap = 8,
         children = {
-            UI.Label { text = "全球财富榜 · 超越之路", fontSize = 17, fontWeight = "bold", fontColor = U.gold },
+            UI.Label { text = "全球财富榜 · 前1,000真名", fontSize = 17, fontWeight = "bold", fontColor = U.gold },
             UI.Spacer(), MakeCloseBtn(function() TycoonHud.CloseModal() end),
         },
     }
     r.rankCells = {}
     local rowNodes = {}
     for i = 1, 5 do
-        local av = AvatarIcon { size = 48 }
-        local no = UI.Label { text = "前50亿", fontSize = 12, fontWeight = "bold", fontColor = U.cyan, maxLines = 1 }
-        local nm = UI.Label { text = "匿名阶层", fontSize = 14, fontWeight = "bold", fontColor = U.text, maxLines = 1 }
-        local ttl = UI.Label { text = "称号", fontSize = 11, fontColor = U.textDim, maxLines = 1 }
-        local tg = UI.Label { text = "¥0", fontSize = 13, fontWeight = "bold", fontColor = U.gold, maxLines = 1, textAlign = "right" }
-        local stLbl = UI.Label { text = "追赶中", fontSize = 11, fontColor = U.muted, maxLines = 1, textAlign = "right" }
+        local av = AvatarIcon { size = 44, flexShrink = 0 }
+        local nm = UI.Label { text = "匿名阶层", fontSize = 13, fontWeight = "bold", fontColor = U.text, width = "100%" }
+        local stLbl = UI.Label { text = "追赶中", fontSize = 11, fontColor = U.muted, width = 76, flexShrink = 0, textAlign = "right" }
+        local no = UI.Label { text = "前50亿名", fontSize = 11, fontColor = U.cyan, width = "100%" }
+        local tg = UI.Label { text = "¥0", fontSize = 12, fontWeight = "bold", fontColor = U.gold, width = "100%", textAlign = "left" }
         local row = NeoFrame {
             style = "card", skin = { rarity = "common", selected = false },
-            width = "100%", height = 64, paddingHorizontal = 8, paddingVertical = 4, gap = 8,
+            width = "100%", height = 74, paddingHorizontal = 8, paddingVertical = 5, gap = 8, overflow = "hidden",
             flexDirection = "row", alignItems = "center",
             children = {
                 av,
                 UI.Column {
-                    flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, gap = 2,
+                    flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, gap = 2, overflow = "hidden",
                     children = {
-                        UI.Row { width = "100%", gap = 6, alignItems = "center", children = { no, nm } },
-                        ttl,
+                        UI.Row {
+                            width = "100%", gap = 6, alignItems = "center",
+                            children = {
+                                UI.Panel { flexGrow = 1, flexBasis = 0, minWidth = 0, overflow = "hidden", children = { nm } },
+                                stLbl,
+                            },
+                        },
+                        no,
+                        tg,
                     },
-                },
-                UI.Column {
-                    alignItems = "flex-end", flexShrink = 0, gap = 2,
-                    children = { tg, stLbl },
                 },
             },
         }
-        r.rankCells[i] = { cell = row, av = av, no = no, nm = nm, ttl = ttl, tg = tg, stLbl = stLbl }
+        r.rankCells[i] = { cell = row, av = av, no = no, nm = nm, tg = tg, stLbl = stLbl }
         rowNodes[i] = row
     end
-    local listCol = UI.Column { width = "100%", gap = 6, children = rowNodes }
+    local listCol = UI.Column { width = "100%", gap = 5, children = rowNodes }
 
     r.rankPageLbl = UI.Label { text = "1/17", fontSize = 12, fontColor = U.textDim }
     local pageRow = UI.Row {
-        width = "100%", height = 38, alignItems = "center", justifyContent = "space-between", gap = 6,
+        width = "100%", height = 36, alignItems = "center", justifyContent = "space-between", gap = 6,
         children = {
             NeoButton { text = "上页", variant = "dark", minHeight = 34, flexGrow = 1, flexBasis = 0, fontSize = 12,
                 onClick = function() st.rankPage = max(1, st.rankPage - 1); TycoonHud.RefreshRanks() end },
@@ -683,7 +712,7 @@ local function BuildRanksModal()
     r.rankGoalDesc = UI.Label { text = "超越 No.1 马斯克称霸世界!", fontSize = 12, fontColor = U.textDim, whiteSpace = "normal", textAlign = "center", width = "100%" }
 
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 10, gap = 6,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 10, gap = 5,
         flexDirection = "column", justifyContent = "space-between",
         children = {
             header, listCol, pageRow,
@@ -698,8 +727,8 @@ end
 -- ----------------------------------------------------------------------------
 local function BuildOfflineModal(cb)
     local r = st.refs
-    r.offTimeLbl = UI.Label { text = "离开期间推币机持续自动赚钱！", fontSize = 13, fontColor = U.cyan, textAlign = "center" }
-    r.offCashLbl = UI.Label { text = "+¥0", fontSize = 28, fontWeight = "bold", fontColor = U.gold, textAlign = "center", textStroke = { width = 2, color = U.strokeDark } }
+    r.offTimeLbl = UI.Label { text = "离开期间推币机持续自动赚钱！", fontSize = 13, fontColor = U.cyan, textAlign = "center", whiteSpace = "normal", width = "100%" }
+    r.offCashLbl = UI.Label { text = "+¥0", fontSize = 24, fontWeight = "bold", fontColor = U.gold, textAlign = "center", width = "100%", whiteSpace = "normal", textStroke = { width = 2, color = U.strokeDark } }
     local box = NeoFrame {
         style = "panel", width = "88%", maxWidth = 360, padding = 18, gap = 12,
         flexDirection = "column", alignItems = "center",
@@ -768,7 +797,7 @@ local function BuildFormulaModal()
                 children = {
                     UI.Label { text = "1. 钱只涨不花直冲世界第1！达标与排名跃升均赠技能点。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
                     UI.Label { text = "2. 下方页签亮灯即点：用技能点升机台、解新币（可设6枚常驻）与黑科技。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
-                    UI.Label { text = "3. 硬币过奖门激活3轴老虎机（9秒限流爆发 1.5~100 倍）；长按推台可触发狂暴连发！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
+                    UI.Label { text = "3. 硬币过幸运门激活幸运三连机（9秒限流爆发 1.5~100 倍）；长按推台可触发狂暴连发！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
                 },
             },
             NeoFrame {
@@ -844,7 +873,11 @@ end
 -- 对外构建与刷新接口
 -- ----------------------------------------------------------------------------
 --- juice = { fx = Fx 实例, getTime = function() return 游戏时间 end, font = 字体 }
-function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal, juice)
+function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal, confirmResetModal, juice)
+    if juice == nil and type(confirmResetModal) == "table" and confirmResetModal.fx ~= nil then
+        juice = confirmResetModal
+        confirmResetModal = nil
+    end
     st.cb = cb or {}
     st.juice = juice
     st.modals = {}
@@ -864,9 +897,18 @@ function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal, juice)
     st.modals.confirmPrestige = BuildConfirmPrestigeModal(st.cb)
     if settingsModal then st.modals.settings = settingsModal end
     if cloudFailModal then st.modals.cloudFail = cloudFailModal end
+    if confirmResetModal then st.modals.confirmReset = confirmResetModal end
 
     local children = { mainPage }
-    -- 世界排名超越弹窗（在主界面之上、其它弹窗之下；有弹窗打开时排队）
+    -- 特效层（飞币 / 倍率令牌 / 印章 / 购买爆点）置于所有弹窗之下、主舞台之上，弹窗打开时跳过绘制
+    if juice and juice.fx then
+        st.fxLayer = JuiceWidgets.FxLayer {
+            fx = juice.fx, font = juice.font,
+            isModalOpen = function() return st.curModal ~= nil end,
+        }
+        children[#children + 1] = st.fxLayer
+    end
+    -- 世界排名超越弹窗（在特效层之上、其它弹窗之下；有弹窗打开时排队）
     if juice and juice.fx then
         st.overtakePopup = OvertakePopup {
             fx = juice.fx, font = juice.font, getTime = juice.getTime,
@@ -880,14 +922,6 @@ function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal, juice)
     for _, m in pairs(st.modals) do
         m:SetVisible(false)
         children[#children + 1] = m
-    end
-    -- 顶层特效层（飞币 / 倍率令牌 / 印章 / 购买爆点），不拦截点击
-    if juice and juice.fx then
-        st.fxLayer = JuiceWidgets.FxLayer {
-            fx = juice.fx, font = juice.font,
-            isModalOpen = function() return st.curModal ~= nil end,
-        }
-        children[#children + 1] = st.fxLayer
     end
 
     local safe = UI.SafeAreaView {
@@ -935,6 +969,30 @@ function TycoonHud.CloseModal()
     for _, m in pairs(st.modals) do
         m:SetVisible(false)
     end
+end
+
+function TycoonHud.ResetState()
+    st.machSel = 1
+    st.coinPage = 1
+    st.coinSel = 1
+    st.techSel = 1
+    st.talentSel = 1
+    st.welfareSel = 1
+    st.rankPage = max(1, ceil(RankLadder.COUNT / 5))
+    st.shown = {}
+    st.offlineAmt = 0
+    st.offlineSec = 0
+    st.prestigeDouble = false
+    st.mockAdLeft = 0
+    st.overtakeOpen = false
+    st.overtakeLeft = 0
+    st.overtakeSticky = false
+    st.overtakeBounty = 0
+    if st.overtakePopup and st.overtakePopup.Reset then st.overtakePopup:Reset() end
+    if st.refs.overtakeWrap then SetCellVis(st.refs.overtakeWrap, false) end
+    if st.refs.cashCounter and st.refs.cashCounter.ResetDisplay then st.refs.cashCounter:ResetDisplay() end
+    if st.refs.rankTicker and st.refs.rankTicker.ResetDisplay then st.refs.rankTicker:ResetDisplay() end
+    TycoonHud.CloseModal()
 end
 
 function TycoonHud.OpenOfflineModal(amt, elapsed)
@@ -1003,8 +1061,10 @@ function TycoonHud.ShowOvertake(rankDef, info)
     r.ovAvatar:SetEntry(rankDef, rankDef.isRealName == true, true)
     if rankDef.isRealName then
         local badgeTxt = (jumped > 1)
-            and string.format("🏆 晋升世界第 %d 名！（前1000强 · 连超%d档）", rankDef.rank or 1, jumped)
-            or string.format("🏆 晋升世界第 %d 名！（前1000强）", rankDef.rank or 1)
+            and string.format("🏆 晋升世界第 %s 名！（前1,000强 · 连超%s档）",
+                Number.FormatWorldRank(rankDef.rank or 1), Number.FormatExactInt(jumped))
+            or string.format("🏆 晋升世界第 %s 名！（前1,000强）",
+                Number.FormatWorldRank(rankDef.rank or 1))
         SetLbl(r.ovBadgeLbl, badgeTxt)
         SetLbl(r.ovWealthLbl, "身价突破 " .. Number.FormatCash(wealthNow) .. "！")
         SetLbl(r.ovWhoLbl, "正式超越【" .. (rankDef.name or "富豪") .. "】· " .. (rankDef.title or ""))
@@ -1060,9 +1120,6 @@ function TycoonHud.RefreshMain(ty)
 
     -- 现金 / 每秒产值由 CashCounter 每帧滚动绘制
 
-    local spTxt = "技能点:" .. Number.FormatNum(ty.skillPoints or 0)
-    if sh.spTxt ~= spTxt then sh.spTxt = spTxt; SetLbl(r.lblSp, spTxt) end
-
     -- 下一个超越目标（富豪榜 + 身边人阶梯合并），进度 = 从上一个目标到下一个目标的财富进度
     local passed = RankLadder.CountPassed(ty.lifetimeCash)
     local nxt = RankLadder.LIST[passed + 1]
@@ -1072,8 +1129,10 @@ function TycoonHud.RefreshMain(ty)
         local span = max(1, nxt.target - prevT)
         barRatio = floor(max(0, min(1, (ty.lifetimeCash - prevT) / span)) * 200 + 0.5) / 200
         local nm = nxt.name or ""
-        if utf8.len(nm) and utf8.len(nm) > 9 then nm = nm:sub(1, utf8.offset(nm, 9) - 1) .. "…" end
-        barTxt = (nxt.entry and nxt.entry.isRealName) and ("下一个: No." .. tostring(nxt.rank) .. " " .. nm) or ("下一个: " .. nm)
+        if utf8.len(nm) and utf8.len(nm) > 6 then nm = nm:sub(1, utf8.offset(nm, 6) - 1) .. "…" end
+        barTxt = (nxt.entry and nxt.entry.isRealName)
+            and ("下一个: No." .. Number.FormatWorldRank(nxt.rank) .. " " .. nm)
+            or ("下一个: " .. nm)
         barCol = (nxt.kind == "rival") and C.cyan or C.gold
     else
         barRatio = 1
@@ -1126,7 +1185,8 @@ function TycoonHud.RefreshMachine()
     local ty = st.lastTycoon
     if not ty then return end
     local r = st.refs
-    SetLbl(r.machSpLbl, string.format("技能点:%s (¥%s赠)", Number.FormatNum(ty.skillPoints or 0), Number.FormatNum(ty:GetNextSpThreshold())))
+    SetLbl(r.machSpLbl, "可用技能点: " .. Number.FormatNum(ty.skillPoints or 0))
+    SetLbl(r.machNextLbl, "下档: " .. Number.FormatCash(ty:GetNextSpThreshold()))
     for m, mb in pairs(r.modeBtns) do
         mb:SetVariant((ty.buyMode == m) and "cyan" or "dark")
     end
@@ -1162,7 +1222,8 @@ function TycoonHud.RefreshCoins()
     SetLbl(r.coinCountLbl, (pinnedN > 0)
         and string.format("%d/%d·常%d", ty:CountUnlockedCoins(), #Config.COIN_TIERS, pinnedN)
         or string.format("%d/%d", ty:CountUnlockedCoins(), #Config.COIN_TIERS))
-    SetLbl(r.coinSpLbl, string.format("技能点:%s (¥%s赠)", Number.FormatNum(ty.skillPoints or 0), Number.FormatNum(ty:GetNextSpThreshold())))
+    SetLbl(r.coinSpLbl, "可用技能点: " .. Number.FormatNum(ty.skillPoints or 0))
+    SetLbl(r.coinNextLbl, "下档: " .. Number.FormatCash(ty:GetNextSpThreshold()))
     SetLbl(r.coinPageLbl, st.coinPage .. "/2")
     for i = 1, 12 do
         local slot = r.coinCells[i]
@@ -1219,7 +1280,8 @@ function TycoonHud.RefreshTech()
     if not ty then return end
     local r = st.refs
     local sp = ty.skillPoints or 0
-    SetLbl(r.techSpLbl, string.format("技能点:%s (¥%s赠)", Number.FormatNum(sp), Number.FormatNum(ty:GetNextSpThreshold())))
+    SetLbl(r.techSpLbl, "可用技能点: " .. Number.FormatNum(sp))
+    SetLbl(r.techNextLbl, "下档: " .. Number.FormatCash(ty:GetNextSpThreshold()))
     local ownedCnt = 0
     for i = 1, 12 do
         local t = Config.TECH_UPGRADES[i]
@@ -1254,8 +1316,9 @@ function TycoonHud.RefreshPrestige()
     local curMul = ty:GetShareMult()
     local eraTitle = ty.GetEraTitle and ty:GetEraTitle() or nil
     SetLbl(r.presEraLbl, eraTitle and ("★ " .. eraTitle) or "不清空财富")
+    SetLbl(r.presSpLbl, "点:" .. Number.FormatNum(ty.skillPoints or 0))
     SetLbl(r.presSharesLbl, string.format("持有传奇股：%s 股 (全局×%.2f)", Number.FormatNum(ty.prestigeShares), curMul))
-    SetLbl(r.presPendLbl, string.format("本轮【%s】：+%s 股 · +%d 技能点", info.name, Number.FormatNum(info.shares), info.bonusSp or 0))
+    SetLbl(r.presPendLbl, string.format("本轮【%s】：+%s 股 · +%s 技能点", info.name, Number.FormatNum(info.shares), Number.FormatNum(info.bonusSp or 0)))
     local inEndgame = (ty.rankIdx or 0) >= #Config.RANKS
     if inEndgame then
         local canAsc = ty:CanAscendEra()
@@ -1264,7 +1327,7 @@ function TycoonHud.RefreshPrestige()
             or ("星际飞升需总身价 " .. Number.FormatCash(ty:GetEraAscendTarget())))
         SetCellVis(r.presAscendBtn, true)
         r.presAscendBtn:SetDisabled(not canAsc)
-        r.presAscendBtn:SetText(canAsc and "星际飞升" or ("待" .. Number.FormatNum(ty:GetEraAscendTarget())))
+        r.presAscendBtn:SetText(canAsc and "星际飞升" or "未达标")
     else
         SetCellVis(r.presAscendBtn, false)
         SetLbl(r.presNextLbl, canIpo and "★ 达标可敲钟！绝不清空财富与已解进度" or ("需总身价 " .. Number.FormatCash(info.targetWealth) .. " · 不清空资产"))
@@ -1342,10 +1405,13 @@ function TycoonHud.RefreshRanks()
             local isNextTarget = (idx == passed + 1)
             local isCurrent = (idx == passed)
             slot.av:SetEntry(rk, isCurrent and (rk.isRealName == true), unlocked)
-            SetLbl(slot.no, rk.isRealName and ("No." .. tostring(it.rank)) or ("第" .. RankLadder.FormatRankShort(it.rank)))
+            local rankPrefix = rk.isRealName
+                and ("No." .. Number.FormatExactInt(it.rank))
+                or ("第" .. RankLadder.FormatRankShort(it.rank) .. "名")
+            local rankLine = (rk.title and rk.title ~= "") and (rankPrefix .. " · " .. rk.title) or rankPrefix
+            SetLbl(slot.no, rankLine)
             SetLblCol(slot.no, (it.rank <= 10) and U.gold or (rk.isRealName and U.cyan or ((it.kind == "rival") and U.green or U.textDim)))
             SetLbl(slot.nm, it.name)
-            SetLbl(slot.ttl, rk.title or "")
             SetLbl(slot.tg, Number.FormatCash(it.target))
             local statusStr = isCurrent and "★ 刚超越" or (unlocked and "已超越" or (isNextTarget and "下一目标!" or "追赶中"))
             local statusCol = isCurrent and U.gold or (unlocked and U.green or (isNextTarget and U.magenta or U.muted))
@@ -1365,10 +1431,10 @@ function TycoonHud.RefreshRanks()
     if remainTop1 <= 0 then
         SetLbl(r.rankGoalDesc, "恭喜！你已全面超越 No.1 马斯克，登顶全球首富！")
     elseif myWorldRank <= Billionaires.REAL_NAME_CUTOFF then
-        SetLbl(r.rankGoalDesc, string.format("当前世界第 %s 名（前1000真名榜）· 距 No.1 马斯克还差 %s",
+        SetLbl(r.rankGoalDesc, string.format("当前世界第 %s 名（前1,000真名榜）· 距 No.1 马斯克还差 %s",
             Number.FormatWorldRank(myWorldRank), Number.FormatCash(remainTop1)))
     else
-        SetLbl(r.rankGoalDesc, string.format("当前世界第 %s 名 · 距进入前1000真名榜还差 %s",
+        SetLbl(r.rankGoalDesc, string.format("当前世界第 %s 名 · 距进入前1,000真名榜还差 %s",
             Number.FormatWorldRank(myWorldRank), Number.FormatCash(remain1000)))
     end
 end
@@ -1401,7 +1467,7 @@ function TycoonHud.RefreshFormula()
     local eraTtl = ty.GetEraTitle and ty:GetEraTitle() or nil
     local eraNote = eraTtl and string.format("\n星际纪元【%s】：×%s 永久飞升加成", eraTtl, Number.FormatMul(3 ^ (ty.era or 0))) or ""
     SetLbl(st.refs.formMultLbl, string.format(
-        "机台全币：×%s   |   黑科技乘区：×%s\n传奇股+基因：×%s   |   连击加成：×%s\n狂欢时刻：×%s   |   幸运老虎机：×%s\n广告×3：×%s   |   合计总倍率：×%s\n下一技能点阈值：%s（可用 %s 点）%s",
+        "机台全币：×%s   |   黑科技乘区：×%s\n传奇股+基因：×%s   |   连击加成：×%s\n狂欢时刻：×%s   |   幸运三连：×%s\n广告×3：×%s   |   合计总倍率：×%s\n下一技能点阈值：%s（可用 %s 点）%s",
         Number.FormatMul(d.machine), Number.FormatMul(d.tech),
         Number.FormatMul(d.prestige), Number.FormatMul(d.combo),
         Number.FormatMul(d.fever), Number.FormatMul(d.luck or 1),

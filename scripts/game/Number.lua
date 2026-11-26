@@ -1,5 +1,5 @@
 -- ============================================================================
--- Number.lua  共用大数字与现金格式化（单位表驱动、3位有效数字、不掩盖NaN/inf）
+-- Number.lua  大数字与现金格式化（财富/排名默认精确到个位千分位，带非有限值兜底）
 -- ============================================================================
 
 local floor, max = math.floor, math.max
@@ -20,6 +20,13 @@ local UNITS = {
     { sym = "载",   val = 1e44 },
     { sym = "极",   val = 1e48 },
 }
+
+local function AddCommas(digits)
+    if #digits <= 3 then return digits end
+    local res = digits:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+    if res:sub(1, 1) == "," then res = res:sub(2) end
+    return res
+end
 
 local function FormatScaled3Sig(scaled)
     if scaled < 10 then
@@ -42,8 +49,39 @@ local function FormatScaled3Sig(scaled)
     end
 end
 
---- 格式化数值：先按候选单位舍入并检查进位（9999.5 -> "1.0万", 99999999 -> "1.00亿"）
-function Number.FormatNum(n)
+--- 精确到个位的千分位整数串（1,130,000,000 / 8,000,000,000），超过 1e21 切换科学计数
+function Number.FormatExactInt(n)
+    if n == nil then return "0" end
+    n = tonumber(n)
+    if not n then return "0" end
+    if n ~= n then
+        print("[Number][WARN] non-finite value:", n)
+        return "NaN"
+    end
+    if n == math.huge then
+        print("[Number][WARN] non-finite value: inf")
+        return "∞"
+    elseif n == -math.huge then
+        print("[Number][WARN] non-finite value: -inf")
+        return "-∞"
+    end
+
+    local neg = ""
+    if n < 0 then neg = "-"; n = -n end
+    if n >= 1e21 then
+        return neg .. string.format("%.2e", n)
+    end
+    local r = floor(n + 0.5)
+    local raw = string.format("%.0f", r)
+    if raw == "-0" then raw = "0" end
+    if not raw:match("^%d+$") then
+        return neg .. string.format("%.2e", n)
+    end
+    return neg .. AddCommas(raw)
+end
+
+--- 中文大数缩写（仅用于超大倍率等紧凑展示）
+function Number.FormatCompact(n)
     if n == nil then return "0" end
     n = tonumber(n)
     if not n then return "0" end
@@ -69,7 +107,6 @@ function Number.FormatNum(n)
         return neg .. tostring(r)
     end
 
-    -- 挑选单位并统一检查四舍五入后是否触发向下一级进位
     local idx = #UNITS
     for i = 1, #UNITS do
         if i == #UNITS or n < UNITS[i + 1].val then
@@ -83,10 +120,8 @@ function Number.FormatNum(n)
         local scaled = n / u.val
         local txt, carry = FormatScaled3Sig(scaled)
         if not carry then
-            -- 兼容传统 1.5万 / 3.50亿 展示（<100 若为1位小数则是 x.x，仅 <10 按万/亿区分）
             if u.sym == "万" and scaled < 10 then
                 local r1 = floor(scaled * 10 + 0.5) / 10
-                if r1 >= 10 then return neg .. string.format("%.1f", r1) .. u.sym end
                 return neg .. string.format("%.1f", r1) .. u.sym
             end
             return neg .. txt .. u.sym
@@ -96,42 +131,33 @@ function Number.FormatNum(n)
     return neg .. string.format("%.2e", n)
 end
 
---- 世界排名数字格式化（60.00亿 / 5800.0万 / 1.50万 / 850）
+--- 格式化数值：默认精确到个位（带千分位逗号，视觉冲击更震撼）
+function Number.FormatNum(n)
+    return Number.FormatExactInt(n)
+end
+
+--- 世界排名数字格式化（8,000,000,000 / 47,913 / 1）
 function Number.FormatWorldRank(rank)
-    local r = max(1, floor((tonumber(rank) or 6e9) + 0.5))
-    if r >= 1e8 then
-        return string.format("%.2f亿", r / 1e8)
-    elseif r >= 1e6 then
-        return string.format("%.1f万", r / 1e4)
-    elseif r >= 1e4 then
-        return string.format("%.2f万", r / 1e4)
-    end
-    return tostring(r)
+    local r = max(1, floor((tonumber(rank) or 8000000000) + 0.5))
+    return Number.FormatExactInt(r)
 end
 
---- 顶栏紧致排名胶囊文本（No.60.00亿 / No.5800万 / No.1.5万 / No.990）
+--- 顶栏紧致排名胶囊文本（No.8,000,000,000 / No.47,913 / No.990）
 function Number.FormatRankBadge(rank)
-    local r = max(1, floor((tonumber(rank) or 6e9) + 0.5))
-    if r >= 1e8 then
-        return "No." .. string.format("%.2f亿", r / 1e8)
-    elseif r >= 1e6 then
-        return "No." .. string.format("%.0f万", r / 1e4)
-    elseif r >= 1e4 then
-        return "No." .. string.format("%.1f万", r / 1e4)
-    end
-    return "No." .. tostring(r)
+    return "No." .. Number.FormatWorldRank(rank)
 end
 
---- 格式化现金："¥1.2万"
+--- 格式化现金："¥1,130,000,000"
 function Number.FormatCash(n)
-    return "¥" .. Number.FormatNum(n)
+    return "¥" .. Number.FormatExactInt(n)
 end
 
---- 倍率格式化（<100 保留1位小数，100..999 取整，>=1000 走中文单位）
+--- 倍率格式化（<100 保留1位小数，100..999 取整，1000..9,999,999 精确到个位，>=1e7 走中文单位）
 function Number.FormatMul(m)
     m = tonumber(m) or 1
     if m ~= m or m == math.huge then return "∞" end
-    if m >= 1000 then return Number.FormatNum(m) end
+    if m >= 1e7 then return Number.FormatCompact(m) end
+    if m >= 1000 then return Number.FormatExactInt(m) end
     if m >= 100 then return tostring(floor(m + 0.5)) end
     return string.format("%.1f", m)
 end

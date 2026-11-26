@@ -14,24 +14,31 @@ local function approxEq(a, b, tol)
     return math.abs(a - b) <= (tol or 1e-6)
 end
 
--- 1. 大数格式化 & 世界排名格式化 & 时钟格式化
+-- 1. 大数格式化（精确个位千分位 + 紧凑倍率格式化）& 世界排名格式化 & 时钟格式化
 assert(Number.FormatNum(0) == "0")
 assert(Number.FormatNum(999) == "999")
-assert(Number.FormatNum(15000) == "1.5万")
-assert(Number.FormatNum(3.5e8) == "3.50亿")
-assert(Number.FormatNum(8.2e12) == "8.20万亿")
-assert(Number.FormatNum(4.1e16) == "4.10京")
-assert(Number.FormatNum(6.7e20) == "6.70垓")
-assert(Number.FormatNum(9.3e24) == "9.30秭")
-assert(Number.FormatNum(9999.5) == "1.0万", "万位进位预舍入")
-assert(Number.FormatNum(99999999) == "1.00亿", "亿位进位预舍入")
+assert(Number.FormatNum(15000) == "15,000")
+assert(Number.FormatNum(3.5e8) == "350,000,000")
+assert(Number.FormatNum(8.2e12) == "8,200,000,000,000")
+assert(Number.FormatNum(1234567890123456) == "1,234,567,890,123,456")
+assert(Number.FormatNum(9999.5) == "10,000", "小数四舍五入应精确到个位")
+assert(Number.FormatNum(99999999) == "99,999,999")
 assert(Number.FormatNum(0 / 0) == "NaN")
 assert(Number.FormatNum(1 / 0) == "∞")
-assert(Number.FormatNum(1.23e54):find("e%+?54"), "超高量级应切科学计数")
-assert(Number.FormatCash(15000) == "¥1.5万")
-assert(Number.FormatWorldRank(6e9) == "60.00亿")
-assert(Number.FormatRankBadge(6e9) == "No.60.00亿")
-assert(Number.FormatRankBadge(5.8e7) == "No.5800万")
+assert(Number.FormatNum(1.23e22):find("e%+?22"), "超过 1e21 应切科学计数")
+assert(Number.FormatCompact(15000) == "1.5万")
+assert(Number.FormatCompact(3.5e8) == "3.50亿")
+assert(Number.FormatCompact(8.2e12) == "8.20万亿")
+assert(Number.FormatCompact(4.1e16) == "4.10京")
+assert(Number.FormatCompact(6.7e20) == "6.70垓")
+assert(Number.FormatCompact(9.3e24) == "9.30秭")
+assert(Number.FormatCompact(9999.5) == "1.0万", "万位进位预舍入")
+assert(Number.FormatCompact(99999999) == "1.00亿", "亿位进位预舍入")
+assert(Number.FormatCompact(1.23e54):find("e%+?54"), "超高量级紧凑格式应切科学计数")
+assert(Number.FormatCash(15000) == "¥15,000")
+assert(Number.FormatWorldRank(6e9) == "6,000,000,000")
+assert(Number.FormatRankBadge(6e9) == "No.6,000,000,000")
+assert(Number.FormatRankBadge(5.8e7) == "No.58,000,000")
 assert(Number.FormatRankBadge(990) == "No.990")
 assert(Number.FormatClock(0) == "00:00")
 assert(Number.FormatClock(125.99) == "02:06", "小数秒绝不可触发 %d 运行时错误")
@@ -78,7 +85,7 @@ assert(#Config.COIN_TIERS == 22, "需有 22 枚渐进币种(16+6)")
 assert(#Config.TECH_UPGRADES == 12, "需有 12 项里程碑黑科技")
 assert(#Config.PRESTIGE_TALENTS == 4, "需有 4 项上市永久天赋")
 assert(#Config.IPO_ROUNDS == 12, "需有 12 轮非重置资本融资上市阶梯")
-assert(#Config.SLOT_SYMBOLS == 6 and Config.SLOT_PRIZES.jackpot_777.mult == 100, "老虎机符号与100倍头奖配置必须完整")
+assert(#Config.SLOT_SYMBOLS == 6 and Config.SLOT_PRIZES.jackpot_777.mult == 100, "幸运三连机符号与100倍头奖配置必须完整")
 assert(#Config.AD_WELFARE_ORDER == 4, "福利站应列出 4 项常驻模拟广告")
 for _, t in ipairs(Config.COIN_TIERS) do
     local cdef = Config.COINS[t.id]
@@ -274,7 +281,7 @@ assert(s2 == 6 and tIpo.ipoRound == 2 and tIpo.prestigeShares == 6)
 assert(tIpo:BuyPrestigeTalent("perpetual"), "应可用传奇股点亮永动超马达")
 assert(tIpo:BuyPrestigeTalent("tycoon_crit"), "应可用传奇股点亮首富暴击心")
 
--- 8.5 过门 3 轴抽奖老虎机 + 9秒限流 + 保底 + 低奖不续命 + 自然到期归 1
+-- 8.5 过门 3 轴幸运三连机 + 9秒限流 + 保底 + 低奖不续命 + 自然到期归 1
 local tSlot = Tycoon.New(listener, { seed = 31415 })
 local sawLuckBuff = false
 assert(tSlot:QueueSlotSpin() == true and tSlot.slotSpinning == true, "首次过门应成功入队并开转")
@@ -292,7 +299,7 @@ tSlot.luckMult = 100
 tSlot.luckTimer = 4.0
 tSlot.luckDur = 6.0
 local baseMult = tSlot:GetTotalMult() / 100
-assert(tSlot:GetTotalMult() >= baseMult * 100 * 0.99, "老虎机倍率必须乘入总收益倍率")
+assert(tSlot:GetTotalMult() >= baseMult * 100 * 0.99, "幸运三连倍率必须乘入总收益倍率")
 tSlot:ResolveSlotSpin({ reels = { 1, 1, 2 }, prize = Config.SLOT_PRIZES.pair })
 assert(tSlot.luckMult == 100 and approxEq(tSlot.luckTimer, 4.0, 1e-4), "低档奖绝不可替100倍续命延长")
 tSlot.HandleGateWin = function() end
@@ -301,7 +308,7 @@ tSlot.slotSpinning = false
 for _ = 1, 600 do
     tSlot:Update(1 / 60)
 end
-assert(tSlot.luckTimer == 0 and tSlot.luckMult == 1, "倒计时结束后老虎机倍率应归回 1x")
+assert(tSlot.luckTimer == 0 and tSlot.luckMult == 1, "倒计时结束后幸运三连倍率应归回 1x")
 
 -- 9. 模拟广告系统（UI绑定流 + 无UI单测直发 + 全部广告位 + 空投 + 离线）
 local uiOpened = 0
@@ -426,6 +433,36 @@ local shEra, spEra = tEra:DoGalacticAscend()
 assert(shEra == 25 and spEra == 40 and tEra.era == 1)
 assert(not tEra:CanAscendEra(), "星际飞升第2重需10倍身价门槛")
 assert(tEra:GetEraTitle() == Config.GALACTIC_TITLES[1])
+
+-- 11.6 重置游戏进度：SaveManager.ResetAll（清空数据/兑换码并递增 saveSeq，保留音频偏好）& Fx:Reset
+local dReset = SaveManager.GetData()
+dReset.saveSeq = 7
+dReset.records.bestScore = 999999
+dReset.redeemedCodes.RICH2026 = true
+local prefsReset = SaveManager.GetPrefs()
+prefsReset.music = false
+local tReset = Tycoon.New(nil, { seed = 2034 })
+local resetLocalOk, resetCloudOk = nil, nil
+SaveManager.ResetAll(tReset:ExportState(123456), function(locOk, cldOk)
+    resetLocalOk, resetCloudOk = locOk, cldOk
+end)
+assert(resetLocalOk == true and resetCloudOk == false, "离线环境下 ResetAll 应写本地档并回调")
+local dAfterReset = SaveManager.GetData()
+assert(dAfterReset.saveSeq == 8, "重置存档必须递增 saveSeq 防止云端旧档覆写")
+assert(dAfterReset.records.bestScore == 0 and dAfterReset.redeemedCodes.RICH2026 == nil, "重置必须清空最高分与已兑换码")
+assert(dAfterReset.tycoon and dAfterReset.tycoon.lastActiveAt == 123456 and dAfterReset.tycoon.cash == 0)
+assert(SaveManager.GetPrefs().music == false, "重置进度绝不可清除音量开关偏好")
+
+local FxMod = require("game/Fx")
+local fxR = FxMod.New()
+fxR.ancCashX, fxR.ancCashY = 180, 32
+fxR.ancRankX, fxR.ancRankY = 110, 96
+fxR:OnScore(5000, 180, 400, true, 10, "drop", 100)
+fxR.liveRankTxt = "第8,000,000,000名"
+fxR.modalOpen = true
+fxR:Reset()
+assert(fxR.liveRankTxt == "" and fxR.modalOpen == false and fxR.activePopCount == 0, "Fx:Reset 必须清空瞬态文字与弹窗态")
+assert(fxR.ancCashX == 180 and fxR.ancCashY == 32 and fxR.ancRankX == 110, "Fx:Reset 必须保留组件注入的屏幕锚点")
 
 print(string.format("[test_core] ALL PASS! prestiges=%d ranks=%d unlocks=%d slotWins=%d spGains=%d ads=%d",
     tIpo.totalPrestiges, #events.ranks, #events.unlocks, #events.slotWins, events.spGains, ty.adWatchCount))
