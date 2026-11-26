@@ -54,11 +54,13 @@ package.loaded["urhox-libs/UI"] = {
         end,
         Init = function() end,
     },
+    Label = function(p) return { props = p, SetText = function() end, SetStyle = function() end } end,
     GetWidth = function() return 360 end,
     GetHeight = function() return 667 end,
     Input = { On = noop },
 }
 
+package.loaded["urhox-libs/UI"].Panel = package.loaded["urhox-libs/UI"].Widget
 local Skin = require("game/Skin")
 local origCol = Skin.Col
 Skin.Col = function(t, a)
@@ -236,5 +238,20 @@ ty2.slotSpinning = true; ty2.slotSpinT = 0.5; stg3:Render("nvg_stub")
 ty2.combo = 0; ty2.feverActive = false; ty2.luckMult = 1; ty2.adBoostLeft = 0; stg3:Render("nvg_stub")
 assert(fx2.ancMultX > 0 and fx2.ancSlotY > fx2.ancMultY, "招牌在上、滚轮在下")
 Machine3D.IsActive, Machine3D.GetAnchor, Machine3D.ProjectFast = realActive, realAnchor, realProj
+
+-- 8. 程序化 UI：财富进度条（待机 / 接近完成 / 满）、买得起呼吸光、图标投影
+local Widgets = require("game/Widgets")
+for _, v in ipairs({ 0, 0.42, 0.95, 1 }) do
+    local bar = setmetatable({}, Widgets.NeoBar)
+    bar:Init({ value = v, text = "下位: No.1 马斯克", color = (v >= 1) and Skin.C.gold or Skin.C.cyan })
+    bar.GetAbsoluteLayout = function() return { x = 10, y = 10, w = 260, h = 28 } end
+    for f = 1, 3 do Widgets.Tick(0.4); bar:Render("nvg_stub") end
+    bar:SetProgress(0.05, "重置", Skin.C.green); bar:Render("nvg_stub")
+end
+Widgets.DrawAffordGlow("nvg_stub", { x = 0, y = 0, w = 80, h = 100 }, 10)
+for _, k in ipairs({ "gear", "shield", "heart", "bolt", "star", "crown", "flame", "lock", "magnet", "chest", "skull", "play", "coin" }) do
+    Art.DrawIcon("nvg_stub", k, 0, 0, 24, nil)
+    Art.DrawIcon("nvg_stub", k, 0, 0, 24, Skin.C.red)
+end
 
 print("[test_render] ALL PASS! ranks_drawn=" .. tostring(#Config.RANKS) .. " coins_drawn=" .. tostring(#Config.COIN_TIERS))

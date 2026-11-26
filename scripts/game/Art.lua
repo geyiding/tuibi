@@ -198,8 +198,19 @@ function Art.DrawCoin(nvg, kind, cx, cy, r, level, squashY, rot, frost, fuseT, i
     end
 end
 
---- 绘制程序化通用图标（支持全部 UI 按钮/HUD/图鉴/遗物/事件）
+local ICON_INK = { 6, 6, 18 }
+
+--- 绘制程序化通用图标：贴纸式下投影 + 主体（投影用同形状暗色版，增强小尺寸可读性与立体感）
 function Art.DrawIcon(nvg, key, x, y, size, tint)
+    if key ~= "coin" and size >= 14 then
+        local off = max(1, size * 0.06)
+        Art.DrawIconFlat(nvg, key, x + off * 0.4, y + off, size, ICON_INK)
+    end
+    Art.DrawIconFlat(nvg, key, x, y, size, tint)
+end
+
+--- 单色扁平图标本体
+function Art.DrawIconFlat(nvg, key, x, y, size, tint)
     local cx, cy = x + size * 0.5, y + size * 0.5
     local r = size * 0.42
     local col = tint

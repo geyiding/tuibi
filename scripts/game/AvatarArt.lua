@@ -212,6 +212,176 @@ end
 
 --- 绘制富豪漫画头像圆章
 ---@param nvg any
+-- ----------------------------------------------------------------------------
+-- 全球前 1000 名之外：分档金属财富勋章（青铜 → 白银 → 黄金 → 铂金 → 钻石 → 彩虹传说）
+--   齿边金属外圈 + 浮雕内盘 + 月桂枝 + 档位星 + 中央财富纹章 + 流光扫过（无任何真人信息）
+-- ----------------------------------------------------------------------------
+local MEDAL_TIERS = {
+    { name = "bronze",   hi = { 255, 206, 150 }, mid = { 205, 127, 64 },  lo = { 104, 56, 24 },  glow = { 255, 150, 80 } },
+    { name = "silver",   hi = { 250, 252, 255 }, mid = { 176, 188, 206 }, lo = { 84, 94, 116 },  glow = { 200, 224, 255 } },
+    { name = "gold",     hi = { 255, 246, 176 }, mid = { 246, 190, 46 },  lo = { 140, 86, 10 },  glow = { 255, 210, 64 } },
+    { name = "platinum", hi = { 236, 255, 255 }, mid = { 130, 220, 236 }, lo = { 40, 110, 140 }, glow = { 96, 236, 255 } },
+    { name = "diamond",  hi = { 240, 226, 255 }, mid = { 168, 126, 255 }, lo = { 62, 34, 140 },  glow = { 190, 140, 255 } },
+    { name = "legend",   hi = { 255, 236, 250 }, mid = { 255, 96, 186 },  lo = { 110, 20, 90 },  glow = { 255, 120, 220 } },
+}
+local LEAF_COL = { 96, 214, 120 }
+local LEAF_DARK = { 30, 110, 56 }
+local MEDAL_INK = { 14, 12, 30 }
+local MEDAL_STAR = { 255, 244, 190 }
+
+local function MedalTierOf(entry)
+    local idx = (entry and (entry.idx or entry.id)) or 1
+    return MEDAL_TIERS[math.max(1, math.min(6, math.floor((idx - 1) / 4) + 1))], math.max(1, math.min(6, math.floor((idx - 1) / 4) + 1))
+end
+AvatarArt.MedalTierOf = MedalTierOf
+
+local function DrawMedalStar(nvg, x, y, rr, col)
+    nvgBeginPath(nvg)
+    for k = 0, 9 do
+        local ang = -pi * 0.5 + k * pi / 5
+        local q = (k % 2 == 0) and rr or rr * 0.45
+        if k == 0 then nvgMoveTo(nvg, x + cos(ang) * q, y + sin(ang) * q) else nvgLineTo(nvg, x + cos(ang) * q, y + sin(ang) * q) end
+    end
+    nvgClosePath(nvg)
+    nvgFillColor(nvg, Col(col, 255))
+    nvgFill(nvg)
+end
+
+local function DrawAnonMedal(nvg, entry, av, cx, cy, r, opts)
+    local tier, tierIdx = MedalTierOf(entry)
+    local t = opts.time or 0
+    local shocked = opts.shocked == true
+    local mile = entry and entry.milestone == true
+
+    -- 1. 外发光（里程碑 / 被超越吓呆态更强）
+    if mile or shocked or tierIdx >= 5 then
+        nvgBeginPath(nvg)
+        nvgCircle(nvg, cx, cy, r * 1.22)
+        nvgFillPaint(nvg, nvgRadialGradient(nvg, cx, cy, r * 0.8, r * 1.22, Col(tier.glow, mile and 150 or 100), Col(tier.glow, 0)))
+        nvgFill(nvg)
+    end
+    -- 2. 背后旋转光芒（里程碑档）
+    if mile and r >= 22 then
+        nvgBeginPath(nvg)
+        local spin = t * 0.5
+        for k = 0, 11 do
+            local a1 = spin + k * pi / 6
+            nvgMoveTo(nvg, cx + cos(a1) * r * 0.9, cy + sin(a1) * r * 0.9)
+            nvgLineTo(nvg, cx + cos(a1 - 0.09) * r * 1.2, cy + sin(a1 - 0.09) * r * 1.2)
+            nvgLineTo(nvg, cx + cos(a1 + 0.09) * r * 1.2, cy + sin(a1 + 0.09) * r * 1.2)
+            nvgClosePath(nvg)
+        end
+        nvgFillColor(nvg, Col(tier.glow, 150))
+        nvgFill(nvg)
+    end
+
+    -- 3. 齿边金属外圈（28 齿）
+    local teeth = 28
+    nvgBeginPath(nvg)
+    for k = 0, teeth * 2 - 1 do
+        local ang = k * pi / teeth
+        local q = (k % 2 == 0) and r or r * 0.93
+        if k == 0 then nvgMoveTo(nvg, cx + cos(ang) * q, cy + sin(ang) * q) else nvgLineTo(nvg, cx + cos(ang) * q, cy + sin(ang) * q) end
+    end
+    nvgClosePath(nvg)
+    nvgFillPaint(nvg, nvgLinearGradient(nvg, cx - r, cy - r, cx + r, cy + r, Col(tier.hi, 255), Col(tier.lo, 255)))
+    nvgFill(nvg)
+    -- 4. 斜面内环（反向渐变制造浮雕）
+    nvgBeginPath(nvg)
+    nvgCircle(nvg, cx, cy, r * 0.84)
+    nvgFillPaint(nvg, nvgLinearGradient(nvg, cx - r, cy - r, cx + r, cy + r, Col(tier.lo, 255), Col(tier.hi, 255)))
+    nvgFill(nvg)
+    -- 5. 内盘
+    nvgBeginPath(nvg)
+    nvgCircle(nvg, cx, cy, r * 0.76)
+    nvgFillPaint(nvg, nvgRadialGradient(nvg, cx - r * 0.2, cy - r * 0.3, r * 0.05, r * 0.82, Col(tier.hi, 255), Col(tier.mid, 255)))
+    nvgFill(nvg)
+    nvgBeginPath(nvg)
+    nvgCircle(nvg, cx, cy, r * 0.68)
+    nvgStrokeColor(nvg, Col(tier.lo, 150))
+    nvgStrokeWidth(nvg, max(1, r * 0.035))
+    nvgStroke(nvg)
+
+    -- 6. 月桂枝（左右各 5 片叶，沿内盘下半弧）
+    if r >= 18 then
+        for side = -1, 1, 2 do
+            for k = 0, 4 do
+                local ang = pi * 0.5 + side * (0.55 + k * 0.32)
+                local lx, ly = cx + cos(ang) * r * 0.6, cy + sin(ang) * r * 0.6
+                nvgSave(nvg)
+                nvgTranslate(nvg, lx, ly)
+                nvgRotate(nvg, ang + side * 1.2)
+                nvgBeginPath(nvg)
+                nvgEllipse(nvg, 0, 0, r * 0.11, r * 0.05)
+                nvgFillColor(nvg, Col((k % 2 == 0) and LEAF_COL or LEAF_DARK, 255))
+                nvgFill(nvg)
+                nvgRestore(nvg)
+            end
+        end
+    end
+
+    -- 7. 档位星（1~6 颗，排在纹章上方）
+    if r >= 20 then
+        local n = tierIdx
+        local sr = r * 0.075
+        local gap = sr * 2.3
+        for k = 1, n do
+            local sx = cx + (k - (n + 1) * 0.5) * gap
+            DrawMedalStar(nvg, sx, cy - r * 0.5, sr, MEDAL_STAR)
+        end
+    end
+
+    -- 8. 中央财富纹章（暗色印章底 + 道具符号）
+    if av.prop then
+        DrawPropBadge(nvg, av.prop, cx, cy + r * 0.02, r * 0.36, tier.glow)
+    end
+
+    -- 9. 流光扫过（金属反光）
+    local ph = (t * 0.45 + (entry and entry.idx or 0) * 0.13) % 1.8
+    if ph < 1 and r >= 18 then
+        local sx = cx - r + ph * r * 2
+        nvgSave(nvg)
+        nvgIntersectScissor(nvg, cx - r * 0.76, cy - r * 0.76, r * 1.52, r * 1.52)
+        nvgBeginPath(nvg)
+        nvgMoveTo(nvg, sx - r * 0.12, cy - r)
+        nvgLineTo(nvg, sx + r * 0.06, cy - r)
+        nvgLineTo(nvg, sx - r * 0.24, cy + r)
+        nvgLineTo(nvg, sx - r * 0.42, cy + r)
+        nvgClosePath(nvg)
+        nvgFillColor(nvg, Col(C.white, 70))
+        nvgFill(nvg)
+        nvgRestore(nvg)
+    end
+
+    -- 10. 外圈描边
+    nvgBeginPath(nvg)
+    nvgCircle(nvg, cx, cy, r * 1.0)
+    nvgStrokeColor(nvg, Col(shocked and C.gold or MEDAL_INK, shocked and 255 or 200))
+    nvgStrokeWidth(nvg, max(1.2, r * (shocked and 0.07 or 0.04)))
+    nvgStroke(nvg)
+
+    -- 11. “已突破”斜印章
+    if opts.surpassed == true and r >= 22 then
+        nvgSave(nvg)
+        nvgTranslate(nvg, cx + r * 0.42, cy - r * 0.56)
+        nvgRotate(nvg, -0.26)
+        local bw, bh = r * 0.92, max(12, r * 0.36)
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, -bw * 0.5, -bh * 0.5, bw, bh, 3)
+        nvgFillColor(nvg, Col({ 196, 34, 52 }, 240))
+        nvgFill(nvg)
+        nvgStrokeColor(nvg, Col(C.white, 245))
+        nvgStrokeWidth(nvg, 1.3)
+        nvgStroke(nvg)
+        nvgFontFace(nvg, "sans")
+        nvgFontSize(nvg, max(8, bh * 0.62))
+        nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(nvg, Col(C.white, 255))
+        nvgText(nvg, 0, 0.5, "已突破")
+        nvgRestore(nvg)
+    end
+end
+
 ---@param entry table|nil Billionaires.LIST 元素
 ---@param cx number
 ---@param cy number
@@ -239,6 +409,12 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
     nvgSave(nvg)
     nvgLineCap(nvg, NVG_ROUND)
     nvgLineJoin(nvg, NVG_ROUND)
+
+    if av.anonymous == true then
+        DrawAnonMedal(nvg, entry, av, cx, cy, r, opts)
+        nvgRestore(nvg)
+        return
+    end
 
     -- 1. 外圈光环 + 圆形底色渐变
     if av.bgTier == 1 or shocked then

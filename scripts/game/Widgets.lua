@@ -142,18 +142,31 @@ function NeoFrame:Render(nvg)
             nvgStrokeWidth(nvg, 2.5)
             nvgStroke(nvg)
         elseif self.skin_.afford then
-            local l = self:GetAbsoluteLayout()
-            local r = self.skin_.radius or 10
-            nvgBeginPath(nvg)
-            nvgRoundedRect(nvg, l.x + 1.5, l.y + 1.5, l.w - 3, l.h - 3, r)
-            nvgStrokeColor(nvg, Skin.Col(C.cyan, 235))
-            nvgStrokeWidth(nvg, 2.0)
-            nvgStroke(nvg)
+            Widgets.DrawAffordGlow(nvg, self:GetAbsoluteLayout(), self.skin_.radius or 10)
         end
         return
     end
     local l = self:GetAbsoluteLayout()
     Skin.Draw(nvg, self.skinStyle_, l.x, l.y, l.w, l.h, self.skin_)
+    if self.skin_.afford and not self.skin_.selected then
+        Widgets.DrawAffordGlow(nvg, l, self.skin_.radius or 10)
+    end
+end
+
+--- “买得起”呼吸光：内发光 + 脉动描边（哪里亮了点哪里）
+function Widgets.DrawAffordGlow(nvg, l, r)
+    if l.w <= 0 or l.h <= 0 then return end
+    local p = 0.5 + 0.5 * math.sin(Widgets.time * 5)
+    nvgBeginPath(nvg)
+    nvgRoundedRect(nvg, l.x + 1, l.y + 1, l.w - 2, l.h - 2, r)
+    nvgFillPaint(nvg, nvgBoxGradient(nvg, l.x, l.y, l.w, l.h, r, min(l.w, l.h) * 0.35,
+        Skin.Col(C.cyan, 0), Skin.Col(C.cyan, floor(40 + 50 * p))))
+    nvgFill(nvg)
+    nvgBeginPath(nvg)
+    nvgRoundedRect(nvg, l.x + 1.5, l.y + 1.5, l.w - 3, l.h - 3, r)
+    nvgStrokeColor(nvg, Skin.Col(C.cyan, floor(170 + 85 * p)))
+    nvgStrokeWidth(nvg, 1.8 + p * 0.8)
+    nvgStroke(nvg)
 end
 
 -- ----------------------------------------------------------------------------
@@ -376,27 +389,98 @@ function NeoBar:SetProgress(val, text, col)
     if col ~= nil then self.barCol_ = col end
 end
 
+-- 每种主色派生一次（亮/暗/高光），常量表供 Skin.Col 缓存
+local barPalCache = {}
+local function BarPalette(col)
+    local p = barPalCache[col]
+    if p then return p end
+    p = {
+        dark = { floor(col[1] * 0.35), floor(col[2] * 0.35), floor(col[3] * 0.45) },
+        mid = { col[1], col[2], col[3] },
+        light = { min(255, floor(col[1] * 0.5 + 128)), min(255, floor(col[2] * 0.5 + 128)), min(255, floor(col[3] * 0.5 + 128)) },
+    }
+    barPalCache[col] = p
+    return p
+end
+local BAR_TRACK = { 8, 10, 24 }
+local BAR_TRACK2 = { 22, 26, 52 }
+local BAR_INK = { 6, 8, 20 }
+
 function NeoBar:Render(nvg)
     local l = self:GetAbsoluteLayout()
     if l.w <= 0 or l.h <= 0 then return end
-    local r = min(8, l.h * 0.45)
+    local t = Widgets.time
+    -- 显示值平滑追随（进度只涨时滑动，重置为低值时直接跳）
+    local target = self.barVal_
+    local shown = self.shownVal_ or target
+    if target < shown - 0.02 then shown = target else shown = shown + (target - shown) * 0.18 end
+    self.shownVal_ = shown
+
+    local r = min(9, l.h * 0.5)
+    local pal = BarPalette(self.barCol_ or C.cyan)
+    -- 轨道（内凹）
     nvgBeginPath(nvg)
     nvgRoundedRect(nvg, l.x, l.y, l.w, l.h, r)
-    nvgFillColor(nvg, Skin.Col(C.bgInset, 235))
+    nvgFillPaint(nvg, nvgLinearGradient(nvg, l.x, l.y, l.x, l.y + l.h, Skin.Col(BAR_TRACK, 245), Skin.Col(BAR_TRACK2, 245)))
     nvgFill(nvg)
-    local fw = (l.w - 4) * self.barVal_
-    if fw > 2 then
+
+    local inset = (l.h >= 16) and 2.5 or 1.5
+    local fx0, fy0, fh = l.x + inset, l.y + inset, l.h - inset * 2
+    local fw = (l.w - inset * 2) * shown
+    local near = (shown >= 0.9 and shown < 1)
+    if fw > 1 then
+        local fr = max(1, r - inset)
+        -- 填充：暗 -> 主色 -> 亮
         nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, l.x + 2, l.y + 2, fw, l.h - 4, max(2, r - 2))
-        nvgFillPaint(nvg, nvgLinearGradient(nvg, l.x, l.y, l.x + fw, l.y,
-            Skin.Col(self.barCol_ == C.green and { 24, 146, 86 } or { 24, 118, 196 }, 255),
-            Skin.Col(self.barVal_ >= 1 and { 218, 138, 18 } or { 164, 52, 168 }, 255)))
+        nvgRoundedRect(nvg, fx0, fy0, fw, fh, min(fr, fw * 0.5))
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, fx0, 0, fx0 + max(fw, 8), 0, Skin.Col(pal.dark, 255), Skin.Col(pal.mid, 255)))
         nvgFill(nvg)
+        -- 上半高光（玻璃感）
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, fx0 + 1, fy0 + 1, max(0, fw - 2), fh * 0.42, min(fr, fw * 0.5))
+        nvgFillColor(nvg, Skin.Col(C.white, 70))
+        nvgFill(nvg)
+        -- 流光扫过
+        if fw > 20 then
+            local ph = (t * 0.6) % 1.4
+            if ph < 1 then
+                local sx = fx0 + fw * ph
+                nvgSave(nvg)
+                nvgIntersectScissor(nvg, fx0, fy0, fw, fh)
+                nvgBeginPath(nvg)
+                nvgRect(nvg, sx - 10, fy0, 20, fh)
+                nvgFillPaint(nvg, nvgRadialGradient(nvg, sx, fy0 + fh * 0.5, 1, 12, Skin.Col(C.white, 110), Skin.Col(C.white, 0)))
+                nvgFill(nvg)
+                nvgRestore(nvg)
+            end
+        end
+        -- 发光进度头
+        if shown < 1 and l.h >= 8 then
+            local hx = fx0 + fw
+            local gr = fh * (near and (1.15 + 0.25 * math.sin(t * 10)) or 0.95)
+            nvgBeginPath(nvg)
+            nvgCircle(nvg, hx, fy0 + fh * 0.5, gr)
+            nvgFillPaint(nvg, nvgRadialGradient(nvg, hx, fy0 + fh * 0.5, 0.5, gr, Skin.Col(pal.light, 230), Skin.Col(pal.light, 0)))
+            nvgFill(nvg)
+        end
     end
+    -- 刻度（每 10%）
+    if l.h >= 16 and l.w >= 120 then
+        nvgBeginPath(nvg)
+        for k = 1, 9 do
+            local x = l.x + l.w * k / 10
+            nvgMoveTo(nvg, x, l.y + l.h - 4)
+            nvgLineTo(nvg, x, l.y + l.h - 1.5)
+        end
+        nvgStrokeColor(nvg, Skin.Col(C.white, 60))
+        nvgStrokeWidth(nvg, 1)
+        nvgStroke(nvg)
+    end
+    -- 外框（接近完成时呼吸发光）
     nvgBeginPath(nvg)
-    nvgRoundedRect(nvg, l.x, l.y, l.w, l.h, r)
-    nvgStrokeColor(nvg, Skin.Col(C.border, 210))
-    nvgStrokeWidth(nvg, 1.5)
+    nvgRoundedRect(nvg, l.x + 0.5, l.y + 0.5, l.w - 1, l.h - 1, r)
+    nvgStrokeColor(nvg, Skin.Col(near and pal.light or C.border, near and floor(180 + 75 * math.sin(t * 8)) or 210))
+    nvgStrokeWidth(nvg, near and 2 or 1.5)
     nvgStroke(nvg)
 
     if self.barText_ ~= "" then
@@ -404,7 +488,7 @@ function NeoBar:Render(nvg)
         nvgFontSize(nvg, 13)
         nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
         local tx, ty = l.x + l.w * 0.5, l.y + l.h * 0.5
-        nvgFillColor(nvg, Skin.Col(C.bgInset, 245))
+        nvgFillColor(nvg, Skin.Col(BAR_INK, 245))
         nvgText(nvg, tx - 1.2, ty, self.barText_)
         nvgText(nvg, tx + 1.2, ty, self.barText_)
         nvgText(nvg, tx, ty - 1.2, self.barText_)
