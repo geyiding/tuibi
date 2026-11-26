@@ -118,6 +118,10 @@ local function DrawSlotSymbol(nvg, symIdx, cx, cy, r, font)
     end
 end
 
+local SLOT_WELL_COL = { 12, 16, 36 }
+local SLOT_LOCK_AT = { 0.45, 0.72, 0.95 }
+local DEFAULT_REELS = { 1, 1, 1 }
+
 local function DrawSlotBar(nvg, run, t, font)
     local bx, by, bw, bh = 102, 8, 156, 32
     local spin = run.slotSpinning == true
@@ -133,9 +137,8 @@ local function DrawSlotBar(nvg, run, t, font)
     nvgStrokeWidth(nvg, hot and 1.8 or 1.2)
     nvgStroke(nvg)
 
-    local reels = run.slotReels or { 1, 1, 1 }
+    local reels = run.slotReels or DEFAULT_REELS
     local ratio = spin and max(0, min(1, 1 - (run.slotSpinT or 0) / max(0.01, run.slotSpinDur or 0.85))) or 1
-    local lockAt = { 0.45, 0.72, 0.95 }
     local rx0 = bx + 16
     local stepX = 32
     for k = 1, 3 do
@@ -143,9 +146,9 @@ local function DrawSlotBar(nvg, run, t, font)
         local cy = by + 16
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, cx - 12, cy - 11, 24, 22, 5)
-        nvgFillColor(nvg, Col({ 12, 16, 36 }, 235))
+        nvgFillColor(nvg, Col(SLOT_WELL_COL, 235))
         nvgFill(nvg)
-        local locked = (not spin) or (ratio >= lockAt[k])
+        local locked = (not spin) or (ratio >= SLOT_LOCK_AT[k])
         local sym = locked and (reels[k] or 1) or (floor(t * 16 + k * 2) % 6 + 1)
         local yOff = locked and 0 or ((floor(t * 48 + k * 7) % 5) - 2)
         DrawSlotSymbol(nvg, sym, cx, cy + yOff, 10, font)
@@ -157,7 +160,7 @@ local function DrawSlotBar(nvg, run, t, font)
     nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     local q = run.slotQueue or 0
     local sideTxt = spin and "抽奖中" or (q > 0 and ("待抽+" .. q) or ((luckMult > 1) and ("×" .. tostring(luckMult)) or "过门奖池"))
-    nvgFillColor(nvg, Col(hot and C.gold or C.textDim, 255))
+    nvgFillColor(nvg, Col(hot and C.gold or C.muted, 255))
     nvgText(nvg, bx + 128, by + 16, sideTxt)
 
     -- 中奖全局倍率倒计时条（仅当倍率 > 1x 时出现）

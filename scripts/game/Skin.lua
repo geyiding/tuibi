@@ -148,6 +148,7 @@ Skin.RARITY = {
 
 --- 量化 alpha 的 NanoVG 颜色缓存（避免每帧分配 NVGcolor）
 function Skin.Col(t, a)
+    if type(t) ~= "table" then t = C.white end
     a = a or 255
     if a < 0 then a = 0 elseif a > 255 then a = 255 end
     local q = floor(a / 17 + 0.5)
@@ -155,7 +156,7 @@ function Skin.Col(t, a)
     if not cacheTbl then cacheTbl = {}; t._nvg = cacheTbl end
     local c = cacheTbl[q]
     if not c then
-        c = nvgRGBA(t[1], t[2], t[3], q * 17)
+        c = nvgRGBA(t[1] or 255, t[2] or 255, t[3] or 255, q * 17)
         cacheTbl[q] = c
     end
     return c
