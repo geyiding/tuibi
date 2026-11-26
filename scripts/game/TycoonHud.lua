@@ -101,7 +101,7 @@ local function MakeDetailBar(iconKind, iconKey, btnText, btnVar, onAction)
     local title = UI.Label { text = "", fontSize = 15, fontWeight = "bold", fontColor = U.gold, maxLines = 1, flexShrink = 0 }
     local desc = UI.Label { text = "", fontSize = 12, fontColor = U.textDim, whiteSpace = "normal", width = "100%" }
     local scroll = UI.ScrollView {
-        width = "100%", flexGrow = 1, flexBasis = 0, minHeight = 0, scrollY = true,
+        width = "100%", height = 52, scrollY = true,
         children = { desc },
     }
     local btn = NeoButton {
@@ -114,7 +114,7 @@ local function MakeDetailBar(iconKind, iconKey, btnText, btnVar, onAction)
         flexDirection = "row", alignItems = "center",
         children = {
             ic,
-            UI.Column { flexGrow = 1, flexBasis = 0, flexShrink = 1, height = "100%", gap = 2, children = { title, scroll } },
+            UI.Column { flexGrow = 1, flexBasis = 0, flexShrink = 1, height = 78, gap = 2, children = { title, scroll } },
             btn,
         },
     }
@@ -153,7 +153,7 @@ local function BuildMainPage(stageWidget, cb)
     })
 
     local row1 = UI.Row {
-        width = "100%", height = 46, alignItems = "center", paddingLeft = 10, paddingRight = 108, gap = 8,
+        width = "100%", height = 64, alignItems = "center", paddingLeft = 10, paddingRight = 108, gap = 8,
         children = { rankBadge, cashCol, helpBtn, gearBtn },
     }
 
@@ -178,7 +178,7 @@ local function BuildMainPage(stageWidget, cb)
     }
 
     local topPlate = NeoFrame {
-        style = "plate", width = "100%", height = 84, flexDirection = "column", paddingTop = 2, gap = 2,
+        style = "plate", width = "100%", height = 102, flexDirection = "column", paddingTop = 2, gap = 2,
         children = { row1, row2 },
     }
 

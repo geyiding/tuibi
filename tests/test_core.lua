@@ -52,11 +52,18 @@ assert(#Config.TECH_UPGRADES == 12, "需有 12 项里程碑黑科技")
 assert(#Config.PRESTIGE_TALENTS == 4, "需有 4 项上市永久天赋")
 assert(#Config.AD_WELFARE_ORDER == 4, "福利站应列出 4 项常驻模拟广告")
 for _, t in ipairs(Config.COIN_TIERS) do
-    assert(Config.COINS[t.id] ~= nil, "币种配置缺失: " .. t.id)
+    local cdef = Config.COINS[t.id]
+    assert(cdef ~= nil, "币种配置缺失: " .. t.id)
+    assert(cdef.color and cdef.color.base and type(cdef.color.base[1]) == "number"
+        and cdef.color.rim and type(cdef.color.rim[1]) == "number",
+        "硬币配色盘格式缺失 base/rim RGB: " .. t.id)
     if t.parents then
         assert(#t.parents == 2 and Config.COINS[t.parents[1]] and Config.COINS[t.parents[2]],
             "进化母体配置无效: " .. t.id)
     end
+end
+for k, cdef in pairs(Config.COINS) do
+    assert(cdef.color and cdef.color.base and type(cdef.color.base[1]) == "number", "COINS." .. k .. " 缺少 base RGB")
 end
 
 -- 3. 渐进开局 & 无点击自动永动推币产生正现金流 & 无头安全加载 Machine3D / AvatarArt

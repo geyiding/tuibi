@@ -1,8 +1,9 @@
 -- ============================================================================
--- Machine3D.lua  《推币机的狂欢》真 3D PBR 街机推币机舞台（UrhoX + PropBuilder）
---   · 使用 PropBuilder / ProceduralGeometry 打造多材质金属倒角街机柜、往复推板、
---     摆动发射炮口、移动中奖门、发光钉阵、24 颗3D跑马灯球、亚克力护玻璃与 140 枚立体金属贴图币
---   · 纯无头单测环境下安全降级（Init 返回 false，不影响任何逻辑测试）
+-- Machine3D.lua  《推币机的狂欢》真 3D PBR 街机推币机舞台（全兼容引擎内置几何体）
+--   · 使用 Models/Box.mdl / Cylinder.mdl / Sphere.mdl / Plane.mdl / Torus.mdl 组装，
+--     零第三方几何构建 API 依赖，兼容本地窗口与云端 Web 全版本 UrhoX 引擎
+--   · 包含金属倒角机身、往复推板、摆动发射炮口、移动中奖门、发光钉阵、24 颗3D跑马灯球、
+--     亚克力防护侧玻璃及 140 枚立体金属贴图硬币池
 -- ============================================================================
 
 local Config = require("game/Config")
@@ -10,11 +11,11 @@ local Physics = require("game/Physics")
 local Skin = require("game/Skin")
 
 local S = Config.STAGE
-local floor, min, max, abs, sin, cos, sqrt = math.floor, math.min, math.max, math.abs, math.sin, math.cos, math.sqrt
+local floor, min, max = math.floor, math.min, math.max
 
 local Machine3D = {}
 
--- 持有强引用防止 Scene / Camera / Models 被 Lua GC 回收
+-- 持有强引用防止 Scene / Camera / Viewport / Models 被 Lua GC 回收
 local M = {
     active = false,
     scene = nil,
@@ -24,12 +25,10 @@ local M = {
     zone = nil,
     dirLight = nil,
     ptLights = {},
+    models = {},
     mats = {},
     coinMats = {},
     pegMats = {},
-    coinModel = nil,
-    pegHeadModel = nil,
-    pegStemModel = nil,
     cabinetNode = nil,
     backboardNode = nil,
     backboardMat = nil,
@@ -50,8 +49,6 @@ local M = {
     lastTheme = -1,
     bulbLitMat = nil,
     bulbDimMat = nil,
-    lastShakeX = 0,
-    lastShakeY = 0,
 }
 
 -- 辅助：创建纯色 / 自发光 / 透明 PBR 材质（仅用合法内置 Technique）
@@ -82,7 +79,20 @@ local function MakeTexturedUnlit(texPath, isAlpha, tintCol)
     mat:SetTexture(TU_DIFFUSE, tex)
     local c = tintCol or { 1.0, 1.0, 1.0, 1.0 }
     mat:SetShaderParameter("MatDiffColor", Variant(Color(c[1], c[2], c[3], c[4] or 1.0)))
+    mat.cullMode = CULL_NONE
     return mat
+end
+
+local function AddPart(parent, name, model, mat, pos, scale, rot, castShadows)
+    local n = parent:CreateChild(name)
+    if pos then n.position = pos end
+    if scale then n.scale = scale end
+    if rot then n.rotation = rot end
+    local sm = n:CreateComponent("StaticModel")
+    sm:SetModel(model)
+    if mat then sm:SetMaterial(mat) end
+    sm.castShadows = (castShadows ~= false)
+    return n, sm
 end
 
 -- ----------------------------------------------------------------------------
@@ -128,13 +138,13 @@ end
 local function ApplyThemeColors(themeIdx, boostOn, feverOn)
     local c1, c2
     if themeIdx == 2 then
-        c1 = { 1.0, 0.72, 0.16 } -- 黄金熔炉：暖金 + 烈焰橙
+        c1 = { 1.0, 0.72, 0.16 }
         c2 = { 1.0, 0.34, 0.12 }
     elseif themeIdx == 3 then
-        c1 = { 0.72, 0.42, 1.0 } -- 赛博金库：魅紫 + 曜金
+        c1 = { 0.72, 0.42, 1.0 }
         c2 = { 1.0, 0.82, 0.22 }
     else
-        c1 = { 0.18, 0.88, 1.0 } -- 霓虹游艺厅：电青 + 霓虹粉
+        c1 = { 0.18, 0.88, 1.0 }
         c2 = { 1.0, 0.25, 0.70 }
     end
 
@@ -145,7 +155,7 @@ local function ApplyThemeColors(themeIdx, boostOn, feverOn)
         c2 = { 1.0, 0.86, 0.22 }
     end
 
-    local pulse = (feverOn or boostOn) and 2.8 or 1.85
+    local pulse = (feverOn or boostOn) and 1.45 or 1.05
     SetMatEmissive(M.mats.neonPrimary, { c1[1] * pulse, c1[2] * pulse, c1[3] * pulse })
     SetMatColor(M.mats.neonPrimary, c1, 1.0)
     SetMatEmissive(M.mats.neonSecondary, { c2[1] * pulse, c2[2] * pulse, c2[3] * pulse })
@@ -169,42 +179,24 @@ local function ApplyThemeColors(themeIdx, boostOn, feverOn)
     end
 end
 
--- 构建 3D 硬币共享模型（斜角厚金属边 + 顶部贴图盖 + 底部盖，两套子几何材质槽 0/1）
-local function BuildSharedModels()
-    local body = CylinderGeometry(0.50, 0.50, 0.22, 24)
-    local topRim = TorusGeometry(0.47, 0.042, 8, 24):ApplyQuaternion(Quaternion(90, Vector3.RIGHT)):Translate(0, 0.10, 0)
-    local botRim = TorusGeometry(0.47, 0.036, 8, 24):ApplyQuaternion(Quaternion(90, Vector3.RIGHT)):Translate(0, -0.10, 0)
-    local rimMerged = MergeGeometries({ body, topRim, botRim }, false)
-
-    -- CircleGeometry 默认竖直面朝 -Z，绕 X 旋 +90° 后法线朝 +Y（贴合桌面朝上币面）
-    local capTop = CircleGeometry(0.45, 24):ApplyQuaternion(Quaternion(90, Vector3.RIGHT)):Translate(0, 0.114, 0)
-    local capBot = CircleGeometry(0.45, 24):ApplyQuaternion(Quaternion(-90, Vector3.RIGHT)):Translate(0, -0.114, 0)
-    local capMerged = MergeGeometries({ capTop, capBot }, false)
-
-    local combined = MergeGeometries({ rimMerged, capMerged }, true)
-    M.coinModel = combined:ToModel()
-
-    M.pegStemModel = CylinderGeometry(0.028, 0.036, 0.18, 12):ApplyQuaternion(Quaternion(90, Vector3.RIGHT)):ToModel()
-    M.pegHeadModel = SphereGeometry(0.056, 14, 10):Scale(1.0, 1.0, 0.68):ToModel()
-end
-
 local function GetCoinMaterials(kind)
     if M.coinMats[kind] then return M.coinMats[kind] end
     local def = Config.COINS[kind] or Config.COINS.gold
-    local col = def.color or { 255, 210, 64 }
-    local r, g, b = col[1] / 255, col[2] / 255, col[3] / 255
+    local rawCol = def and def.color
+    local col = (type(rawCol) == "table" and (rawCol.rim or rawCol.base or (rawCol[1] and rawCol))) or { 255, 210, 64 }
+    local r, g, b = (col[1] or 255) / 255, (col[2] or 210) / 255, (col[3] or 64) / 255
     local isEmissive = (def.rarity == "legendary" or def.rarity == "rare")
     local rimMat = MakePBR(
-        { min(1, r * 0.95 + 0.1), min(1, g * 0.95 + 0.1), min(1, b * 0.95 + 0.1) },
-        0.92,
-        0.18,
-        isEmissive and { r * 0.35, g * 0.35, b * 0.35 } or { r * 0.08, g * 0.08, b * 0.08 }
+        { min(1, r * 0.85 + 0.04), min(1, g * 0.85 + 0.04), min(1, b * 0.85 + 0.04) },
+        0.90,
+        0.22,
+        isEmissive and { r * 0.18, g * 0.18, b * 0.18 } or { r * 0.04, g * 0.04, b * 0.04 }
     )
 
     local spr = Skin.SPRITES["coin_" .. tostring(kind)]
-    local faceMat = spr and MakeTexturedUnlit(spr, true, { 1.0, 1.0, 1.0, 1.0 }) or nil
+    local faceMat = spr and MakeTexturedUnlit(spr, true, { 0.86, 0.86, 0.86, 1.0 }) or nil
     if not faceMat then
-        faceMat = MakePBR({ r, g, b }, 0.85, 0.24, { r * 0.20, g * 0.20, b * 0.20 })
+        faceMat = MakePBR({ r, g, b }, 0.85, 0.24, { r * 0.12, g * 0.12, b * 0.12 })
     end
     M.coinMats[kind] = { rim = rimMat, face = faceMat }
     return M.coinMats[kind]
@@ -214,178 +206,136 @@ local function GetPegMat(kind)
     if M.pegMats[kind] then return M.pegMats[kind] end
     local pDef = Config.PEG_TYPES[kind] or Config.PEG_TYPES.normal
     local c = pDef.col or { 100, 210, 255 }
-    local r, g, b = c[1] / 255, c[2] / 255, c[3] / 255
+    local r, g, b = (c[1] or 100) / 255, (c[2] or 210) / 255, (c[3] or 255) / 255
     local mat = MakePBR({ r, g, b }, 0.35, 0.16, { r * 1.4, g * 1.4, b * 1.4 })
     M.pegMats[kind] = mat
     return mat
 end
 
 -- ----------------------------------------------------------------------------
--- 拼装 3D 街机推币机整柜（PropBuilder 按材质合批）
+-- 拼装 3D 街机推币机整柜（全部基于内置 Box/Cylinder/Sphere/Plane/Torus.mdl）
 -- ----------------------------------------------------------------------------
-local function BuildCabinet(PropBuilder)
-    local b = PropBuilder.new()
+local function BuildCabinet()
+    local box, cyl, sphere, plane = M.models.box, M.models.cyl, M.models.sphere, M.models.plane
+    local root = M.scene:CreateChild("Cabinet")
+    M.cabinetNode = root
 
-    -- 1. 底部厚重深钛合金机身基座 (y in [-1.20, 0]) + 霓虹反光展厅底座地板
-    b:Add("deck",    CylinderGeometry(4.4, 4.6, 0.08, 36):Translate(0, -1.23, 0.0))
-    b:Add("chassis", ChamferBoxGeometry(3.26, 1.18, 3.24, 0.04):Translate(0, -0.60, 0.08))
-    -- 两侧厚重立柱与护翼
-    b:Add("chassis", ChamferBoxGeometry(0.24, 3.92, 0.56, 0.03):Translate(-1.60, 0.82, 1.38))
-    b:Add("chassis", ChamferBoxGeometry(0.24, 3.92, 0.56, 0.03):Translate(1.60, 0.82, 1.38))
+    -- 1. 展厅暗色反光圆形地台 + 机身主底座
+    AddPart(root, "Podium", cyl, M.mats.deck, Vector3(0, -1.23, 0.0), Vector3(8.8, 0.08, 9.2), nil, false)
+    AddPart(root, "Chassis", box, M.mats.chassis, Vector3(0, -0.60, 0.08), Vector3(3.26, 1.18, 3.24))
+
+    -- 两侧厚重立柱
+    AddPart(root, "ColL", box, M.mats.chassis, Vector3(-1.60, 0.82, 1.38), Vector3(0.24, 3.92, 0.56))
+    AddPart(root, "ColR", box, M.mats.chassis, Vector3(1.60, 0.82, 1.38), Vector3(0.24, 3.92, 0.56))
+
     -- 顶部街机霓虹皇冠灯箱顶篷
-    b:Add("chassis", ChamferBoxGeometry(3.52, 0.34, 0.72, 0.04):Translate(0, 2.78, 1.32))
-    b:Add("gold",    ChamferBoxGeometry(3.58, 0.08, 0.78, 0.02):Translate(0, 2.97, 1.32))
-    b:Add("neonPrimary", ChamferBoxGeometry(2.96, 0.09, 0.08, 0.015):Translate(0, 2.76, 0.94), { castShadows = false })
-    b:Add("gold",    ChamferBoxGeometry(0.16, 0.16, 0.16, 0.03):Translate(-1.60, 3.04, 1.32))
-    b:Add("gold",    ChamferBoxGeometry(0.16, 0.16, 0.16, 0.03):Translate(1.60, 3.04, 1.32))
+    AddPart(root, "MarqueeBox",  box, M.mats.chassis,     Vector3(0, 2.78, 1.32),     Vector3(3.52, 0.34, 0.72))
+    AddPart(root, "MarqueeCap",  box, M.mats.gold,        Vector3(0, 2.97, 1.32),     Vector3(3.58, 0.08, 0.78))
+    AddPart(root, "MarqueeGlow", box, M.mats.neonPrimary, Vector3(0, 2.76, 0.94),     Vector3(2.96, 0.09, 0.08), nil, false)
+    AddPart(root, "FinialL",     box, M.mats.gold,        Vector3(-1.60, 3.04, 1.32), Vector3(0.16, 0.16, 0.16))
+    AddPart(root, "FinialR",     box, M.mats.gold,        Vector3(1.60, 3.04, 1.32),  Vector3(0.16, 0.16, 0.16))
 
-    -- 2. 主推台拉丝钛金台面（顶面对齐 y = 0）
-    b:Add("deck", ChamferBoxGeometry(2.98, 0.10, 3.06, 0.02):Translate(0, -0.05, 0.0))
-    -- 台面透视引导霓虹镶边
-    b:Add("neonPrimary", BoxGeometry(0.03, 0.015, 2.96):Translate(-0.72, 0.004, 0.0), { castShadows = false })
-    b:Add("neonPrimary", BoxGeometry(0.03, 0.015, 2.96):Translate(0.72, 0.004, 0.0), { castShadows = false })
-    b:Add("neonPrimary", BoxGeometry(0.03, 0.015, 2.96):Translate(0.0, 0.004, 0.0), { castShadows = false })
-    b:Add("neonPrimary", BoxGeometry(2.88, 0.015, 0.03):Translate(0.0, 0.004, -0.70), { castShadows = false })
-    b:Add("neonPrimary", BoxGeometry(2.88, 0.015, 0.03):Translate(0.0, 0.004, 0.05), { castShadows = false })
+    -- 2. 主推台拉丝钛金台面（顶面对齐 y = 0） + 透视导光条
+    AddPart(root, "Deck", box, M.mats.deck, Vector3(0, -0.05, 0.0), Vector3(2.98, 0.10, 3.06))
+    AddPart(root, "GridL", box, M.mats.neonPrimary, Vector3(-0.72, 0.004, 0.0),  Vector3(0.03, 0.015, 2.96), nil, false)
+    AddPart(root, "GridC", box, M.mats.neonPrimary, Vector3(0.0, 0.004, 0.0),    Vector3(0.03, 0.015, 2.96), nil, false)
+    AddPart(root, "GridR", box, M.mats.neonPrimary, Vector3(0.72, 0.004, 0.0),   Vector3(0.03, 0.015, 2.96), nil, false)
+    AddPart(root, "GridH1",box, M.mats.neonPrimary, Vector3(0.0, 0.004, -0.70),  Vector3(2.88, 0.015, 0.03), nil, false)
+    AddPart(root, "GridH2",box, M.mats.neonPrimary, Vector3(0.0, 0.004, 0.05),   Vector3(2.88, 0.015, 0.03), nil, false)
 
     -- 3. 前沿黄金悬崖收币唇 + 下部发光出币奖槽
-    b:Add("gold", ChamferBoxGeometry(3.16, 0.07, 0.08, 0.02):Translate(0, 0.012, -1.52))
-    b:Add("chassis", ChamferBoxGeometry(3.26, 0.42, 0.62, 0.03):Translate(0, -0.96, -1.68))
-    b:Add("gold", ChamferBoxGeometry(3.18, 0.06, 0.12, 0.015):Translate(0, -0.74, -1.96))
-    b:Add("neonSecondary", BoxGeometry(2.74, 0.06, 0.44):Translate(0, -0.75, -1.70), { castShadows = false })
+    AddPart(root, "FrontLip",   box, M.mats.gold,          Vector3(0, 0.012, -1.52), Vector3(3.16, 0.07, 0.08))
+    AddPart(root, "ChuteBody",  box, M.mats.chassis,       Vector3(0, -0.96, -1.68), Vector3(3.26, 0.42, 0.62))
+    AddPart(root, "ChuteLip",   box, M.mats.gold,          Vector3(0, -0.74, -1.96), Vector3(3.18, 0.06, 0.12))
+    AddPart(root, "ChuteGlow",  box, M.mats.chuteGold, Vector3(0, -0.75, -1.70), Vector3(2.74, 0.06, 0.44), nil, false)
 
-    -- 4. 推台上段左右金属挡墙（z in [+1.50, -0.74]，留出前方侧漏段）
-    b:Add("chrome", ChamferBoxGeometry(0.11, 0.24, 2.24, 0.02):Translate(-1.49, 0.12, 0.38))
-    b:Add("chrome", ChamferBoxGeometry(0.11, 0.24, 2.24, 0.02):Translate(1.49, 0.12, 0.38))
-    b:Add("neonPrimary", BoxGeometry(0.04, 0.05, 2.20):Translate(-1.45, 0.24, 0.38), { castShadows = false })
-    b:Add("neonPrimary", BoxGeometry(0.04, 0.05, 2.20):Translate(1.45, 0.24, 0.38), { castShadows = false })
+    -- 4. 推台上段左右金属挡墙（z in [+1.50, -0.74]）
+    AddPart(root, "SideWallL", box, M.mats.chrome,      Vector3(-1.49, 0.12, 0.38), Vector3(0.11, 0.24, 2.24))
+    AddPart(root, "SideWallR", box, M.mats.chrome,      Vector3(1.49, 0.12, 0.38),  Vector3(0.11, 0.24, 2.24))
+    AddPart(root, "SideGlowL", box, M.mats.neonPrimary, Vector3(-1.45, 0.24, 0.38), Vector3(0.04, 0.05, 2.20), nil, false)
+    AddPart(root, "SideGlowR", box, M.mats.neonPrimary, Vector3(1.45, 0.24, 0.38),  Vector3(0.04, 0.05, 2.20), nil, false)
 
     -- 5. 上部落币区垂直内框柱
-    b:Add("chrome", ChamferBoxGeometry(0.09, 2.36, 0.24, 0.018):Translate(-1.44, 1.44, 1.38))
-    b:Add("chrome", ChamferBoxGeometry(0.09, 2.36, 0.24, 0.018):Translate(1.44, 1.44, 1.38))
-    b:Add("neonSecondary", BoxGeometry(0.045, 2.26, 0.05):Translate(-1.38, 1.44, 1.28), { castShadows = false })
-    b:Add("neonSecondary", BoxGeometry(0.045, 2.26, 0.05):Translate(1.38, 1.44, 1.28), { castShadows = false })
+    AddPart(root, "UpperFrameL", box, M.mats.chrome,        Vector3(-1.44, 1.44, 1.38), Vector3(0.09, 2.36, 0.24))
+    AddPart(root, "UpperFrameR", box, M.mats.chrome,        Vector3(1.44, 1.44, 1.38),  Vector3(0.09, 2.36, 0.24))
+    AddPart(root, "UpperNeonL",  box, M.mats.neonSecondary, Vector3(-1.38, 1.44, 1.28), Vector3(0.045, 2.26, 0.05), nil, false)
+    AddPart(root, "UpperNeonR",  box, M.mats.neonSecondary, Vector3(1.38, 1.44, 1.28),  Vector3(0.045, 2.26, 0.05), nil, false)
 
-    -- 6. 透明亚克力展示防护侧玻璃（超低 alpha 不遮挡币堆）
-    b:Add("glass", BoxGeometry(0.025, 0.68, 3.06):Translate(-1.53, 0.35, 0.0), { castShadows = false })
-    b:Add("glass", BoxGeometry(0.025, 0.68, 3.06):Translate(1.53, 0.35, 0.0), { castShadows = false })
+    -- 6. 透明亚克力展示防护侧玻璃
+    AddPart(root, "GlassL", box, M.mats.glass, Vector3(-1.53, 0.35, 0.0), Vector3(0.025, 0.68, 3.06), nil, false)
+    AddPart(root, "GlassR", box, M.mats.glass, Vector3(1.53, 0.35, 0.0),  Vector3(0.025, 0.68, 3.06), nil, false)
 
-    local prop = b:Build()
-    M.cabinetNode = M.scene:CreateChild("Cabinet")
-    PropBuilder.Attach(M.cabinetNode, prop, M.mats)
-
-    -- 7. 3D 霓虹背板（随阶段换幕 1/2/3 自动换贴图）
-    M.backboardNode = M.scene:CreateChild("Backboard")
-    M.backboardNode.position = Vector3(0, 1.44, 1.49)
-    local bbModel = M.backboardNode:CreateComponent("StaticModel")
-    bbModel.model = PlaneGeometry(2.84, 2.36):ToModel()
-    bbModel.castShadows = false
+    -- 7. 3D 霓虹背板（Plane.mdl 默认法线 +Y，绕 X 旋 -90 度后法线朝 -Z 面向相机）
     M.backboardMat = MakeTexturedUnlit("image/machine/backdrop_act1.png", false, { 0.96, 0.96, 1.0, 1.0 })
         or MakePBR({ 0.08, 0.10, 0.22 }, 0.2, 0.7)
-    bbModel.material = M.backboardMat
+    M.backboardNode = AddPart(
+        M.scene, "Backboard", plane, M.backboardMat,
+        Vector3(0, 1.44, 1.49), Vector3(2.84, 1.0, 2.36), Quaternion(-90, Vector3.RIGHT), false
+    )
 
     -- 8. 两侧动态激光护栏（z in [-0.74, -1.52]）
     M.guardMat = MakePBR({ 0.15, 0.95, 0.55 }, 0.3, 0.2, { 0.25, 1.4, 0.75 })
-    local guardGeo = ChamferBoxGeometry(0.07, 0.16, 0.78, 0.015):ToModel()
-    M.leftGuardNode = M.scene:CreateChild("LeftGuard")
-    M.leftGuardNode.position = Vector3(-1.46, 0.08, -1.13)
-    local lgm = M.leftGuardNode:CreateComponent("StaticModel")
-    lgm.model = guardGeo; lgm.material = M.guardMat; lgm.castShadows = false
-
-    M.rightGuardNode = M.scene:CreateChild("RightGuard")
-    M.rightGuardNode.position = Vector3(1.46, 0.08, -1.13)
-    local rgm = M.rightGuardNode:CreateComponent("StaticModel")
-    rgm.model = guardGeo; rgm.material = M.guardMat; rgm.castShadows = false
+    M.leftGuardNode  = AddPart(M.scene, "LeftGuard",  box, M.guardMat, Vector3(-1.46, 0.08, -1.13), Vector3(0.07, 0.16, 0.78), nil, false)
+    M.rightGuardNode = AddPart(M.scene, "RightGuard", box, M.guardMat, Vector3(1.46, 0.08, -1.13),  Vector3(0.07, 0.16, 0.78), nil, false)
 
     -- 9. 24 颗 3D 跑马灯珠（左 12 + 右 12）
-    local bulbModel = SphereGeometry(0.042, 10, 8):ToModel()
     M.bulbLitMat = MakePBR({ 1.0, 0.90, 0.30 }, 0.1, 0.1, { 2.6, 2.1, 0.55 })
     M.bulbDimMat = MakePBR({ 0.18, 0.20, 0.32 }, 0.2, 0.4, { 0.04, 0.06, 0.12 })
     M.bulbs = {}
     for side = -1, 1, 2 do
         local bx = side * 1.56
         for i = 0, 11 do
-            local bn = M.scene:CreateChild("Bulb_" .. side .. "_" .. i)
-            bn.position = Vector3(bx, 0.36 + i * 0.20, 1.12)
-            local bm = bn:CreateComponent("StaticModel")
-            bm.model = bulbModel
-            bm.material = M.bulbDimMat
-            bm.castShadows = false
+            local _, bm = AddPart(
+                M.scene, "Bulb_" .. side .. "_" .. i, sphere, M.bulbDimMat,
+                Vector3(bx, 0.36 + i * 0.20, 1.12), Vector3(0.084, 0.084, 0.084), nil, false
+            )
             M.bulbs[#M.bulbs + 1] = { model = bm, idx = i, side = side }
         end
     end
 end
 
 -- 构建 3D 往复推板 + 顶部摆动发射器 + 中奖移动门
-local function BuildAnimatedMechanisms(PropBuilder)
-    -- 1. 推板：前缘紧贴局部 z = 0，板身向后延伸到 z = +1.40（从背板底滑出）
+local function BuildAnimatedMechanisms()
+    local box, cyl = M.models.box, M.models.cyl
+
+    -- 1. 推板：前缘紧贴局部 z = 0，板身向后延伸到 z = +1.40
     M.pusherNeonMat = MakePBR({ 1.0, 0.28, 0.72 }, 0.3, 0.2, { 2.2, 0.45, 1.3 })
-    local pb = PropBuilder.new()
-    pb:Add("deck", ChamferBoxGeometry(2.74, 0.21, 1.40, 0.025):Translate(0, 0.115, 0.71))
-    pb:Add("gold", ChamferBoxGeometry(2.76, 0.045, 0.08, 0.012):Translate(0, 0.225, 0.04))
-    pb:Add("neon", BoxGeometry(2.72, 0.085, 0.04):Translate(0, 0.115, -0.005), { castShadows = false })
-    -- 推板顶部装饰筋条
-    for k = -2, 2 do
-        pb:Add("chrome", BoxGeometry(0.05, 0.02, 1.24):Translate(k * 0.52, 0.225, 0.72))
-    end
-    local pProp = pb:Build()
     M.pusherNode = M.scene:CreateChild("Pusher")
     M.pusherNode.position = Vector3(0, 0.0, 0.90)
-    PropBuilder.Attach(M.pusherNode, pProp, {
-        deck = M.mats.pusherTop,
-        gold = M.mats.gold,
-        neon = M.pusherNeonMat,
-        chrome = M.mats.chrome,
-    })
+    AddPart(M.pusherNode, "Body", box, M.mats.pusherTop, Vector3(0, 0.115, 0.71),   Vector3(2.74, 0.21, 1.40))
+    AddPart(M.pusherNode, "Cap",  box, M.mats.gold,      Vector3(0, 0.225, 0.04),   Vector3(2.76, 0.045, 0.08))
+    AddPart(M.pusherNode, "Neon", box, M.pusherNeonMat,  Vector3(0, 0.115, -0.005), Vector3(2.72, 0.085, 0.04), nil, false)
+    for k = -2, 2 do
+        AddPart(M.pusherNode, "Rib" .. k, box, M.mats.chrome, Vector3(k * 0.52, 0.225, 0.72), Vector3(0.05, 0.02, 1.24))
+    end
 
     -- 2. 顶部摆动发射炮塔
-    local lb = PropBuilder.new()
-    lb:Add("gold",   CylinderGeometry(0.14, 0.16, 0.14, 18):ApplyQuaternion(Quaternion(90, Vector3.RIGHT)))
-    lb:Add("chrome", ChamferBoxGeometry(0.18, 0.26, 0.18, 0.025):Translate(0, -0.14, 0))
-    lb:Add("neon",   CylinderGeometry(0.075, 0.09, 0.08, 14):Translate(0, -0.28, 0), { castShadows = false })
-    local lProp = lb:Build()
     M.launcherNode = M.scene:CreateChild("Launcher")
     M.launcherNode.position = Vector3(0, 2.48, 1.30)
-    PropBuilder.Attach(M.launcherNode, lProp, {
-        gold = M.mats.gold,
-        chrome = M.mats.chrome,
-        neon = M.mats.neonSecondary,
-    })
+    AddPart(M.launcherNode, "Pivot",  cyl, M.mats.gold,          Vector3(0, 0, 0),     Vector3(0.30, 0.14, 0.30), Quaternion(90, Vector3.RIGHT))
+    AddPart(M.launcherNode, "Barrel", box, M.mats.chrome,        Vector3(0, -0.14, 0), Vector3(0.18, 0.26, 0.18))
+    AddPart(M.launcherNode, "Muzzle", cyl, M.mats.neonSecondary, Vector3(0, -0.28, 0), Vector3(0.16, 0.08, 0.16), nil, false)
 
     -- 3. 移动中奖门
     M.gateNode = M.scene:CreateChild("JackpotGate")
     M.gateNode.position = Vector3(0, 0.51, 1.31)
-    local pillarModel = ChamferBoxGeometry(0.16, 0.22, 0.20, 0.02):ToModel()
-    M.gateLeftNode = M.gateNode:CreateChild("GateLeft")
-    M.gateLeftNode.position = Vector3(-0.32, 0, 0)
-    local gl = M.gateLeftNode:CreateComponent("StaticModel")
-    gl.model = pillarModel; gl.material = M.mats.neonSecondary
-
-    M.gateRightNode = M.gateNode:CreateChild("GateRight")
-    M.gateRightNode.position = Vector3(0.32, 0, 0)
-    local gr = M.gateRightNode:CreateComponent("StaticModel")
-    gr.model = pillarModel; gr.material = M.mats.neonSecondary
-
-    M.gateBeamNode = M.gateNode:CreateChild("GateBeam")
-    M.gateBeamNode.position = Vector3(0, -0.02, 0)
-    local gb = M.gateBeamNode:CreateComponent("StaticModel")
-    gb.model = BoxGeometry(1.0, 0.14, 0.06):ToModel()
-    gb.material = MakePBR({ 1.0, 0.85, 0.25 }, 0.1, 0.1, { 2.4, 1.85, 0.35 }, 0.55)
-    gb.castShadows = false
+    M.gateLeftNode  = AddPart(M.gateNode, "GateLeft",  box, M.mats.neonSecondary, Vector3(-0.32, 0, 0), Vector3(0.16, 0.22, 0.20))
+    M.gateRightNode = AddPart(M.gateNode, "GateRight", box, M.mats.neonSecondary, Vector3(0.32, 0, 0),  Vector3(0.16, 0.22, 0.20))
+    local beamMat = MakePBR({ 1.0, 0.85, 0.25 }, 0.1, 0.1, { 2.4, 1.85, 0.35 }, 0.55)
+    M.gateBeamNode = AddPart(M.gateNode, "GateBeam", box, beamMat, Vector3(0, -0.02, 0), Vector3(1.0, 0.14, 0.06), nil, false)
 end
 
 local function BuildCoinPool()
+    local cyl, torus, plane = M.models.cyl, M.models.torus, M.models.plane
+    local initMats = GetCoinMaterials("gold")
     M.coinPool = {}
     for i = 1, S.MAX_COINS do
         local n = M.scene:CreateChild("Coin3D_" .. i)
-        n:SetEnabled(false)
-        local sm = n:CreateComponent("StaticModel")
-        sm.model = M.coinModel
-        sm.castShadows = true
-        local mats = GetCoinMaterials("gold")
-        sm:SetMaterial(0, mats.rim)
-        sm:SetMaterial(1, mats.face)
-        M.coinPool[i] = { node = n, model = sm, lastKind = "gold" }
+        local _, rimSm   = AddPart(n, "Rim",   cyl,   initMats.rim,  Vector3(0, 0, 0),      Vector3(1.0, 0.24, 1.0), nil, true)
+        local _, bevelSm = AddPart(n, "Bevel", torus, initMats.rim,  Vector3(0, 0.095, 0),  Vector3(0.77, 0.28, 0.77), nil, false)
+        local _, faceSm  = AddPart(n, "Face",  plane, initMats.face, Vector3(0, 0.125, 0),  Vector3(0.88, 1.0, 0.88), nil, false)
+        n:SetDeepEnabled(false)
+        M.coinPool[i] = { node = n, rim = rimSm, bevel = bevelSm, face = faceSm, lastKind = "gold", enabled = false }
     end
 end
 
@@ -401,20 +351,13 @@ local function SyncPegs3D(phys)
             pn.node:Remove()
         end
         M.pegNodes = {}
+        local cyl, sphere = M.models.cyl, M.models.sphere
         for i = 1, #pegs do
             local p = pegs[i]
             local pn = M.scene:CreateChild("Peg_" .. i)
             pn.position = LogicToWorld3D(p.x, p.y, "slot", 0, false)
-            local stem = pn:CreateChild("Stem")
-            stem.position = Vector3(0, 0, 0.06)
-            local sm1 = stem:CreateComponent("StaticModel")
-            sm1.model = M.pegStemModel; sm1.material = M.mats.chrome; sm1.castShadows = false
-
-            local head = pn:CreateChild("Head")
-            head.position = Vector3(0, 0, -0.04)
-            local sm2 = head:CreateComponent("StaticModel")
-            sm2.model = M.pegHeadModel; sm2.material = GetPegMat(p.kind); sm2.castShadows = true
-
+            AddPart(pn, "Stem", cyl, M.mats.chrome, Vector3(0, 0, 0.06), Vector3(0.06, 0.18, 0.06), Quaternion(90, Vector3.RIGHT), false)
+            local head = AddPart(pn, "Head", sphere, GetPegMat(p.kind), Vector3(0, 0, -0.04), Vector3(0.112, 0.112, 0.076), nil, true)
             M.pegNodes[i] = { node = pn, head = head }
         end
     end
@@ -423,8 +366,8 @@ local function SyncPegs3D(phys)
         local p = pegs[i]
         local rec = M.pegNodes[i]
         if rec then
-            local sc = 1.0 + (p.flash or 0) * 0.45
-            rec.head.scale = Vector3(sc, sc, sc)
+            local sc = 0.112 * (1.0 + (p.flash or 0) * 0.45)
+            rec.head.scale = Vector3(sc, sc, sc * 0.68)
         end
     end
 end
@@ -437,30 +380,37 @@ function Machine3D.Init(tycoon)
     if not Scene or not renderer or not cache or not Viewport then
         return false
     end
-    local ok, PropBuilder = pcall(require, "urhox-libs/Geometry/PropBuilder")
-    if not ok or not PropBuilder then
+
+    local box    = cache:GetResource("Model", "Models/Box.mdl")
+    local cyl    = cache:GetResource("Model", "Models/Cylinder.mdl")
+    local sphere = cache:GetResource("Model", "Models/Sphere.mdl")
+    local plane  = cache:GetResource("Model", "Models/Plane.mdl")
+    local torus  = cache:GetResource("Model", "Models/Torus.mdl")
+    if not (box and cyl and sphere and plane and torus) then
         return false
     end
+    M.models = { box = box, cyl = cyl, sphere = sphere, plane = plane, torus = torus }
 
     local scene = Scene()
     scene:CreateComponent("Octree")
     M.scene = scene
 
-    -- 使用 Midnight 预设氛围并关闭暗角/自动曝光确保透亮度与币面高光清晰
-    local lgFile = cache:GetResource("XMLFile", "LightGroup/Midnight.xml")
-    if lgFile then
-        local lgNode = scene:CreateChild("LightGroup")
-        lgNode:LoadXML(lgFile:GetRoot())
-        local zone = lgNode:GetComponent("Zone", true)
-        if zone then
-            zone.fogColor = Color(0.03, 0.04, 0.09)
-            zone.depthFogStart = 20.0
-            zone.depthFogEnd = 70.0
-            zone.vignetteEnabled = false
-            zone.autoExposureEnabled = false
-            M.zone = zone
-        end
-    end
+    -- 自建纯净暗色霓虹 Zone（纯色环境光，避免缺失环境贴图报错与过曝泛白）
+    local zoneNode = scene:CreateChild("ArcadeZone")
+    local zone = zoneNode:CreateComponent("Zone")
+    zone.boundingBox = BoundingBox(Vector3(-200, -200, -200), Vector3(200, 200, 200))
+    zone.ambientSource = AMBIENT_COLOR
+    zone.ambientColor = Color(0.28, 0.32, 0.46)
+    zone.ambientIntensity = 1.0
+    zone.fogColor = Color(0.04, 0.05, 0.11)
+    zone.depthFogStart = 20.0
+    zone.depthFogEnd = 75.0
+    zone.vignetteEnabled = false
+    zone.autoExposureEnabled = false
+    zone.bloomMode = BLOOM_MODE_UE
+    zone.bloomUEIntensity = 0.26
+    zone.bloomUEThreshold = 1.15
+    M.zone = zone
 
     -- 主高光方向光 + 3 盏街机气氛点光
     local dlNode = scene:CreateChild("MainLight")
@@ -468,7 +418,7 @@ function Machine3D.Init(tycoon)
     local dl = dlNode:CreateComponent("Light")
     dl.lightType = LIGHT_DIRECTIONAL
     dl.color = Color(1.0, 0.96, 0.90)
-    dl.brightness = 2.6
+    dl.brightness = 1.65
     dl.castShadows = true
     M.dirLight = dl
 
@@ -479,8 +429,8 @@ function Machine3D.Init(tycoon)
         plNode.position = pos
         local pl = plNode:CreateComponent("Light")
         pl.lightType = LIGHT_POINT
-        pl.brightness = (idx == 3) and 4.2 or 3.6
-        pl.range = 12.0
+        pl.brightness = (idx == 3) and 1.55 or 1.25
+        pl.range = 10.0
         pl.castShadows = false
         M.ptLights[idx] = pl
     end
@@ -503,18 +453,18 @@ function Machine3D.Init(tycoon)
     -- 共享 PBR 材质表
     M.mats = {
         chassis       = MakePBR({ 0.08, 0.10, 0.18 }, 0.72, 0.36),
-        deck          = MakePBR({ 0.12, 0.15, 0.28 }, 0.82, 0.24),
+        deck          = MakePBR({ 0.12, 0.15, 0.28 }, 0.82, 0.26),
         pusherTop     = MakePBR({ 0.20, 0.26, 0.44 }, 0.88, 0.22),
-        chrome        = MakePBR({ 0.78, 0.84, 0.94 }, 0.94, 0.16),
-        gold          = MakePBR({ 1.0, 0.78, 0.22 }, 0.95, 0.16, { 0.18, 0.12, 0.02 }),
-        neonPrimary   = MakePBR({ 0.18, 0.88, 1.0 }, 0.2, 0.2, { 0.35, 1.8, 2.2 }),
-        neonSecondary = MakePBR({ 1.0, 0.25, 0.72 }, 0.2, 0.2, { 2.0, 0.45, 1.4 }),
+        chrome        = MakePBR({ 0.76, 0.82, 0.92 }, 0.92, 0.18),
+        gold          = MakePBR({ 0.94, 0.70, 0.16 }, 0.92, 0.20, { 0.06, 0.04, 0.01 }),
+        neonPrimary   = MakePBR({ 0.18, 0.88, 1.0 }, 0.2, 0.2, { 0.22, 1.05, 1.25 }),
+        neonSecondary = MakePBR({ 1.0, 0.25, 0.72 }, 0.2, 0.2, { 1.15, 0.28, 0.85 }),
+        chuteGold     = MakePBR({ 0.95, 0.72, 0.18 }, 0.4, 0.25, { 0.65, 0.42, 0.08 }),
         glass         = MakePBR({ 0.55, 0.86, 1.0 }, 0.1, 0.06, nil, 0.14),
     }
 
-    BuildSharedModels()
-    BuildCabinet(PropBuilder)
-    BuildAnimatedMechanisms(PropBuilder)
+    BuildCabinet()
+    BuildAnimatedMechanisms()
     BuildCoinPool()
 
     M.lastTheme = -1
@@ -559,9 +509,9 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
 
     -- 4. 动态护栏同步
     local guarded = (phys.railGuard or 0) > 0.2
-    local gScaleY = guarded and 1.25 or 0.35
-    M.leftGuardNode.scale = Vector3(1, gScaleY, 1)
-    M.rightGuardNode.scale = Vector3(1, gScaleY, 1)
+    local gScaleY = guarded and 0.22 or 0.06
+    M.leftGuardNode.scale = Vector3(0.07, gScaleY, 0.78)
+    M.rightGuardNode.scale = Vector3(0.07, gScaleY, 0.78)
     if guarded then
         SetMatColor(M.guardMat, { 0.16, 0.96, 0.56 }, 1.0)
         SetMatEmissive(M.guardMat, { 0.28, 1.5, 0.85 })
@@ -583,7 +533,7 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
     M.gateRightNode.position = Vector3(gHalfWorld + 0.09, 0, 0)
     M.gateBeamNode:SetEnabled(not phys.gateClosed)
     if not phys.gateClosed then
-        M.gateBeamNode.scale = Vector3(max(0.15, gHalfWorld * 2.0), 1, 1)
+        M.gateBeamNode.scale = Vector3(max(0.15, gHalfWorld * 2.0), 0.14, 0.06)
     end
 
     -- 6. 钉阵位置 & 撞击脉冲缩放
@@ -597,7 +547,10 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
         local c = coins[activeIds[i]]
         local slot = M.coinPool[i]
         if c and c.active then
-            slot.node:SetEnabled(true)
+            if not slot.enabled then
+                slot.enabled = true
+                slot.node:SetDeepEnabled(true)
+            end
             local wp = LogicToWorld3D(c.x, c.y, c.zone, c.z, c.onPusher)
             slot.node.position = wp
 
@@ -619,15 +572,23 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
             if slot.lastKind ~= k then
                 slot.lastKind = k
                 local cm = GetCoinMaterials(k)
-                slot.model:SetMaterial(0, cm.rim)
-                slot.model:SetMaterial(1, cm.face)
+                slot.rim:SetMaterial(cm.rim)
+                slot.bevel:SetMaterial(cm.rim)
+                slot.face:SetMaterial(cm.face)
             end
         else
-            slot.node:SetEnabled(false)
+            if slot.enabled then
+                slot.enabled = false
+                slot.node:SetDeepEnabled(false)
+            end
         end
     end
     for i = cnt + 1, #M.coinPool do
-        M.coinPool[i].node:SetEnabled(false)
+        local slot = M.coinPool[i]
+        if slot.enabled then
+            slot.enabled = false
+            slot.node:SetDeepEnabled(false)
+        end
     end
 end
 
