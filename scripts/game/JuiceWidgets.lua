@@ -174,4 +174,181 @@ function CashCounter:Render(nvg)
     end
 end
 
+-- ----------------------------------------------------------------------------
+-- RankTicker：顶栏实时世界排名（里程表式逐位滚动：59亿8326万 → 3826万4512 → 4512 → 1）
+--   · 显示值在对数空间追随真实排名，数字持续往下滚；变化的那一位从下方滑入、旧数字向上滑出
+--   · 超越演出交错瞬间被“砸”：放大 + 金光 + 绿色上升箭头
+-- ----------------------------------------------------------------------------
+local RankLadder = require("game/RankLadder")
+local Billionaires = require("game/Billionaires")
+local log, exp = math.log, math.exp
+
+local RankTicker = UI.Widget:Extend("RankTicker")
+JuiceWidgets.RankTicker = RankTicker
+
+local TICK_BG_TOP = { 26, 20, 52 }
+local TICK_BG_BOT = { 10, 8, 24 }
+local ROLL_DUR = 0.14
+
+function RankTicker:Init(props)
+    props = props or {}
+    self.getTy_ = props.getTycoon
+    self.getTime_ = props.getTime
+    self.fx_ = props.fx
+    self.font_ = props.font or "sans"
+    props.getTycoon, props.getTime, props.fx, props.font = nil, nil, nil, nil
+    self.shownLog_ = nil
+    self.txt_ = ""
+    self.chars_ = {}
+    self.prevChars_ = {}
+    self.changeT_ = {}
+    self.fmtAcc_ = 1
+    self.punch_ = 0
+    self.up_ = 0
+    self.lastT_ = nil
+    UI.Widget.Init(self, props)
+end
+
+function RankTicker:SetFont(f) self.font_ = f end
+
+local function SplitChars(s, out)
+    local n = 0
+    for _, c in utf8.codes(s) do
+        n = n + 1
+        out[n] = utf8.char(c)
+    end
+    for i = n + 1, #out do out[i] = nil end
+    return n
+end
+
+function RankTicker:Render(nvg)
+    local l = self:GetAbsoluteLayout()
+    if l.w <= 0 or l.h <= 0 then return end
+    local ty = self.getTy_ and self.getTy_()
+    local fx = self.fx_
+    local t = (self.getTime_ and self.getTime_()) or 0
+    local dt = self.lastT_ and max(0, min(0.1, t - self.lastT_)) or 0
+    self.lastT_ = t
+
+    local actual = ty and Billionaires.CalcWorldRank(ty.lifetimeCash or 0) or Billionaires.START_RANK
+    local la = log(max(1, actual))
+    if not self.shownLog_ or la > self.shownLog_ + 0.5 then self.shownLog_ = la end
+    local diff = la - self.shownLog_
+    self.shownLog_ = self.shownLog_ + diff * min(1, dt * 5)
+    if diff < 0 then self.up_ = min(1, self.up_ + dt * 6) else self.up_ = max(0, self.up_ - dt * 1.5) end
+    local shown = exp(self.shownLog_)
+
+    -- 每 1/30 秒格式化一次；逐位比较记录变化时间（里程表滚动）
+    self.fmtAcc_ = self.fmtAcc_ + dt
+    if self.fmtAcc_ >= 0.033 then
+        self.fmtAcc_ = 0
+        local txt = RankLadder.FormatRank(shown)
+        if txt ~= self.txt_ then
+            local prev = self.prevChars_
+            local cur = self.chars_
+            local oldN = #cur
+            for i = 1, oldN do prev[i] = cur[i] end
+            for i = oldN + 1, #prev do prev[i] = nil end
+            local n = SplitChars(txt, cur)
+            -- 位数变化（跨单位）时整体重排，不做逐位滑动
+            local sameLen = (n == oldN)
+            for i = 1, n do
+                if sameLen and prev[i] ~= cur[i] then self.changeT_[i] = t
+                elseif not sameLen then self.changeT_[i] = -9 end
+            end
+            self.txt_ = txt
+        end
+        if fx then fx.liveRankTxt = "第 " .. self.txt_ .. " 名" end
+    end
+
+    if fx then
+        local hits = fx.rankHits or 0
+        if hits > 0 then
+            fx.rankHits = 0
+            self.punch_ = 1
+        end
+        fx.ancRankX, fx.ancRankY = l.x + l.w * 0.5, l.y + l.h * 0.5
+    end
+    if self.punch_ > 0 then self.punch_ = max(0, self.punch_ - dt * 2.5) end
+
+    local h = l.h
+    local r = h * 0.5
+    -- 底板（被砸时金光外溢）
+    if self.punch_ > 0.02 then
+        SetAdditive(nvg, true)
+        nvgBeginPath(nvg)
+        nvgRect(nvg, l.x - 14, l.y - 10, l.w + 28, h + 20)
+        nvgFillPaint(nvg, nvgBoxGradient(nvg, l.x, l.y, l.w, h, r, 16, Col(C.gold, floor(150 * self.punch_)), Col(C.gold, 0)))
+        nvgFill(nvg)
+        SetAdditive(nvg, false)
+    end
+    nvgBeginPath(nvg)
+    nvgRoundedRect(nvg, l.x, l.y, l.w, h, r)
+    nvgFillPaint(nvg, nvgLinearGradient(nvg, l.x, l.y, l.x, l.y + h, Col(TICK_BG_TOP, 245), Col(TICK_BG_BOT, 250)))
+    nvgFill(nvg)
+    nvgStrokeColor(nvg, Col(C.gold, floor(150 + 105 * self.punch_)))
+    nvgStrokeWidth(nvg, 1.4 + self.punch_ * 1.2)
+    nvgStroke(nvg)
+
+    nvgFontFace(nvg, self.font_)
+    nvgTextAlign(nvg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+    -- 左侧小标签
+    local lx = l.x + 10
+    nvgFontSize(nvg, 12)
+    nvgFillColor(nvg, Col(C.muted, 255))
+    nvgText(nvg, lx, l.y + h * 0.5, "世界")
+    lx = lx + 28
+
+    -- 数字区（自适应字号，确保“第…名”整体放得下）
+    local fs = 17 * (1 + self.punch_ * 0.18)
+    local body = "第" .. self.txt_ .. "名"
+    local avail = l.x + l.w - 22 - lx
+    local bw = EstTextW(body, fs)
+    if bw > avail then fs = fs * avail / bw end
+    local cy = l.y + h * 0.5
+    nvgSave(nvg)
+    nvgIntersectScissor(nvg, l.x + 2, l.y + 2, l.w - 4, h - 4)
+    nvgFontSize(nvg, fs * 0.82)
+    nvgFillColor(nvg, Col(C.white, 230))
+    nvgText(nvg, lx, cy, "第")
+    local x = lx + fs * 0.86
+    nvgFontSize(nvg, fs)
+    local col = (self.punch_ > 0.4) and C.white or C.gold
+    for i = 1, #self.chars_ do
+        local ch = self.chars_[i]
+        local isDigit = ch:byte(1) < 128
+        local cw = isDigit and fs * 0.6 or fs
+        local age = t - (self.changeT_[i] or -9)
+        if age < ROLL_DUR and isDigit then
+            local e = age / ROLL_DUR
+            local slide = fs * 0.75
+            nvgFillColor(nvg, Col(col, floor(255 * (1 - e))))
+            nvgText(nvg, x, cy - slide * e, self.prevChars_[i] or ch)
+            nvgFillColor(nvg, Col(col, floor(255 * e)))
+            nvgText(nvg, x, cy + slide * (1 - e), ch)
+        else
+            nvgFillColor(nvg, Col(isDigit and col or C.white, 255))
+            nvgText(nvg, x, cy, ch)
+        end
+        x = x + cw
+    end
+    nvgFontSize(nvg, fs * 0.82)
+    nvgFillColor(nvg, Col(C.white, 230))
+    nvgText(nvg, x + 1, cy, "名")
+    nvgRestore(nvg)
+
+    -- 右侧上升箭头（排名在往上滚时常亮跳动）
+    if self.up_ > 0.05 then
+        local ax = l.x + l.w - 12
+        local ay = cy + sin(t * 9) * 2
+        nvgBeginPath(nvg)
+        nvgMoveTo(nvg, ax, ay - 6)
+        nvgLineTo(nvg, ax + 5, ay + 3)
+        nvgLineTo(nvg, ax - 5, ay + 3)
+        nvgClosePath(nvg)
+        nvgFillColor(nvg, Col(CPS_UP, floor(255 * self.up_)))
+        nvgFill(nvg)
+    end
+end
+
 return JuiceWidgets

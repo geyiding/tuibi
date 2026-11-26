@@ -74,6 +74,7 @@ local Tycoon = require("game/Tycoon")
 local Fx = require("game/Fx")
 local Stage = require("game/Stage")
 local JuiceWidgets = require("game/JuiceWidgets")
+local Billionaires = require("game/Billionaires")
 local AvatarArt = require("game/AvatarArt")
 local Art = require("game/Art")
 
@@ -262,6 +263,48 @@ Widgets.DrawAffordGlow("nvg_stub", { x = 0, y = 0, w = 80, h = 100 }, 10)
 for _, k in ipairs({ "gear", "shield", "heart", "bolt", "star", "crown", "flame", "lock", "magnet", "chest", "skull", "play", "coin" }) do
     Art.DrawIcon("nvg_stub", k, 0, 0, 24, nil)
     Art.DrawIcon("nvg_stub", k, 0, 0, 24, Skin.C.red)
+end
+
+-- 9. 世界排名超越阶梯 / 实时排名滚动 / 超越演出（待机 / 演出中合并连超 / 弹窗暂停 / 结束）
+local RankLadder = require("game/RankLadder")
+assert(RankLadder.COUNT == #Config.RANKS + RankLadder.RIVAL_COUNT, "阶梯 = 富豪榜 + 身边人")
+for i = 2, RankLadder.COUNT do
+    assert(RankLadder.LIST[i].target >= RankLadder.LIST[i - 1].target, "阶梯财富阈值必须递增 idx=" .. i)
+end
+for i = 1, RankLadder.COUNT do
+    local it = RankLadder.LIST[i]
+    if it.kind == "rival" then
+        local wr = Billionaires.CalcWorldRank(it.target)
+        assert(wr <= it.rank, "身边人阈值反推必须与实时排名一致: " .. it.name)
+    end
+end
+assert(RankLadder.FormatRank(5.98e9) == "59亿8000万")
+assert(RankLadder.FormatRank(38264512) == "3826万4512")
+assert(RankLadder.FormatRank(4512) == "4512")
+assert(RankLadder.FormatRankShort(8e7) == "8000万" and RankLadder.FormatRankShort(72000) == "7万2000")
+assert(RankLadder.CountPassed(0) == 0 and RankLadder.CountPassed(1e15) == RankLadder.COUNT)
+
+local fx3 = Fx.New()
+local ty3 = Tycoon.New(fx3, { seed = 9 })
+ty3.lifetimeCash = 4e5; ty3.cash = 4e5
+local rt = setmetatable({}, JuiceWidgets.RankTicker)
+rt:Init({ getTycoon = function() return ty3 end, getTime = function() return fx3.time end, fx = fx3 })
+rt.GetAbsoluteLayout = function() return { x = 8, y = 110, w = 168, h = 32 } end
+for f = 1, 40 do fx3:Update(1 / 60); ty3.lifetimeCash = ty3.lifetimeCash * 1.02; rt:Render("nvg_stub") end
+assert(fx3.liveRankTxt:find("第") ~= nil, "实时排名文字必须写入 Fx 供超越演出显示")
+local idx = RankLadder.CountPassed(ty3.lifetimeCash)
+fx3:OnOvertake(RankLadder.LIST[idx], 1)
+assert(fx3:IsOvertakeBusy())
+for f = 1, 40 do fx3:Update(1 / 60); fx3:Render("nvg_stub", 390, 844, "sans", false); rt:Render("nvg_stub") end
+fx3:OnOvertake(RankLadder.LIST[idx + 1], 3)                -- 演出中再超越 -> 合并为连超
+fx3.modalOpen = true; local ageBefore = fx3.ot.age; fx3:Update(0.5)
+assert(fx3.ot.age == ageBefore, "弹窗打开时超越演出必须暂停")
+fx3.modalOpen = false
+for f = 1, 400 do fx3:Update(1 / 60); fx3:Render("nvg_stub", 390, 844, "sans", false) end
+assert(not fx3:IsOvertakeBusy(), "超越演出（含合并的连超）必须在有限时间内播完")
+for _, it in ipairs({ RankLadder.LIST[1], RankLadder.LIST[25], RankLadder.LIST[RankLadder.COUNT] }) do
+    fx3:OnOvertake(it, 2)
+    for f = 1, 160 do fx3:Update(1 / 60); fx3:Render("nvg_stub", 360, 667, "sans", false) end
 end
 
 print("[test_render] ALL PASS! ranks_drawn=" .. tostring(#Config.RANKS) .. " coins_drawn=" .. tostring(#Config.COIN_TIERS))

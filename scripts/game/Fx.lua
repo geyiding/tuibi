@@ -290,7 +290,22 @@ function Fx.New()
 
     -- 兼容旧横幅接口
     self.banner = { t = 0, dur = 0, text = "", col = GOLD }
+
+    -- 世界排名超越演出（顶栏排名计数器锚点 / 被砸计数 / 实时排名文字）
+    self.ancRankX, self.ancRankY = 100, 90
+    self.rankHits = 0
+    self.liveRankTxt = ""
+    self.ot = require("game/OvertakeFx").New(self)
     return self
+end
+
+--- 超越一个阶梯目标（RankLadder 条目），count = 本帧一口气越过的人数
+function Fx:OnOvertake(item, count)
+    self.ot:Trigger(item, count)
+end
+
+function Fx:IsOvertakeBusy()
+    return self.ot:IsBusy()
 end
 
 --- 预算化强反馈：force=true 用于里程碑级事件（FEVER / 大奖 / 上市）
@@ -948,10 +963,10 @@ function Fx:OnRankUp(rank, themeChanged, info)
     else
         head = "冲入" .. (rank.name or ("全球前" .. Number.FormatWorldRank(rank.rank)))
     end
-    local sub = rank.isRealName and (rank.name or "") or (themeChanged and "新机台主题解锁!" or (rank.title or ""))
-    self:Stamp(head, sub, GOLD, 4, 1.8, themeChanged or rank.isRealName, "rank")
-    self:Confetti(36, 0, self.screenW, -10)
-    self:AddFlash(110, GOLD)
+    -- 超越演出由 OvertakeFx 承担（RankLadder 追踪器触发）；这里只在换主题时补一枚印章
+    if themeChanged then
+        self:Stamp("新机台解锁!", head, GOLD, 3, 1.6, true, "theme")
+    end
 end
 
 function Fx:OnUnlockCoin(def)
@@ -1022,6 +1037,7 @@ function Fx:Update(dt)
     self.time = self.time + dt
     if self.hitstop > 0 then self.hitstop = max(0, self.hitstop - dt) end
     if self.hitstopCd > 0 then self.hitstopCd = max(0, self.hitstopCd - dt) end
+    if self.ot then self.ot:Update(dt) end
     self.shakeBudget = min(0.8, self.shakeBudget + dt * 0.45)
     self.flashBudget = min(160, self.flashBudget + dt * 70)
     self.kickBudget = min(1.0, self.kickBudget + dt * 0.5)
@@ -1525,6 +1541,7 @@ function Fx:Render(nvg, w, h, font, modalOpen)
         self:RenderPops(nvg, font)
         self:RenderFly(nvg)
         self:RenderStamp(nvg, w, h, font)
+        if self.ot then self.ot:Render(nvg, w, h, font) end
     else
         self:RenderRingsBolts(nvg)
         self:RenderParticles(nvg)

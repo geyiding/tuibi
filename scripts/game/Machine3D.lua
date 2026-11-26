@@ -601,8 +601,10 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
         or math.abs(sy - M.lastSY) > 0.0005 or math.abs(fov - M.lastFov) > 0.02 then
         M.lastAspect, M.lastSX, M.lastSY, M.lastFov = aspect, sx, sy, fov
         M.cam.fov = fov
-        local target = Vector3(0, 0.74, 0.06)
-        local dist = (aspect < 0.72) and min(10.2, 5.15 / aspect) or max(6.4, min(7.6, 5.5 / aspect))
+        -- 竖屏手机：机台已横向占满，只能小幅推近 5% 并略微下移，吃掉底部空带
+        local portrait = aspect < 0.72
+        local target = portrait and Vector3(0, 0.70, 0.06) or Vector3(0, 0.74, 0.06)
+        local dist = portrait and (min(10.2, 5.15 / aspect) * 0.95) or max(6.4, min(7.6, 5.5 / aspect))
         local dir = Vector3(0, -0.49, 0.87):Normalized()
         M.camNode.position = target - dir * dist + Vector3(sx, sy, 0)
         M.camNode:LookAt(target + Vector3(sx * 0.4, sy * 0.4, 0))

@@ -10,6 +10,7 @@ local Skin = require("game/Skin")
 local Widgets = require("game/Widgets")
 local Number = require("game/Number")
 local JuiceWidgets = require("game/JuiceWidgets")
+local RankLadder = require("game/RankLadder")
 
 local C, U = Skin.C, Skin.UI
 local NeoFrame, NeoButton, NeoIcon, NeoBar, AvatarIcon =
@@ -133,12 +134,12 @@ end
 -- ----------------------------------------------------------------------------
 local function BuildMainPage(stageWidget, cb)
     local r = st.refs
-    r.lblRankNo = UI.Label { text = "No.60.00亿", fontSize = 11, fontWeight = "bold", fontColor = U.cyan, maxLines = 1 }
-    local rankBadge = NeoFrame(Widgets.PressFx {
-        style = "slot", height = 36, minWidth = 74, paddingHorizontal = 5,
+    r.lblSp = UI.Label { text = "技能点:0", fontSize = 12, fontWeight = "bold", fontColor = U.gold, maxLines = 1, textAlign = "center" }
+    local spPill = NeoFrame(Widgets.PressFx {
+        style = "slot", height = 34, minWidth = 72, paddingHorizontal = 6,
         flexDirection = "row", justifyContent = "center", alignItems = "center",
-        children = { r.lblRankNo },
-        onClick = function() TycoonHud.OpenModal("ranks") end,
+        children = { r.lblSp },
+        onClick = function() TycoonHud.OpenModal("coins") end,
     })
 
     -- 滚动现金计数器（飞币砸中冲击 + 金光 + 每秒产值上涨绿闪）
@@ -165,15 +166,21 @@ local function BuildMainPage(stageWidget, cb)
 
     local row1 = UI.Row {
         width = "100%", height = 64, alignItems = "center", paddingLeft = 8, paddingRight = 104, gap = 6,
-        children = { rankBadge, cashCol, helpBtn, gearBtn },
+        children = { spPill, cashCol, helpBtn, gearBtn },
     }
 
-    r.lblSp = UI.Label { text = "技能点:0", fontSize = 11, fontWeight = "bold", fontColor = U.gold, maxLines = 1, textAlign = "center" }
-    local spPill = NeoFrame(Widgets.PressFx {
-        style = "slot", height = 28, minWidth = 66, paddingHorizontal = 5,
-        flexDirection = "row", justifyContent = "center", alignItems = "center",
-        children = { r.lblSp },
-        onClick = function() TycoonHud.OpenModal("coins") end,
+    -- 实时世界排名（里程表滚动，点击打开财富榜）
+    r.rankTicker = JuiceWidgets.RankTicker {
+        width = "100%", height = 32,
+        getTycoon = function() return st.lastTycoon end,
+        getTime = juice.getTime,
+        fx = juice.fx,
+        font = juice.font,
+    }
+    local rankTickerWrap = UI.Panel(Widgets.PressFx {
+        width = 168, flexShrink = 0, height = 32,
+        onClick = function() TycoonHud.OpenModal("ranks") end,
+        children = { r.rankTicker },
     })
 
     r.rankBar = NeoBar { width = "100%", height = 28, value = 0, text = "街边小摊主 · 0 / 2000" }
@@ -183,14 +190,14 @@ local function BuildMainPage(stageWidget, cb)
         children = { r.rankBar },
     })
 
-    -- 总倍率已移到机台顶棚的霓虹招牌（点击招牌查看公式），顶栏第二行只保留技能点 + 财富进度
+    -- 顶栏第二行：实时世界排名 + 下一个超越目标进度
     local row2 = UI.Row {
-        width = "100%", height = 34, alignItems = "center", paddingHorizontal = 10, gap = 6,
-        children = { spPill, rankBarWrap },
+        width = "100%", height = 36, alignItems = "center", paddingHorizontal = 8, gap = 6,
+        children = { rankTickerWrap, rankBarWrap },
     }
 
     local topPlate = NeoFrame {
-        style = "plate", width = "100%", height = 102, flexDirection = "column", paddingTop = 2, gap = 2,
+        style = "plate", width = "100%", height = 106, flexDirection = "column", paddingTop = 2, gap = 2,
         children = { row1, row2 },
     }
 
@@ -1024,28 +1031,29 @@ function TycoonHud.RefreshMain(ty)
     if not ty then return end
     st.lastTycoon = ty
     local r, sh = st.refs, st.shown
-    local rkTxt = Number.FormatRankBadge(ty:GetWorldRank())
-    if sh.rankNo ~= rkTxt then sh.rankNo = rkTxt; SetLbl(r.lblRankNo, rkTxt) end
+    -- 世界排名由 RankTicker 每帧滚动绘制
 
     -- 现金 / 每秒产值由 CashCounter 每帧滚动绘制
 
     local spTxt = "技能点:" .. Number.FormatNum(ty.skillPoints or 0)
     if sh.spTxt ~= spTxt then sh.spTxt = spTxt; SetLbl(r.lblSp, spTxt) end
 
-    local curRk = ty:GetRankDef()
-    local nxtRk = Config.RANKS[ty.rankIdx + 1]
+    -- 下一个超越目标（富豪榜 + 身边人阶梯合并），进度 = 从上一个目标到下一个目标的财富进度
+    local passed = RankLadder.CountPassed(ty.lifetimeCash)
+    local nxt = RankLadder.LIST[passed + 1]
     local barRatio, barTxt, barCol
-    if nxtRk then
-        local span = max(1, nxtRk.target - curRk.target)
-        barRatio = floor(max(0, min(1, (ty.lifetimeCash - curRk.target) / span)) * 200 + 0.5) / 200
-        barTxt = nxtRk.isRealName
-            and ("下位: No." .. tostring(nxtRk.rank) .. " " .. nxtRk.name .. " · " .. Number.FormatCash(nxtRk.target))
-            or ("下位: " .. nxtRk.name .. " · " .. Number.FormatCash(nxtRk.target))
-        barCol = C.cyan
+    if nxt then
+        local prevT = (passed > 0) and RankLadder.LIST[passed].target or 0
+        local span = max(1, nxt.target - prevT)
+        barRatio = floor(max(0, min(1, (ty.lifetimeCash - prevT) / span)) * 200 + 0.5) / 200
+        local nm = nxt.name or ""
+        if utf8.len(nm) and utf8.len(nm) > 9 then nm = nm:sub(1, utf8.offset(nm, 9) - 1) .. "…" end
+        barTxt = (nxt.entry and nxt.entry.isRealName) and ("下一个: No." .. tostring(nxt.rank) .. " " .. nm) or ("下一个: " .. nm)
+        barCol = (nxt.kind == "rival") and C.cyan or C.gold
     else
         barRatio = 1
         local eraTtl = ty.GetEraTitle and ty:GetEraTitle() or nil
-        barTxt = "★ " .. (eraTtl or "No.1 超越马斯克") .. " · " .. Number.FormatCash(ty.lifetimeCash)
+        barTxt = "★ " .. (eraTtl or "世界首富")
         barCol = C.gold
     end
     if sh.rankBarTxt ~= barTxt or sh.rankBarRatio ~= barRatio then

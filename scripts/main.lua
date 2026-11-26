@@ -19,6 +19,16 @@ local SaveManager = require("game/SaveManager")
 local Sfx = require("game/Sfx")
 local Music = require("game/Music")
 local Widgets = require("game/Widgets")
+local RankLadder = require("game/RankLadder")
+
+--- 竖屏适配缩放：按 390 设计宽度铺满手机（横屏/桌面窗口按 760 设计高度），
+--- 取代 UI.Scale.DEFAULT 的“小屏密度自适应”（它会在手机上把整套 UI 再缩小约 26%，文字看不清）
+local function PortraitFitScale()
+    local w = (graphics and graphics.width) or 390
+    local h = (graphics and graphics.height) or 844
+    if w <= 0 or h <= 0 then return 1 end
+    return math.max(0.5, math.min(w / 390, h / 760))
+end
 
 local game = {
     time = 0,
@@ -159,7 +169,9 @@ local function MakeListener()
         if themeChanged and game.tycoon then
             Music.Play("bgm_act" .. math.min(3, game.tycoon.stageTheme))
         end
-        TycoonHud.ShowOvertake(rankDef, info)
+        -- 超越卡片（含技能点×3广告）等超越演出播完再弹，避免两套 UI 抢同一时刻
+        game.pendingOvertake = rankDef
+        game.pendingOvertakeInfo = info
         game.hudDirty = true
     end
     function l:OnUnlockCoin(def)
@@ -493,7 +505,7 @@ function Start()
 
     UI.Init({
         theme = "default-dark",
-        scale = UI.Scale.DEFAULT,
+        scale = PortraitFitScale,
     })
     if UI.Theme and UI.Theme.FontFace then
         game.font = UI.Theme.FontFace("sans", "bold") or "sans"
@@ -558,6 +570,7 @@ function Start()
     SaveManager.StartupSync(function(loadedData)
         if loadedData and loadedData.tycoon and game.tycoon then
             if game.tycoon:ImportState(loadedData.tycoon) then
+                game.ladderSilent = true -- 读档后已越过的阶梯不重播超越演出
                 Music.Play("bgm_act" .. math.min(3, game.tycoon.stageTheme))
                 local offAmt, offSec = game.tycoon:CalcOfflineEarnings(os.time())
                 if offSec >= 30 and offAmt > 0 and not TycoonHud.GetCurModal() then
@@ -645,6 +658,24 @@ function HandleUpdate(eventType, eventData)
     end
     -- 倍率追踪：增益出现时生成“×N”令牌飞向机台倍率招牌
     if ty and fx then fx:TrackMult(ty) end
+
+    -- 超越阶梯追踪：越过富豪榜条目 / 身边人角色时播放超越演出（同帧多跳合并为“连超 N 人”）
+    if ty and fx then
+        local passed = RankLadder.CountPassed(ty.lifetimeCash)
+        if game.ladderIdx == nil or game.ladderSilent or passed < game.ladderIdx then
+            game.ladderIdx = passed
+            game.ladderSilent = false
+        elseif passed > game.ladderIdx then
+            local item = RankLadder.LIST[passed]
+            fx:OnOvertake(item, passed - game.ladderIdx)
+            if item and item.kind == "rival" then Sfx.Play("win", 0.8) end
+            game.ladderIdx = passed
+        end
+        if game.pendingOvertake and not fx:IsOvertakeBusy() then
+            TycoonHud.ShowOvertake(game.pendingOvertake, game.pendingOvertakeInfo)
+            game.pendingOvertake, game.pendingOvertakeInfo = nil, nil
+        end
+    end
 
     -- 自适应画质：持续 3 秒平均低于 45 帧则特效降为低档（粒子减半、去辉光晕圈）
     if fx and fx.quality >= 1 then
