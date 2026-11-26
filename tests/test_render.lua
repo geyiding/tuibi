@@ -15,7 +15,7 @@ NVG_ROUND = 1
 local function noop() end
 for _, fnName in ipairs({
     "nvgSave", "nvgRestore", "nvgBeginPath", "nvgClosePath", "nvgFill", "nvgStroke",
-    "nvgFillColor", "nvgStrokeColor", "nvgFillPaint", "nvgStrokeWidth",
+    "nvgFillColor", "nvgStrokeColor", "nvgFillPaint", "nvgStrokePaint", "nvgStrokeWidth",
     "nvgRect", "nvgRoundedRect", "nvgCircle", "nvgEllipse", "nvgArc",
     "nvgMoveTo", "nvgLineTo", "nvgBezierTo", "nvgQuadTo",
     "nvgTranslate", "nvgRotate", "nvgScale", "nvgIntersectScissor",
@@ -291,20 +291,58 @@ local rt = setmetatable({}, JuiceWidgets.RankTicker)
 rt:Init({ getTycoon = function() return ty3 end, getTime = function() return fx3.time end, fx = fx3 })
 rt.GetAbsoluteLayout = function() return { x = 8, y = 110, w = 168, h = 32 } end
 for f = 1, 40 do fx3:Update(1 / 60); ty3.lifetimeCash = ty3.lifetimeCash * 1.02; rt:Render("nvg_stub") end
-assert(fx3.liveRankTxt:find("第") ~= nil, "实时排名文字必须写入 Fx 供超越演出显示")
+assert(fx3.liveRankTxt:find("第") ~= nil, "实时排名文字必须写入 Fx")
+-- 超越弹窗：六档 × 合并连超 × 技能点赏金按钮 × 弹窗排队 × 自动收起
+local OvertakePopup = require("game/OvertakePopup")
+local blocked = false
+local collected, adAsked = 0, 0
+local pop = setmetatable({}, OvertakePopup)
+pop:Init({ fx = fx3, getTycoon = function() return ty3 end, getTime = function() return fx3.time end,
+    isBlocked = function() return blocked end,
+    onCollect = function() collected = collected + 1 end, onAd = function() adAsked = adAsked + 1 end })
+pop.SetVisible = function(self, v) self.visible_ = v end
+pop.GetAbsoluteLayout = function() return { x = 0, y = 0, w = 390, h = 844 } end
+local function run(sec) for f = 1, math.floor(sec * 60) do fx3:Update(1 / 60); pop:Render("nvg_stub"); fx3:Render("nvg_stub", 390, 844, "sans", false) end end
+-- 分档
+local seen = {}
+for i = 1, RankLadder.COUNT do seen[OvertakePopup.TierOf(RankLadder.LIST[i])] = true end
+for tr = 1, 6 do assert(seen[tr], "六档都必须有条目: T" .. tr) end
+assert(OvertakePopup.TierOf(RankLadder.LIST[RankLadder.COUNT]) == 6, "No.1 = 巅峰档")
+-- T1 自动收起
 local idx = RankLadder.CountPassed(ty3.lifetimeCash)
-fx3:OnOvertake(RankLadder.LIST[idx], 1)
-assert(fx3:IsOvertakeBusy())
-for f = 1, 40 do fx3:Update(1 / 60); fx3:Render("nvg_stub", 390, 844, "sans", false); rt:Render("nvg_stub") end
-fx3:OnOvertake(RankLadder.LIST[idx + 1], 3)                -- 演出中再超越 -> 合并为连超
-fx3.modalOpen = true; local ageBefore = fx3.ot.age; fx3:Update(0.5)
-assert(fx3.ot.age == ageBefore, "弹窗打开时超越演出必须暂停")
-fx3.modalOpen = false
-for f = 1, 400 do fx3:Update(1 / 60); fx3:Render("nvg_stub", 390, 844, "sans", false) end
-assert(not fx3:IsOvertakeBusy(), "超越演出（含合并的连超）必须在有限时间内播完")
-for _, it in ipairs({ RankLadder.LIST[1], RankLadder.LIST[25], RankLadder.LIST[RankLadder.COUNT] }) do
-    fx3:OnOvertake(it, 2)
-    for f = 1, 160 do fx3:Update(1 / 60); fx3:Render("nvg_stub", 360, 667, "sans", false) end
+pop:Trigger(RankLadder.LIST[1], 1, 0)
+assert(pop:IsOpen())
+run(0.6)
+pop:Trigger(RankLadder.LIST[2], 2, 0)                 -- 演出中再超越 -> 连超 3 人
+assert(pop.count_ == 3, "连超必须累加")
+run(3.5)
+assert(not pop:IsOpen(), "无赏金低档弹窗必须自动收起")
+-- 带赏金：不自动收起，按钮可点
+pop:Trigger(RankLadder.LIST[RankLadder.COUNT - 5], 1, 6)
+run(1.0)
+assert(pop:IsOpen() and #pop.btns_ >= 2 and pop.btns_[2].w > 0, "带赏金必须显示 收下 / ×3 两个按钮")
+local b2 = pop.btns_[2]
+pop:HandleTap(b2.x + 5, b2.y + 5)
+assert(adAsked == 1, "×3 按钮必须触发广告回调")
+local b1 = pop.btns_[1]
+pop:HandleTap(b1.x + 5, b1.y + 5)
+run(0.4)
+assert(collected >= 1 and not pop:IsOpen(), "收下后必须关闭")
+-- 弹窗被其它界面挡住时排队，解除后再弹
+blocked = true
+pop:Trigger(RankLadder.LIST[RankLadder.COUNT], 1, 10)
+run(0.3)
+assert(not pop.on_ and pop.pending_ ~= nil, "有其它弹窗时必须排队")
+blocked = false
+run(0.5)
+assert(pop.on_ and pop.tier_ == 6, "排队的巅峰弹窗必须在解除后弹出")
+run(3.0)
+-- 各档完整渲染（含小屏）
+for _, i in ipairs({ 1, 20, 40, 56, 70, RankLadder.COUNT - 3 }) do
+    pop:Dismiss(); run(0.3)
+    pop:Trigger(RankLadder.LIST[i], 1, (i > 56) and 3 or 0)
+    pop.GetAbsoluteLayout = function() return { x = 0, y = 0, w = 360, h = 667 } end
+    run(1.2)
 end
 
 print("[test_render] ALL PASS! ranks_drawn=" .. tostring(#Config.RANKS) .. " coins_drawn=" .. tostring(#Config.COIN_TIERS))

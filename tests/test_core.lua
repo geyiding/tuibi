@@ -42,7 +42,7 @@ assert(Number.FormatMul(1.5) == "1.5")
 assert(Number.ScoreTier(1500, 100) == 4)
 assert(Number.ScoreTier(5000, 100) == 5)
 
--- 2. 真实世界排名系统（60亿起点 -> 22匿名档 -> 63位前1000真名榜）& 配置完整性
+-- 2. 真实世界排名系统（80亿起点 -> 22匿名档 -> 63位前1000真名榜）& 配置完整性
 assert(#Config.RANKS == Billionaires.ANON_COUNT + Billionaires.TOP1000_COUNT, "排行榜总档位应为 22+63=85")
 assert(Config.RANKS[1].rank == 5000000000 and Config.RANKS[1].target == 500 and Config.RANKS[1].isRealName == false)
 assert(Config.RANKS[#Config.RANKS].rank == 1 and Config.RANKS[#Config.RANKS].name == "马斯克" and Config.RANKS[#Config.RANKS].target >= 5e12)
@@ -66,7 +66,7 @@ for idx = 1, #Config.RANKS do
     end
 end
 -- 实时排名曲线校验
-assert(Billionaires.CalcWorldRank(0) == 6000000000)
+assert(Billionaires.CalcWorldRank(0) == 8000000000)
 assert(Billionaires.CalcWorldRank(7200000) == 58000000)
 assert(Billionaires.CalcWorldRank(2.2e10) == 1001 and not Billionaires.IsInTop1000(2.2e10))
 assert(Billionaires.CalcWorldRank(2.45e10) == 990 and Billionaires.IsInTop1000(2.45e10))
@@ -114,7 +114,7 @@ local listener = {
 
 local ty = Tycoon.New(listener, { seed = 20261126 })
 assert(Machine3D.Init(ty) == false and Machine3D.IsActive() == false, "无头单测下 Machine3D.Init 应安全降级")
-assert(ty.rankIdx == 0 and ty:GetWorldRank() == 6000000000 and not ty:IsInTop1000(), "初始应为全球第60亿名且未入前1000")
+assert(ty.rankIdx == 0 and ty:GetWorldRank() == 8000000000 and not ty:IsInTop1000(), "初始应为全球第80亿名且未入前1000")
 local initCoins = ty:GetUnlockedCoins()
 assert(#initCoins == 1 and initCoins[1] == "gold", "开局只应解锁标准金币 gold")
 
@@ -125,7 +125,7 @@ end
 assert(ty.shotsFired >= 30, "自动发射器应持续出币")
 assert(ty.totalDrops > 0, "自动推移必须形成有效前沿掉落")
 assert(ty.cash > 0 and ty.lifetimeCash > 0, "纯挂机必有持续现金入账")
-assert(ty:GetWorldRank() < 6000000000, "纯挂机赚钱后世界排名必须实打实上升")
+assert(ty:GetWorldRank() < 8000000000, "纯挂机赚钱后世界排名必须实打实上升")
 assert(ty.combo < 200, "钉阵碰撞不得造成连击异常暴走: " .. tostring(ty.combo))
 assert(ty:GetDisplayCPS() > 0, "每秒产出展示值必须 > 0")
 

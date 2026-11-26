@@ -47,7 +47,7 @@ function Tycoon.New(fxListener, opts)
     self.era = 0
     self.prestigeShares = 0
     self.totalPrestiges = 0
-    self.rankIdx = 0      -- 0 = 第60亿名起点，依次冲破 22 档匿名阶层 -> 世界前 1000 真名榜
+    self.rankIdx = 0      -- 0 = 第80亿名起点，依次冲破 22 档匿名阶层 -> 世界前 1000 真名榜
     self.stageTheme = 1
 
     -- 街机三连老虎机（过中奖门 9 秒限流转奖，稀缺爆发 1.5x~100x）
@@ -354,10 +354,10 @@ function Tycoon:ResetPhysics(clearCoins)
 end
 
 -- ----------------------------------------------------------------------------
--- 全球真实财富排名 & 技能点双轨成长（第60亿名起点 -> 全球前1000强真名榜）
+-- 全球真实财富排名 & 技能点双轨成长（第80亿名起点 -> 全球前1000强真名榜）
 -- ----------------------------------------------------------------------------
 local STARTER_RANK = {
-    id = 0, rank = Billionaires.START_RANK, name = "全球起步", title = "第 60 亿名起点",
+    id = 0, rank = Billionaires.START_RANK, name = "全球起步", title = "第 80 亿名起点",
     target = 0, theme = 1, spBounty = 0, bounty = 0, bonus = 0, isRealName = false,
 }
 

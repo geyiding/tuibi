@@ -11,6 +11,7 @@ local Widgets = require("game/Widgets")
 local Number = require("game/Number")
 local JuiceWidgets = require("game/JuiceWidgets")
 local RankLadder = require("game/RankLadder")
+local OvertakePopup = require("game/OvertakePopup")
 
 local C, U = Skin.C, Skin.UI
 local NeoFrame, NeoButton, NeoIcon, NeoBar, AvatarIcon =
@@ -31,7 +32,7 @@ local st = {
     techSel = 1,
     talentSel = 1,
     welfareSel = 1,
-    rankPage = ceil(#Config.RANKS / 5),
+    rankPage = 24,
     -- 弹窗瞬态上下文
     offlineAmt = 0,
     offlineSec = 0,
@@ -603,12 +604,14 @@ local function BuildWelfareModal(cb)
 end
 
 -- ----------------------------------------------------------------------------
--- 7. 全球财富排行榜弹窗（60亿名 -> 前1000强真实福布斯富豪榜，前1000才显示真名与真实身价）
+-- 7. 全球财富排行榜弹窗（80亿名 -> 前1000强真实福布斯富豪榜，前1000才显示真名与真实身价）
 -- ----------------------------------------------------------------------------
+-- 财富榜 = 超越阶梯（富豪榜 85 档 + 身边人 34 位），第 1 页为世界首富，末页为起步
 local function CalcRankLocatePage(ty)
-    local totalPages = max(1, ceil(#Config.RANKS / 5))
-    local targetIdx = max(1, min(#Config.RANKS, (ty and ty.rankIdx or 0) + 1))
-    local displayPos = (#Config.RANKS + 1) - targetIdx
+    local N = RankLadder.COUNT
+    local totalPages = max(1, ceil(N / 5))
+    local targetIdx = max(1, min(N, RankLadder.CountPassed(ty and ty.lifetimeCash or 0) + 1))
+    local displayPos = (N + 1) - targetIdx
     return max(1, min(totalPages, ceil(displayPos / 5)))
 end
 
@@ -617,7 +620,7 @@ local function BuildRanksModal()
     local header = UI.Row {
         width = "100%", height = 38, alignItems = "center", gap = 8,
         children = {
-            UI.Label { text = "全球财富榜 · 前1000真名", fontSize = 17, fontWeight = "bold", fontColor = U.gold },
+            UI.Label { text = "全球财富榜 · 超越之路", fontSize = 17, fontWeight = "bold", fontColor = U.gold },
             UI.Spacer(), MakeCloseBtn(function() TycoonHud.CloseModal() end),
         },
     }
@@ -670,7 +673,7 @@ local function BuildRanksModal()
                 onClick = function() st.rankPage = 1; TycoonHud.RefreshRanks() end },
             NeoButton { text = "下页", variant = "dark", minHeight = 34, flexGrow = 1, flexBasis = 0, fontSize = 12,
                 onClick = function()
-                    local totalPages = max(1, ceil(#Config.RANKS / 5))
+                    local totalPages = max(1, ceil(RankLadder.COUNT / 5))
                     st.rankPage = min(totalPages, st.rankPage + 1)
                     TycoonHud.RefreshRanks()
                 end },
@@ -862,6 +865,17 @@ function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal, juice)
     if cloudFailModal then st.modals.cloudFail = cloudFailModal end
 
     local children = { mainPage }
+    -- 世界排名超越弹窗（在主界面之上、其它弹窗之下；有弹窗打开时排队）
+    if juice and juice.fx then
+        st.overtakePopup = OvertakePopup {
+            fx = juice.fx, font = juice.font, getTime = juice.getTime,
+            getTycoon = function() return st.lastTycoon end,
+            isBlocked = function() return st.curModal ~= nil end,
+            onCollect = function() if st.cb.OnOvertakeCollect then st.cb.OnOvertakeCollect() end end,
+            onAd = function(sp) if st.cb.OnClaimOvertakeAd then st.cb.OnClaimOvertakeAd(sp) end end,
+        }
+        children[#children + 1] = st.overtakePopup
+    end
     for _, m in pairs(st.modals) do
         m:SetVisible(false)
         children[#children + 1] = m
@@ -1011,7 +1025,17 @@ function TycoonHud.ShowOvertake(rankDef, info)
     SetCellVis(r.overtakeWrap, true)
 end
 
+--- 触发超越弹窗（item = RankLadder 条目，count = 一次越过人数，sp = 技能点赏金）
+function TycoonHud.TriggerOvertake(item, count, sp)
+    if st.overtakePopup then st.overtakePopup:Trigger(item, count, sp) end
+end
+
+function TycoonHud.IsOvertakeOpen()
+    return st.overtakePopup ~= nil and st.overtakePopup:IsOpen()
+end
+
 function TycoonHud.DismissOvertake()
+    if st.overtakePopup then st.overtakePopup:Dismiss() end
     st.overtakeOpen = false
     st.overtakeLeft = 0
     SetCellVis(st.refs.overtakeWrap, false)
@@ -1299,31 +1323,34 @@ function TycoonHud.RefreshRanks()
     local ty = st.lastTycoon
     if not ty then return end
     local r = st.refs
-    local totalPages = max(1, ceil(#Config.RANKS / 5))
+    local N = RankLadder.COUNT
+    local totalPages = max(1, ceil(N / 5))
     st.rankPage = max(1, min(totalPages, st.rankPage or totalPages))
     SetLbl(r.rankPageLbl, st.rankPage .. "/" .. totalPages)
     local myWorldRank = ty:GetWorldRank()
+    local passed = RankLadder.CountPassed(ty.lifetimeCash)
     for i = 1, 5 do
-        local displayPos = (st.rankPage - 1) * 5 + i -- 第1页: No.1 马斯克领衔; 末页: 全球匿名起步阶层
-        local idx = (#Config.RANKS + 1) - displayPos
-        local rk = (idx >= 1 and idx <= #Config.RANKS) and Config.RANKS[idx] or nil
+        local displayPos = (st.rankPage - 1) * 5 + i -- 第1页: No.1 马斯克领衔; 末页: 零花钱小学生起步
+        local idx = (N + 1) - displayPos
+        local it = (idx >= 1 and idx <= N) and RankLadder.LIST[idx] or nil
         local slot = r.rankCells[i]
-        if rk then
+        if it then
+            local rk = it.entry
             SetCellVis(slot.cell, true)
-            local unlocked = (ty.rankIdx >= idx)
-            local isNextTarget = (idx == ty.rankIdx + 1)
-            local isCurrent = (idx == ty.rankIdx)
+            local unlocked = (passed >= idx)
+            local isNextTarget = (idx == passed + 1)
+            local isCurrent = (idx == passed)
             slot.av:SetEntry(rk, isCurrent and (rk.isRealName == true), unlocked)
-            SetLbl(slot.no, rk.isRealName and ("No." .. tostring(rk.rank)) or ("前" .. Number.FormatWorldRank(rk.rank)))
-            SetLblCol(slot.no, (rk.rank <= 10) and U.gold or (rk.isRealName and U.cyan or U.textDim))
-            SetLbl(slot.nm, rk.name)
+            SetLbl(slot.no, rk.isRealName and ("No." .. tostring(it.rank)) or ("第" .. RankLadder.FormatRankShort(it.rank)))
+            SetLblCol(slot.no, (it.rank <= 10) and U.gold or (rk.isRealName and U.cyan or ((it.kind == "rival") and U.green or U.textDim)))
+            SetLbl(slot.nm, it.name)
             SetLbl(slot.ttl, rk.title or "")
-            SetLbl(slot.tg, Number.FormatCash(rk.target))
-            local statusStr = isCurrent and "★ 当前" or (unlocked and (rk.isRealName and "已超越" or "已突破") or (isNextTarget and "下一目标!" or "追赶中"))
+            SetLbl(slot.tg, Number.FormatCash(it.target))
+            local statusStr = isCurrent and "★ 刚超越" or (unlocked and "已超越" or (isNextTarget and "下一目标!" or "追赶中"))
             local statusCol = isCurrent and U.gold or (unlocked and U.green or (isNextTarget and U.magenta or U.muted))
             SetLbl(slot.stLbl, statusStr)
             SetLblCol(slot.stLbl, statusCol)
-            slot.cell.skin_.rarity = (rk.rank <= 10) and "legendary" or (rk.isRealName and "epic" or "common")
+            slot.cell.skin_.rarity = (it.rank <= 10) and "legendary" or (rk.isRealName and "epic" or ((it.kind == "rival") and "rare" or "common"))
             slot.cell.skin_.selected = isCurrent or isNextTarget
             SetCellOp(slot.cell, unlocked and 1.0 or (isNextTarget and 0.92 or 0.65))
         else

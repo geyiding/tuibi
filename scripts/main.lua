@@ -20,6 +20,7 @@ local Sfx = require("game/Sfx")
 local Music = require("game/Music")
 local Widgets = require("game/Widgets")
 local RankLadder = require("game/RankLadder")
+local OvertakePopup = require("game/OvertakePopup")
 
 --- 竖屏适配缩放：按 390 设计宽度铺满手机（横屏/桌面窗口按 760 设计高度），
 --- 取代 UI.Scale.DEFAULT 的“小屏密度自适应”（它会在手机上把整套 UI 再缩小约 26%，文字看不清）
@@ -169,9 +170,8 @@ local function MakeListener()
         if themeChanged and game.tycoon then
             Music.Play("bgm_act" .. math.min(3, game.tycoon.stageTheme))
         end
-        -- 超越卡片（含技能点×3广告）等超越演出播完再弹，避免两套 UI 抢同一时刻
-        game.pendingOvertake = rankDef
-        game.pendingOvertakeInfo = info
+        -- 富豪榜条目的技能点赏金并入同帧的超越弹窗（收下 / ×3 看广告）
+        game.pendingBounty = (game.pendingBounty or 0) + ((info and (info.spBounty or info.bounty)) or 0)
         game.hudDirty = true
     end
     function l:OnUnlockCoin(def)
@@ -410,6 +410,9 @@ local callbacks = {
             TycoonHud.RefreshMain(game.tycoon)
         end
     end,
+    OnOvertakeCollect = function()
+        Sfx.Play("coin")
+    end,
     OnClaimOvertakeAd = function(spBounty)
         if not game.tycoon then return end
         local bAmt = math.max(1, math.floor(spBounty or 2))
@@ -571,6 +574,7 @@ function Start()
         if loadedData and loadedData.tycoon and game.tycoon then
             if game.tycoon:ImportState(loadedData.tycoon) then
                 game.ladderSilent = true -- 读档后已越过的阶梯不重播超越演出
+                game.pendingBounty = 0
                 Music.Play("bgm_act" .. math.min(3, game.tycoon.stageTheme))
                 local offAmt, offSec = game.tycoon:CalcOfflineEarnings(os.time())
                 if offSec >= 30 and offAmt > 0 and not TycoonHud.GetCurModal() then
@@ -667,13 +671,15 @@ function HandleUpdate(eventType, eventData)
             game.ladderSilent = false
         elseif passed > game.ladderIdx then
             local item = RankLadder.LIST[passed]
-            fx:OnOvertake(item, passed - game.ladderIdx)
-            if item and item.kind == "rival" then Sfx.Play("win", 0.8) end
+            TycoonHud.TriggerOvertake(item, passed - game.ladderIdx, game.pendingBounty or 0)
+            game.pendingBounty = 0
+            -- 超越音效随档位升级：身边人 win，真名富豪起 jackpot（富豪榜条目的 win 已在 OnRankUp 播放）
+            local tier = OvertakePopup.TierOf(item)
+            if tier >= 4 then Sfx.Play("jackpot", 1.0)
+            elseif item and item.kind == "rival" then Sfx.Play("win", 0.8) end
             game.ladderIdx = passed
-        end
-        if game.pendingOvertake and not fx:IsOvertakeBusy() then
-            TycoonHud.ShowOvertake(game.pendingOvertake, game.pendingOvertakeInfo)
-            game.pendingOvertake, game.pendingOvertakeInfo = nil, nil
+        elseif (game.pendingBounty or 0) > 0 then
+            game.pendingBounty = 0
         end
     end
 
