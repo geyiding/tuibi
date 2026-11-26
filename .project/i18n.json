@@ -1,0 +1,9 @@
+{
+  "$schema": "../schemas/i18n.schema.json",
+  "enabled": false,
+  "source_lang": "zh_CN",
+  "target_langs": ["en"],
+  "file_exts": [".lua", ".json", ".xml"],
+  "ignore_files": [],
+  "translations_dir": "../i18n"
+}

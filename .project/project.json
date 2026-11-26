@@ -1,0 +1,28 @@
+{
+  "$schema": "../schemas/project.schema.json",
+  "project_id": "p_b1a36aba",
+  "name": "推币机的狂欢",
+  "entry": "main.lua",
+  "version": "1.0.0",
+  "author": {
+    "name": "晴天小猪",
+    "id": "675344608"
+  },
+  "description": {
+    "short": "推币机主题肉鸽游戏：摆动投币碰撞钉阵，满屏数字狂欢爆金。",
+    "long": "结合街机推币机物理挤压与肉鸽数字膨胀的手机竖屏独立游戏。"
+  },
+  "taptap_publish": {
+    "title": "推币机的狂欢",
+    "description": "街机推币机与肉鸽构筑结合的竖屏爽感小游戏。",
+    "category": "arcade",
+    "screen_orientation": "portrait",
+    "collection_type": "sce",
+    "app_platforms": "1,2"
+  },
+  "assets": {
+    "icon": "",
+    "screenshots": [],
+    "promotional_image": ""
+  }
+}
