@@ -776,7 +776,8 @@ function Fx:TrackMult(ty)
         self:Token(self.ancFeverX, self.ancFeverY, "狂欢 ×2.2", MAGENTA)
     end
     if luck > self.mtLuck + 0.01 then
-        self:Token(self.ancSlotX, self.ancSlotY, "三连 ×" .. Number.FormatMul(luck), (luck >= 25) and GOLD or CYAN)
+        local luckTag = (luck < 1.99) and "对子 ×" or "三连 ×"
+        self:Token(self.ancSlotX, self.ancSlotY, luckTag .. Number.FormatMul(luck), (luck >= 25) and GOLD or CYAN)
     end
     if ad and not self.mtAd then
         self:Token(self.ancAdX, self.ancAdY, "印钞 ×3", GREEN)

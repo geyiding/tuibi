@@ -167,7 +167,18 @@ ty.feverCd = 18.4
 ty.luckMult = 1.5
 ty.luckTimer = 6.2
 ty.luckDur = 8.0
+ty.slotSpinning = false
+ty.slotGrid = { 2, 6, 6, 5, 5, 3, 5, 3, 2 }
+ty.slotReels = { 5, 5, 6 }
+ty.slotWinLine = 5
+ty.jpPool = 2.26e5
+ty.jpRefCps = 1.42e4
+stg.jp_.shownPool = 0
 stg:Render("nvg_stub")
+assert(stg.jp_.shownPool >= ty:GetJpTierAmount("major") and stg.jp_.shownPool >= ty:GetJpTierAmount("grand") * 0.99,
+    "GRAND 奖池显示必须走 150s 保底，绝不能小于 MAJOR: shown=" .. tostring(stg.jp_.shownPool))
+assert(stg.chipTxt_[3] == "对子×1.5", "对子小奖芯片应显示 对子×1.5: " .. tostring(stg.chipTxt_[3]))
+assert(stg.luckTxt_:sub(1, #"对子") == "对子", "对子小奖光条应显示 对子 ×1.5: " .. tostring(stg.luckTxt_))
 
 -- (e) JP 宝藏舱：九宫格听牌转动 / 中奖线 / 宝箱 / JP CHANCE 开场 / 跑灯 / NEXT 定格 / 倾泻巨额数字
 ty.jpPool = 3.21e9

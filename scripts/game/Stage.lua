@@ -625,7 +625,8 @@ function Stage:DrawMultSign(nvg, run, fx, cx, cy, u, t, dt, font)
                 local kk = (v < 100) and floor(v * 10 + 0.5) or floor(v + 0.5) * 100
                 if kk ~= self.chipKey_[i] then
                     self.chipKey_[i] = kk
-                    self.chipTxt_[i] = CHIP_HEAD[i] .. "×" .. Number.FormatMul(v)
+                    local head = (i == 3 and v < 1.99) and "对子" or CHIP_HEAD[i]
+                    self.chipTxt_[i] = head .. "×" .. Number.FormatMul(v)
                 end
                 totalW = totalW + EstTextW(self.chipTxt_[i], fsC) + padC + gapC
             end
@@ -679,7 +680,7 @@ function Stage:DrawMultSign(nvg, run, fx, cx, cy, u, t, dt, font)
 end
 
 -- ----------------------------------------------------------------------------
--- 幸运倍率 / 奇遇倍率倒计时光条（九宫格老虎机本体已移到机台下方的 JP 宝藏舱）
+-- 幸运倍率 / 奇遇倍率倒计时光条（九宫格幸运盘本体已移到机台下方的 JP 宝藏舱）
 -- ----------------------------------------------------------------------------
 function Stage:DrawLuckBars(nvg, run, cx, cy, u, t, font)
     local luckMult = run.luckMult or 1
@@ -714,7 +715,8 @@ function Stage:DrawLuckBars(nvg, run, cx, cy, u, t, font)
         local lk = floor(luckMult * 10 + 0.5) * 1000 + math.ceil(run.luckTimer)
         if lk ~= self.luckKey_ then
             self.luckKey_ = lk
-            self.luckTxt_ = "幸运 ×" .. Number.FormatMul(luckMult) .. " · " .. tostring(max(1, math.ceil(run.luckTimer))) .. "s"
+            local luckTag = (luckMult < 1.99) and "对子 ×" or "幸运 ×"
+            self.luckTxt_ = luckTag .. Number.FormatMul(luckMult) .. " · " .. tostring(max(1, math.ceil(run.luckTimer))) .. "s"
         end
         nvgFontSize(nvg, 12 * u)
         OutlinedText(nvg, px + pw * 0.5, py + ph * 0.5 + 0.5, self.luckTxt_, C.white, 255, 1.2)
@@ -1220,7 +1222,7 @@ function Stage:Render(nvg)
     self:DrawComboBadge(nvg, run, fx, comboX, comboY, u, t, g.font)
     self:DrawLuckBars(nvg, run, mqX, reelY, u, t, g.font)
     self:DrawMultSign(nvg, run, fx, mqX, signY, u, t, dt, g.font)
-    -- JP 宝藏舱：前沿下方空带（九宫格老虎机 + JP 奖池 + JP 灯）
+    -- JP 宝藏舱：前沿下方空带（九宫格幸运盘 + JP 奖池 + JP 灯）
     local slotAX, slotAY = JackpotPanel.Draw(self.jp_, nvg, run, l, dkBLy + 14 * u, u, t, dt, g.font, DrawSlotSymbol)
     JackpotPanel.DrawOverlay(self.jp_, nvg, run, l, u, t, dt, g.font)
 
