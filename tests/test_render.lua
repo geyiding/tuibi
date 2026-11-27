@@ -200,6 +200,22 @@ for k = 1, 8 do ty.jpT = k * 0.45; stg:Render("nvg_stub") end
 ty.jpPhase = nil
 stg:Render("nvg_stub")
 for sym = 1, #Config.SLOT_SYMBOLS do Stage.DrawSlotSymbol("nvg_stub", sym, 50, 50, 12, "sans") end
+-- 成品贴图路径（slot/ 与 jp/ 贴图存在时走 Art.DrawSprite）
+local savedSprites = {}
+for _, k in ipairs({ "slot_sym_1", "slot_sym_2", "slot_sym_3", "slot_sym_4", "slot_sym_5", "slot_sym_6", "slot_sym_7",
+    "slot_cell", "slot_center", "jp_tile_mini", "jp_tile_major", "jp_tile_grand", "jp_tile_next" }) do
+    savedSprites[k] = Skin.SPRITES[k]
+    Skin.SPRITES[k] = Skin.AUTO_SPRITES[k]
+end
+_G.nvgCreateImage = function() return 1 end
+ty.slotGrid = { 7, 2, 3, 5, 5, 5, 1, 7, 6 }
+ty.slotWinLine = 1
+stg:Render("nvg_stub")
+ty:StartJpChance("lamps"); ty:BeginJpSpin(); ty.jpT = 1.0
+stg:Render("nvg_stub")
+ty.jpPhase = nil
+for k, v in pairs(savedSprites) do Skin.SPRITES[k] = v end
+_G.nvgCreateImage = function() return 0 end
 
 -- 4. Fx 全回调与 2D / 3D 投射渲染路径校验
 fx:OnPegHit({ x = 180, y = 120 }, { x = 180, y = 120, kind = "mult" })

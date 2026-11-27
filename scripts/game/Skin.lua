@@ -28,6 +28,21 @@ Skin.AUTO_SPRITES = {
     boss_gatekeeper = IMG_PREFIX .. "boss/boss_gatekeeper.png",
     boss_furnace    = IMG_PREFIX .. "boss/boss_furnace.png",
     boss_vaultbeast = IMG_PREFIX .. "boss/boss_vaultbeast.png",
+    -- 九宫格老虎机符号（1 金币 / 2 四叶草 / 3 闪电 / 4 红宝石 / 5 皇冠 / 6 星钻 / 7 JP 宝箱）+ 格子底板
+    slot_sym_1      = IMG_PREFIX .. "slot/sym_1.png",
+    slot_sym_2      = IMG_PREFIX .. "slot/sym_2.png",
+    slot_sym_3      = IMG_PREFIX .. "slot/sym_3.png",
+    slot_sym_4      = IMG_PREFIX .. "slot/sym_4.png",
+    slot_sym_5      = IMG_PREFIX .. "slot/sym_5.png",
+    slot_sym_6      = IMG_PREFIX .. "slot/sym_6.png",
+    slot_sym_7      = IMG_PREFIX .. "slot/sym_7.png",
+    slot_cell       = IMG_PREFIX .. "slot/cell.png",
+    slot_center     = IMG_PREFIX .. "slot/cell_center.png",
+    -- JP CHANCE 跑灯抽奖格
+    jp_tile_mini    = IMG_PREFIX .. "jp/tile_mini.png",
+    jp_tile_major   = IMG_PREFIX .. "jp/tile_major.png",
+    jp_tile_grand   = IMG_PREFIX .. "jp/tile_grand.png",
+    jp_tile_next    = IMG_PREFIX .. "jp/tile_next.png",
 }
 
 local UI_SLICES = {

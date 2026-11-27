@@ -10,6 +10,7 @@ local Config = require("game/Config")
 local Skin = require("game/Skin")
 local Fx = require("game/Fx")
 local Number = require("game/Number")
+local Art = require("game/Art")
 
 local C = Skin.C
 local Col = Skin.Col
@@ -56,6 +57,9 @@ local function Money(v)
     return "¥" .. Number.FormatCompact(max(0, v or 0))
 end
 
+local TILE_SPRITE = { mini = "jp_tile_mini", major = "jp_tile_major", grand = "jp_tile_grand", next = "jp_tile_next" }
+local function HasSprite(key) return Skin.SPRITES[key] ~= nil end
+
 -- JP 宝箱符号（九宫格第 7 号符号）
 function JackpotPanel.DrawChest(nvg, cx, cy, r, glow)
     local w, h = r * 1.55, r * 1.15
@@ -67,6 +71,10 @@ function JackpotPanel.DrawChest(nvg, cx, cy, r, glow)
         nvgFillPaint(nvg, nvgRadialGradient(nvg, cx, cy, r * 0.3, r * 1.6, Col(C.gold, floor(150 * glow)), Col(C.gold, 0)))
         nvgFill(nvg)
         SetAdditive(nvg, false)
+    end
+    if HasSprite("slot_sym_7") then
+        local s = r * 2.3
+        if Art.DrawSprite(nvg, "slot_sym_7", cx - s * 0.5, cy - s * 0.5, s, s, 1.0) then return end
     end
     -- 箱体
     nvgBeginPath(nvg)
@@ -101,6 +109,17 @@ local function CellRect(gx, gy, cell, gap, idx)
 end
 
 local function DrawCellBg(nvg, x, y, s, lit, litCol)
+    if HasSprite("slot_cell") and Art.DrawSprite(nvg, "slot_cell", x, y, s, s, 1.0) then
+        if lit then
+            SetAdditive(nvg, true)
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, x, y, s, s, s * 0.16)
+            nvgFillColor(nvg, Col(litCol or C.gold, 140))
+            nvgFill(nvg)
+            SetAdditive(nvg, false)
+        end
+        return
+    end
     nvgBeginPath(nvg)
     nvgRoundedRect(nvg, x, y, s, s, s * 0.16)
     if lit then
@@ -234,25 +253,36 @@ local function DrawLotteryBoard(st, nvg, run, gx, gy, cell, gap, u, t, font)
         else
             isLit = (i == lit) and (not resultOn or blink or ph == "release")
         end
-        DrawCellBg(nvg, x, y, cell, isLit, tier.col)
+        local tileKey = TILE_SPRITE[tierId]
+        local useTile = tileKey and HasSprite(tileKey) and Art.DrawSprite(nvg, tileKey, x, y, cell, cell, 1.0)
+        if not useTile then DrawCellBg(nvg, x, y, cell, isLit, tier.col) end
         if not isLit then
             nvgBeginPath(nvg)
             nvgRoundedRect(nvg, x, y, cell, cell, cell * 0.16)
-            nvgFillColor(nvg, Col(INK, 150))
+            nvgFillColor(nvg, Col(INK, useTile and 165 or 150))
             nvgFill(nvg)
+        elseif useTile then
+            SetAdditive(nvg, true)
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, x, y, cell, cell, cell * 0.16)
+            nvgFillColor(nvg, Col(C.white, 70))
+            nvgFill(nvg)
+            SetAdditive(nvg, false)
         end
-        nvgFontSize(nvg, cell * ((tierId == "next") and 0.30 or 0.27))
-        nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-        local label = (tierId == "next") and "NEXT" or string.upper(tierId)
-        if isLit then
-            OutlinedText(nvg, x + cell * 0.5, y + cell * 0.40, label, INK, 255, 1.2, C.white)
-        else
-            OutlinedText(nvg, x + cell * 0.5, y + cell * 0.40, label, tier.col, 255, 1.2)
+        if not useTile then
+            nvgFontSize(nvg, cell * ((tierId == "next") and 0.30 or 0.27))
+            nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            local label = (tierId == "next") and "NEXT" or string.upper(tierId)
+            if isLit then
+                OutlinedText(nvg, x + cell * 0.5, y + cell * 0.40, label, INK, 255, 1.2, C.white)
+            else
+                OutlinedText(nvg, x + cell * 0.5, y + cell * 0.40, label, tier.col, 255, 1.2)
+            end
+            nvgFontSize(nvg, cell * 0.20)
+            local sub = (tierId == "next") and "倍数+1" or "JP"
+            nvgFillColor(nvg, Col(isLit and INK or C.white, 230))
+            nvgText(nvg, x + cell * 0.5, y + cell * 0.72, sub)
         end
-        nvgFontSize(nvg, cell * 0.20)
-        local sub = (tierId == "next") and "倍数+1" or "JP"
-        nvgFillColor(nvg, Col(isLit and INK or C.white, 230))
-        nvgText(nvg, x + cell * 0.5, y + cell * 0.72, sub)
         if isLit and ph ~= "intro" then
             SetAdditive(nvg, true)
             nvgBeginPath(nvg)
@@ -264,10 +294,14 @@ local function DrawLotteryBoard(st, nvg, run, gx, gy, cell, gap, u, t, font)
     end
     -- 中心格：当前倍数
     local x, y = CellRect(gx, gy, cell, gap, 5)
+    if not (HasSprite("slot_center") and Art.DrawSprite(nvg, "slot_center", x, y, cell, cell, 1.0)) then
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, x, y, cell, cell, cell * 0.16)
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, y, 0, y + cell, Col({ 70, 24, 120 }, 255), Col(INK, 255)))
+        nvgFill(nvg)
+    end
     nvgBeginPath(nvg)
     nvgRoundedRect(nvg, x, y, cell, cell, cell * 0.16)
-    nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, y, 0, y + cell, Col({ 70, 24, 120 }, 255), Col(INK, 255)))
-    nvgFill(nvg)
     nvgStrokeColor(nvg, Col(Rainbow(t * 4), 255))
     nvgStrokeWidth(nvg, 2 * u)
     nvgStroke(nvg)

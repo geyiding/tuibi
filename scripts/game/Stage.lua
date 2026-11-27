@@ -131,7 +131,16 @@ end
 -- ----------------------------------------------------------------------------
 -- 幸运三连符号
 -- ----------------------------------------------------------------------------
+local SYM_SPRITE = {}
+for i = 1, #Config.SLOT_SYMBOLS do SYM_SPRITE[i] = "slot_sym_" .. tostring(i) end
+
 local function DrawSlotSymbol(nvg, symIdx, cx, cy, r, font)
+    -- 有成品贴图（assets/image/slot/sym_N.png）时优先用贴图
+    local key = SYM_SPRITE[symIdx]
+    if key and Skin.SPRITES[key] then
+        local s = r * 2.3
+        if Art.DrawSprite(nvg, key, cx - s * 0.5, cy - s * 0.5, s, s, 1.0) then return end
+    end
     local syms = Config.SLOT_SYMBOLS
     local cfg = syms and syms[symIdx]
     local col = (cfg and cfg.col) or C.gold
