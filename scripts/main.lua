@@ -370,6 +370,18 @@ local callbacks = {
         if not game.tycoon then return end
         if not MockAd.IsReady(game.tycoon, placementId) then
             Sfx.Play("click")
+            local cd = math.ceil(game.tycoon:GetAdCooldown(placementId))
+            local boostLeft = (placementId == "boost_3x") and math.ceil(game.tycoon.adBoostLeft or 0) or 0
+            local msg = (boostLeft > 0)
+                and ("×3印钞生效中，剩余 " .. Number.FormatClock(boostLeft))
+                or ("冷却中，还需 " .. Number.FormatClock(cd))
+            if game.fx then
+                game.fx:UiPop((game.fx.screenW or 360) * 0.5, (game.fx.screenH or 667) * 0.24, msg, Skin.C.cyan, 16)
+            end
+            TycoonHud.RefreshMain(game.tycoon)
+            if TycoonHud.GetCurModal() then
+                TycoonHud.RefreshCurrentModal()
+            end
             return
         end
         Sfx.Play("click")
@@ -379,6 +391,9 @@ local callbacks = {
                 PersistTycoon(false)
                 game.hudDirty = true
                 TycoonHud.RefreshMain(game.tycoon)
+                if TycoonHud.GetCurModal() then
+                    TycoonHud.RefreshCurrentModal()
+                end
             end
         end)
     end,
@@ -469,7 +484,7 @@ local callbacks = {
         if not game.tycoon or not game.tycoon.pendingDice then return end
         Sfx.Play("click")
         MockAd.Show("dice_reroll",
-            "重掷 12 面幸运骰：保底掷出 7~12 点并翻倍至 ×14~×24！（模拟广告）",
+            "看广告翻倍至 ×14~×24 并大幅延长至整整 60 秒！（模拟广告）",
             function()
                 if game.tycoon and game.tycoon.pendingDice then
                     local d = game.tycoon:RollDiceReroll()

@@ -247,15 +247,41 @@ local function spendSmartSP(ty, isAds)
     return did
 end
 
+local function calcExpectedSlotLuck()
+    local ty = Tycoon.New(nil, { seed = 42 })
+    ty.machineLv.gate_master = 5
+    ty.techOwned.clover = true
+    local totalTime, weightedLuck, curMult, curLeft = 0.0, 0.0, 1.0, 0.0
+    for _ = 1, 10000 do
+        local stepDt = 9.5
+        local act = min(stepDt, curLeft)
+        weightedLuck = weightedLuck + act * curMult + (stepDt - act) * 1.0
+        totalTime = totalTime + stepDt
+        curLeft = max(0.0, curLeft - stepDt)
+        if curLeft <= 0 then curMult = 1.0 end
+        local out = ty:RollSlotOutcome()
+        local p = out and out.prize
+        if p and p.mult and p.mult > 1 then
+            if p.mult > curMult or curLeft <= 0 then
+                curMult, curLeft = p.mult, p.dur
+            elseif p.mult == curMult then
+                curLeft = max(curLeft, p.dur)
+            end
+        end
+    end
+    return weightedLuck / totalTime
+end
+
+local expectedSlotLuck = calcExpectedSlotLuck()
+
 local function simulateMacro10Hours(mode, seed)
     local ty = Tycoon.New(nil, { seed = seed })
-    -- 禁用物理实体模拟，在 10 小时宏观模型下使用 Part A 实测物理参数
+    -- 禁用物理实体模拟，在 10 小时宏观模型下使用 Part A 实测物理参数 + 长期期望三连倍率
     local diagRef = (mode == "ads") and diagAgg.click2s or diagAgg[mode]
     local isAds = (mode == "ads")
     local actInterval = (mode == "idle") and 60 or 10
     local fevUptime = diagRef.feverUptime
-    local pooledLuckAvg = (diagAgg.idle.avgLuckMult + diagAgg.click2s.avgLuckMult + diagAgg.hold.avgLuckMult) / 3.0
-    local luckAvg = pooledLuckAvg
+    local luckAvg = expectedSlotLuck
     local manualFrac = (mode == "hold" and 0.68) or ((mode == "click2s" or mode == "ads") and 0.40) or 0.0
 
     local top1000Min, world1Min, all22Min
@@ -282,7 +308,7 @@ local function simulateMacro10Hours(mode, seed)
                 adCds.boost_3x = Config.AD_PLACEMENTS.boost_3x.cooldown
             end
             if adCds.instant_fever <= 0 then
-                ty:AddWealth(ty:GetBaselineCPS() * 14 * 2.2, false)
+                ty:AddWealth(ty:GetBaselineCPS() * 60 * 2.2, false)
                 adCds.instant_fever = Config.AD_PLACEMENTS.instant_fever.cooldown
             end
             if adCds.vault_drop <= 0 then

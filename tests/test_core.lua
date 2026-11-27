@@ -335,6 +335,20 @@ for _, pid in ipairs({ "boost_3x", "instant_fever", "vault_drop", "airdrop_5x" }
 end
 assert(ty.adBoostLeft >= 170 and ty.feverActive)
 
+-- 9.5 ×3印钞机 (boost_3x) 独立冷却周期与冷却完毕二次激活验证
+assert(Config.AD_PLACEMENTS.boost_3x.cooldown == 360, "boost_3x 冷却应调整为 360 秒")
+local tB = Tycoon.New(nil, { seed = 2031 })
+assert(MockAd.IsReady(tB, "boost_3x"), "初始应可直接激活 ×3 印钞")
+assert(tB:ApplyAdReward("boost_3x"))
+assert(math.abs(tB.adBoostLeft - 180) < 1e-4 and math.abs(tB:GetAdCooldown("boost_3x") - 360) < 1e-4)
+assert(not MockAd.IsReady(tB, "boost_3x"), "激活后应立即进入 360 秒冷却")
+for _ = 1, 180 * 25 + 5 do tB:Update(0.04) end -- 180.2 秒后效果结束，仍余 ~179.8 秒冷却
+assert(tB.adBoostLeft == 0, "180 秒后增益时长归 0: " .. tostring(tB.adBoostLeft))
+assert(tB:GetAdCooldown("boost_3x") > 170 and not MockAd.IsReady(tB, "boost_3x"), "效果结束后冷却未归 0 前不可提前触发")
+for _ = 1, 181 * 25 do tB:Update(0.04) end -- 再过 181 秒，360 秒冷却完毕
+assert(tB:GetAdCooldown("boost_3x") == 0 and MockAd.IsReady(tB, "boost_3x"), "360 秒总冷却到期后必须恢复就绪")
+assert(tB:ApplyAdReward("boost_3x") and math.abs(tB.adBoostLeft - 180) < 1e-4, "二次激活 ×3 印钞必须成功")
+
 -- 离线收益 (<30秒不弹窗，>=30秒封顶8小时 + ×2)
 ty.lastActiveAt = 1000
 local a0, e0 = ty:CalcOfflineEarnings(1020)
@@ -477,29 +491,30 @@ local sp0 = tOvt.skillPoints
 local adAdded = tOvt:ClaimOvertakeAdBonus(10)
 assert(adAdded == 20 and tOvt.skillPoints == sp0 + 20, "超越广告 ×3 额外应精确发放 +20 SP")
 
--- 11.8 风投空投 Option A（动态预览 + 免费币 + 广告高阶币雨/金库币/技能点）
+-- 11.8 风投空投 Option A（动态大额奖励 + 4高阶币免费领 + 22层螺旋金库巨塔/60秒×5/25~60技能点）
 local tAir = Tycoon.New(nil, { seed = 2041 })
 tAir.skillPoints = 500
 tAir:BuyCoin("emerald")
 tAir:AddWealth(1e6, false)
 local pv1 = tAir:GetAirdropPreview()
-assert(pv1.freeCash >= 50 and pv1.freeCoins == 2)
-assert(pv1.adCash >= 300 and pv1.adCoins == 10 and pv1.adVaults == 2 and pv1.adSp >= 5 and pv1.adSp <= 20)
+assert(pv1.freeCash >= 300 and pv1.freeCoins == 4)
+assert(pv1.adCash >= 5000 and pv1.adCoins == 20 and pv1.adVaults == 4 and pv1.adSp >= 25 and pv1.adSp <= 60 and pv1.adBuffDur == 60)
 tAir.activeAirdrop = { eventId = "vault_crack" }
 local cPreFree = tAir.cash
 local cntPreFree = #tAir.physics.activeIds
 tAir:ClaimAirdrop(false)
 assert(tAir.activeAirdrop == nil and tAir.cash >= cPreFree + pv1.freeCash)
-assert(#tAir.physics.activeIds >= cntPreFree + 2, "风投空投免费领取应额外掉 2 枚最高解锁币")
+assert(#tAir.physics.activeIds >= cntPreFree + 4, "风投空投免费领取应掉落 4 枚最高解锁币")
 tAir.activeAirdrop = { eventId = "vault_crack" }
 local cPreAd = tAir.cash
 local spPreAd = tAir.skillPoints
 tAir:ClaimAirdrop(true)
 assert(tAir.activeAirdrop == nil and tAir.cash >= cPreAd + pv1.adCash)
-assert(tAir.skillPoints >= spPreAd + pv1.adSp, "风投空投广告必须同步发放动态技能点")
-assert(#tAir.physics.towers == 2, "风投空投广告应在台面立起 2 座高阶金库金币塔")
-for _ = 1, 130 do tAir:Update(1 / 60) end
-assert(#tAir.physics.towers == 0, "风投双塔应在成塔短暂展示后推倒释放完毕")
+assert(tAir.skillPoints >= spPreAd + pv1.adSp, "风投空投广告必须同步发放 25~60 点动态技能点")
+assert(tAir.surpriseMult == 5 and tAir.surpriseTimer >= 59, "风投空投广告必须同步开启 60 秒 ×5 狂飙倍率")
+assert(#tAir.physics.towers == 1 and tAir.physics.towers[1].total == 22, "风投空投广告应在台面立起 22 层螺旋摩天金库巨塔")
+for _ = 1, 200 do tAir:Update(1 / 60) end
+assert(#tAir.physics.towers == 0, "风投螺旋巨塔应在成塔倾倒并爆发 4 波雪崩后清理完毕")
 
 -- 11.9 独立惊喜倍率 surpriseMult（与三连/狂欢/广告直接相乘，含 10×3=30 验证）
 local tSurp = Tycoon.New(nil, { seed = 2042 })
@@ -512,25 +527,38 @@ assert(det.ad == 3 and det.luck == 5 and det.surprise == 10, "奇遇倍率必须
 local expectProd = det.machine * det.tech * det.prestige * det.combo * det.fever * det.ad * det.luck * det.surprise
 assert(math.abs(totalM - expectProd) <= 1e-6 * totalM, "总倍率必须等于各独立乘区相乘（10×3=30）")
 
--- 11.10 拖金袋小人 + 12面骰子（真实1~12点 + 低点看广告重掷7~12翻倍×14~24）+ 黄金气球（碰撞&3奖）+ 黄金暴走
+-- 11.10 拖金袋小人 + 12面骰子（免费8秒；全点数1..12均可看广告翻倍并延至整整60秒）+ 广告60秒超级狂欢
 local tDice = Tycoon.New(nil, { seed = 2043 })
 tDice:SpawnRunner()
 assert(tDice.runner.active == true)
 local d0 = tDice:HitRunner(tDice.runner.x)
-assert(tDice.runner.active == false and d0 ~= nil and d0.face >= 1 and d0.face <= 12 and d0.mult == d0.face)
+assert(tDice.runner.active == false and d0 ~= nil and d0.face >= 1 and d0.face <= 12 and d0.mult == d0.face and d0.dur == 8)
 assert(tDice.pendingDice == d0)
-tDice.pendingDice = { face = 3, mult = 3, dur = 18, rerolled = false }
+tDice.pendingDice = { face = 3, mult = 3, dur = 8, rerolled = false }
 local d1 = tDice:RollDiceReroll()
-assert(d1 and d1.rerolled == true and d1.face >= 7 and d1.face <= 12 and d1.mult == d1.face * 2 and d1.mult >= 14 and d1.mult <= 24)
-assert(tDice:RollDiceReroll() == nil, "同一次掷骰仅限重掷一次")
+assert(d1 and d1.rerolled == true and d1.face >= 7 and d1.face <= 12 and d1.mult == d1.face * 2 and d1.mult >= 14 and d1.mult <= 24 and d1.dur == 60)
+assert(tDice:RollDiceReroll() == nil, "同一次掷骰仅限翻倍一次")
 local cntBeforeDice = #tDice.physics.activeIds
 local dMult, dDur = tDice:ClaimPendingDice()
-assert(tDice.pendingDice == nil and dMult == d1.mult and dDur == 18 and tDice.surpriseMult == d1.mult)
-assert(#tDice.physics.activeIds >= cntBeforeDice + 6, "重掷领取后应加送 6 枚高阶币雨")
-tDice.pendingDice = { face = 1, mult = 1, dur = 18, rerolled = false }
+assert(tDice.pendingDice == nil and dMult == d1.mult and dDur == 60 and tDice.surpriseMult == d1.mult and tDice.surpriseTimer >= 59)
+assert(#tDice.physics.activeIds >= cntBeforeDice + 6, "看广告翻倍领取后应加送 6 枚高阶币雨")
+
+-- 验证高点数（如 10 点）同样可看广告直接翻倍至 ×20 并延至 60 秒
+tDice.pendingDice = { face = 10, mult = 10, dur = 8, rerolled = false }
+local dHi = tDice:RollDiceReroll()
+assert(dHi and dHi.face == 10 and dHi.mult == 20 and dHi.dur == 60 and dHi.rerolled == true)
+tDice:ClaimPendingDice()
+
+tDice.pendingDice = { face = 1, mult = 1, dur = 8, rerolled = false }
 local cntLow = #tDice.physics.activeIds
 tDice:ClaimPendingDice()
-assert(#tDice.physics.activeIds >= cntLow + 3, "掷出1点未重掷应保底赠送 3 枚高阶币")
+assert(#tDice.physics.activeIds >= cntLow + 3, "掷出1点未翻倍应保底赠送 3 枚高阶币")
+
+-- 狂欢：免费短时 vs 广告整整 60 秒
+tDice:TriggerFever(false)
+assert(tDice.feverDur >= 8 and tDice.feverDur <= 12, "免费狂欢应维持短爆发节奏")
+tDice:TriggerFever(true)
+assert(tDice.feverDur == 60 and tDice.feverTimer == 60 and tDice.feverRainLeft == 40, "广告超级狂欢必须持续整整 60 秒并送 40 枚币雨")
 
 -- 黄金气球：槽内硬币碰撞引爆 + 3类奖池覆盖
 local tBal = Tycoon.New(nil, { seed = 2044 })
@@ -563,24 +591,34 @@ assert(tRush.surpriseMult == rMult and #tRush.physics.activeIds >= cntRush + 12,
 -- 11.11 奇遇倍率存档保留 + 瞬态弹幕重置
 tRush:SpawnRunner()
 tRush.balloon.active = true
-tRush.pendingDice = { face = 5, mult = 5, dur = 18, rerolled = false }
+tRush.pendingDice = { face = 5, mult = 5, dur = 8, rerolled = false }
 local rushSnap = tRush:ExportState(os.time())
 local tRush2 = Tycoon.New(nil, { seed = 2046 })
 assert(tRush2:ImportState(rushSnap))
 assert(tRush2.surpriseMult == rMult and tRush2.surpriseTimer > 0 and tRush2.surpriseName == "黄金暴走")
 assert(tRush2.pendingDice == nil and not tRush2.runner.active and not tRush2.balloon.active, "读档后瞬态小人/气球/待确认骰子弹窗应安全复位")
 
--- 11.12 满台 (MAX_COINS=120) 下金库双塔 & 风投暴富双塔：筑塔锁定防推落 -> 成塔推倒零吞币
-local twStats = { layers = 0, crowns = 0, completes = 0, topples = 0 }
+-- 11.12 满台 (MAX_COINS=120) 下 24层/22层螺旋摩天金塔：筑塔围栏锁定 -> 成塔前倾雪崩爆发（零吞币）
+local twStats = { layers = 0, completes = 0, topples = 0, avCoins = 0, avVaults = 0 }
 local twListener = {
     OnTowerLayer = function(_, _, _, _, _, isCrown)
         twStats.layers = twStats.layers + 1
-        if isCrown then twStats.crowns = twStats.crowns + 1 end
     end,
     OnTowerComplete = function() twStats.completes = twStats.completes + 1 end,
     OnTowerTopple = function() twStats.topples = twStats.topples + 1 end,
 }
 local tTw = Tycoon.New(twListener, { seed = 2048 })
+local origTwSpawn = tTw.physics.SpawnCoin
+tTw.physics.SpawnCoin = function(selfPhys, params)
+    local res = origTwSpawn(selfPhys, params)
+    if params and params.forceSpawn and #selfPhys.towers > 0 and selfPhys.towers[1].phase == "toppling" then
+        if res then
+            if params.kind == "vault" then twStats.avVaults = twStats.avVaults + 1
+            else twStats.avCoins = twStats.avCoins + 1 end
+        end
+    end
+    return res
+end
 for k = 1, Config.STAGE.MAX_COINS do
     tTw.physics:SpawnCoin({
         kind = "gold", level = 1,
@@ -590,36 +628,33 @@ for k = 1, Config.STAGE.MAX_COINS do
 end
 assert(tTw.physics.activeCount == Config.STAGE.MAX_COINS, "台面应先铺满 120 枚硬币")
 tTw:ApplyAdReward("vault_drop")
-assert(#tTw.physics.towers == 2, "金库双塔必须同时开建 2 座金币塔")
-for f = 1, 35 do
+assert(#tTw.physics.towers == 1 and tTw.physics.towers[1].total == 24, "金库巨塔必须开建 24 层螺旋塔")
+for f = 1, 30 do
     if f % 10 == 0 then tTw:ManualShoot() end
     tTw:Update(1 / 60)
 end
-local lockedMid, lockedOutOfDeck = 0, 0
+assert(tTw.physics.towers[1] and tTw.physics.towers[1].phase == "building" and tTw.physics.towers[1].built >= 8)
+local intrude = 0
+local tw0 = tTw.physics.towers[1]
 for i = 1, tTw.physics.activeCount do
     local c = tTw.physics.coins[tTw.physics.activeIds[i]]
-    if c and c.active and c.towerLocked then
-        lockedMid = lockedMid + 1
-        if c.zone ~= "deck" or c.vx ~= 0 or c.vy ~= 0 then lockedOutOfDeck = lockedOutOfDeck + 1 end
+    if c and c.active and c.zone == "deck" and not c.onPusher then
+        local dx, dy = c.x - tw0.x, c.y - tw0.y
+        if dx * dx + dy * dy < (tw0.radius + c.r - 2) ^ 2 then intrude = intrude + 1 end
     end
 end
-assert(lockedMid >= 8 and lockedOutOfDeck == 0, string.format("筑塔期锁定币应稳立台面不滑动跌落 (locked=%d bad=%d)", lockedMid, lockedOutOfDeck))
-for _ = 1, 130 do tTw:Update(1 / 60) end
-local lockedAfter = 0
-for i = 1, tTw.physics.activeCount do
-    local c = tTw.physics.coins[tTw.physics.activeIds[i]]
-    if c and c.active and c.towerLocked then lockedAfter = lockedAfter + 1 end
-end
-assert(#tTw.physics.towers == 0 and lockedAfter == 0, "成塔后双塔必须完全解锁推倒")
-assert(twStats.layers == 18 and twStats.crowns == 2 and twStats.completes == 1 and twStats.topples == 2,
-    string.format("满台金库双塔需零吞币生成18枚含2金库顶冠并推倒 (layers=%d crowns=%d topples=%d)", twStats.layers, twStats.crowns, twStats.topples))
+assert(intrude == 0, "螺旋金塔建造锁定围栏内绝不允许平铺币闯入推散: intrude=" .. tostring(intrude))
+for _ = 1, 180 do tTw:Update(1 / 60) end
+assert(#tTw.physics.towers == 0 and twStats.completes == 1 and twStats.topples == 1, "24层摩天巨塔必须完整落成并完成雪崩倾倒")
+assert(twStats.avCoins == 24 and twStats.avVaults == 2,
+    string.format("满台 24层金库巨塔需零吞币爆发 24高阶币 + 2金库巨币 (got %d + %d)", twStats.avCoins, twStats.avVaults))
 
-twStats.layers, twStats.crowns, twStats.completes, twStats.topples = 0, 0, 0, 0
+twStats.layers, twStats.completes, twStats.topples, twStats.avCoins, twStats.avVaults = 0, 0, 0, 0, 0
 tTw:ApplyAdReward("airdrop_5x")
-assert(#tTw.physics.towers == 2, "风投暴富必须同时开建 2 座高阶金库塔")
-for _ = 1, 120 do tTw:Update(1 / 60) end
-assert(#tTw.physics.towers == 0 and twStats.layers == 12 and twStats.crowns == 2 and twStats.topples == 2,
-    string.format("满台风投双塔需零吞币生成12枚含2金库顶冠并推倒 (layers=%d crowns=%d topples=%d)", twStats.layers, twStats.crowns, twStats.topples))
+assert(#tTw.physics.towers == 1 and tTw.physics.towers[1].total == 22, "风投暴富必须开建 22 层螺旋金库巨塔")
+for _ = 1, 180 do tTw:Update(1 / 60) end
+assert(#tTw.physics.towers == 0 and twStats.avCoins == 20 and twStats.avVaults == 4 and twStats.topples == 1,
+    string.format("满台风投巨塔需零吞币爆发 20高阶币 + 4金库巨币 (got %d + %d)", twStats.avCoins, twStats.avVaults))
 
 print(string.format("[test_core] ALL PASS! prestiges=%d ranks=%d unlocks=%d slotWins=%d spGains=%d ads=%d",
     tIpo.totalPrestiges, #events.ranks, #events.unlocks, #events.slotWins, events.spGains, ty.adWatchCount))

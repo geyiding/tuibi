@@ -1071,29 +1071,34 @@ local function ApplyDiceSettledUI()
     local r = st.refs
     local face = d.face or 1
     local mult = d.mult or face
-    local dur = d.dur or 18
+    local dur = d.dur or 8
     if r.diceView and r.diceView.SetDice then
         r.diceView:SetDice(face, mult, d.rerolled == true, false)
     end
     if d.rerolled then
-        SetLbl(r.diceTitle, string.format("广告重掷翻倍 · %d 点 ×%d!", face, mult))
-        SetLbl(r.diceDesc, string.format("重掷落定 %d 点翻倍至 ×%d（持续 %d 秒 + 6 枚高阶币雨），与三连/狂欢/印钞直接叠乘！", face, mult, dur))
-        if r.diceClaimBtn then r.diceClaimBtn:SetText("激活 ×" .. tostring(mult) .. " 狂欢!") end
+        SetLbl(r.diceTitle, string.format("广告狂飙翻倍 · ×%d (整整60秒!)", mult))
+        SetLbl(r.diceDesc, string.format("骰面 ×2 翻倍至 ×%d，大幅延长至整整 %d 秒（另送 6 枚高阶币雨），与三连/狂欢/印钞直接叠乘！", mult, dur))
+        if r.diceClaimBtn then r.diceClaimBtn:SetText("激活 ×" .. tostring(mult) .. " 狂飙60秒!") end
     elseif face <= 1 then
         SetLbl(r.diceTitle, "掷出 1 点 · 保底暖心奖")
-        SetLbl(r.diceDesc, string.format("掷出 1 点，保底送你 3 枚当前最高币！点击右侧【广告重掷】可保底变 ×14~×24（持续 %d 秒）！", dur))
+        SetLbl(r.diceDesc, "掷出 1 点，免费领保底 3 枚最高币；点击【广告翻倍】立即变身 ×14~×24 整整 60 秒！")
         if r.diceClaimBtn then r.diceClaimBtn:SetText("收下 3 枚高阶币") end
+    elseif face <= 6 then
+        SetLbl(r.diceTitle, string.format("掷出 %d 点 · 免费×%d (%d秒)", face, mult, dur))
+        SetLbl(r.diceDesc, string.format("不看广告直接激活 ×%d（仅 %d 秒）；看广告重掷保底 ×14~×24 且延至整整 60 秒！", mult, dur))
+        if r.diceClaimBtn then r.diceClaimBtn:SetText(string.format("免费领 ×%d (%d秒)", mult, dur)) end
     else
-        SetLbl(r.diceTitle, string.format("掷出 %d 点 · 全场 ×%d!", face, mult))
-        SetLbl(r.diceDesc, string.format("激活【奇遇 ×%d】（持续 %d 秒），直接与三连/狂欢/印钞叠乘！%s",
-            mult, dur, (face <= 6) and "点数偏小？可看广告重掷保底 ×14~×24！" or "手气爆棚！"))
-        if r.diceClaimBtn then r.diceClaimBtn:SetText("激活 ×" .. tostring(mult) .. " 倍率!") end
+        SetLbl(r.diceTitle, string.format("掷出 %d 点 · 免费×%d (%d秒)", face, mult, dur))
+        SetLbl(r.diceDesc, string.format("不看广告可直接领 ×%d（%d 秒）；看广告立刻直接翻倍成 ×%d 且延至整整 60 秒！", mult, dur, face * 2))
+        if r.diceClaimBtn then r.diceClaimBtn:SetText(string.format("免费领 ×%d (%d秒)", mult, dur)) end
     end
     if r.diceClaimBtn then r.diceClaimBtn:SetDisabled(false) end
-    local canReroll = (not d.rerolled) and (face <= 6)
+    local canAd = (not d.rerolled)
     if r.diceRerollBtn then
-        r.diceRerollBtn:SetVisible(canReroll)
-        if canReroll then r.diceRerollBtn:SetText("广告重掷 ×14~24") end
+        r.diceRerollBtn:SetVisible(canAd)
+        if canAd then
+            r.diceRerollBtn:SetText((face <= 6) and "广告重掷×14~24 (60秒)" or string.format("广告翻倍×%d (60秒)", face * 2))
+        end
     end
 end
 
@@ -1125,11 +1130,11 @@ function TycoonHud.StartDiceRerollAnim(diceInfo)
     if r.diceView and r.diceView.SetDice then
         r.diceView:SetDice(diceInfo.face or 12, diceInfo.mult or 24, true, true)
     end
-    SetLbl(r.diceTitle, "广告重掷翻倍 · 保底 ×14~×24!")
-    SetLbl(r.diceDesc, "12面骰重新蓄力狂转，必出 7~12 点并直接翻倍……")
+    SetLbl(r.diceTitle, "广告狂飙翻倍 · ×14~×24 整整60秒!")
+    SetLbl(r.diceDesc, "12面骰全力蓄能翻倍，即刻生效整整 60 秒超高爆发……")
     if r.diceClaimBtn then
         r.diceClaimBtn:SetDisabled(true)
-        r.diceClaimBtn:SetText("重掷中...")
+        r.diceClaimBtn:SetText("翻倍蓄能中...")
     end
     if r.diceRerollBtn then r.diceRerollBtn:SetVisible(false) end
 end
@@ -1300,10 +1305,24 @@ function TycoonHud.RefreshMain(ty)
 
 
     local boostSec = ceil(ty.adBoostLeft or 0)
-    local boostTxt = (boostSec > 0) and ("×3 " .. Number.FormatClock(boostSec)) or "×3印钞"
-    local boostVar = (boostSec > 0) and "green" or "magenta"
+    local boostCd = ceil(ty:GetAdCooldown("boost_3x"))
+    local boostTxt, boostVar, boostShine
+    if boostSec > 0 then
+        boostTxt = "×3 " .. Number.FormatClock(boostSec)
+        boostVar = "green"
+        boostShine = false
+    elseif boostCd > 0 then
+        boostTxt = "冷却 " .. Number.FormatClock(boostCd)
+        boostVar = "dark"
+        boostShine = false
+    else
+        boostTxt = "×3印钞"
+        boostVar = "magenta"
+        boostShine = true
+    end
     if sh.boostTxt ~= boostTxt then sh.boostTxt = boostTxt; r.adBoostPill:SetText(boostTxt) end
     if sh.boostVar ~= boostVar then sh.boostVar = boostVar; r.adBoostPill:SetVariant(boostVar) end
+    if sh.boostShine ~= boostShine then sh.boostShine = boostShine; r.adBoostPill:SetShine(boostShine) end
 
     local airVis = (ty.activeAirdrop ~= nil)
     if sh.airVis ~= airVis then sh.airVis = airVis; SetCellVis(r.airdropPill, airVis) end
@@ -1622,13 +1641,13 @@ function TycoonHud.RefreshAirdrop()
     r.airArt:SetIcon("event", ev.id, 1)
     SetLbl(r.airTitle, "风投空投 · " .. ev.name)
     SetLbl(r.airDesc, string.format(
-        "随当前产值实时放大！\n免费领：%s + %d 枚当前最高币\n看广告暴富：%s + %d 枚高阶币雨 + %d 枚45倍金库巨币 + %d 技能点！",
+        "免费领：%s + %d 枚当前最高币\n看广告暴富：%s + %d 技能点 + 22层螺旋金库巨塔(含%d枚45倍巨币) + %d秒全场×%d！",
         Number.FormatCash(pv.freeCash), pv.freeCoins,
-        Number.FormatCash(pv.adCash), pv.adCoins, pv.adVaults, pv.adSp
+        Number.FormatCash(pv.adCash), pv.adSp, pv.adVaults, pv.adBuffDur or 60, pv.adBuffMult or 5
     ))
     if r.airDetAdBtn then
         r.airDetAdBtn:SetDisabled(cd > 0)
-        r.airDetAdBtn:SetText((cd > 0) and ("冷却 " .. Number.FormatClock(cd)) or ("广告+" .. tostring(pv.adSp) .. "点暴富"))
+        r.airDetAdBtn:SetText((cd > 0) and ("冷却 " .. Number.FormatClock(cd)) or ("广告+" .. tostring(pv.adSp) .. "点+巨塔"))
     end
 end
 

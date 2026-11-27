@@ -13,6 +13,11 @@ local Skin = require("game/Skin")
 local S = Config.STAGE
 local floor, min, max = math.floor, math.min, math.max
 
+local function SrgbToLinear(c)
+    c = max(0, min(1, c or 0))
+    return c * (c * (c * 0.305306011 + 0.682171111) + 0.012522878)
+end
+
 local Machine3D = {}
 
 -- 持有强引用防止 Scene / Camera / Viewport / Models 被 Lua GC 回收
@@ -32,6 +37,7 @@ local M = {
     cabinetNode = nil,
     backboardNode = nil,
     backboardMat = nil,
+    backboardSurface = false,
     pusherNode = nil,
     pusherNeonMat = nil,
     launcherNode = nil,
@@ -53,6 +59,7 @@ local M = {
     projSlot = nil,
     projDeck = nil,
     coinPool = {},
+    towerRigs = {},
     lastTheme = -1,
     bulbLitMat = nil,
     bulbDimMat = nil,
@@ -88,13 +95,24 @@ local function MakePBR(diffCol, metallic, roughness, emissiveCol, alpha)
     return mat
 end
 
--- 辅助：创建贴图无光照材质（硬币表面图案强制走无光照 Unlit 管线，杜绝受光/环境光压暗泛灰）
+-- 辅助：创建贴图无光照材质（优先走 SurfaceShader 对 sRGB PNG 精确线性解码，绝不被 ACES/Gamma 提亮发白）
 local function MakeTexturedUnlit(texPath, alphaMode, tintCol)
-    if not cache or not texPath then return nil end
-    if cache.Exists and not cache:Exists(texPath) then return nil end
+    if not cache or not texPath then return nil, false end
+    if cache.Exists and not cache:Exists(texPath) then return nil, false end
     local tex = cache:GetResource("Texture2D", texPath)
-    if not tex then return nil end
+    if not tex then return nil, false end
     local mat = Material:new()
+    local shaderPath = alphaMode and "Shaders/BLGL/CoinFace.shader" or "Shaders/BLGL/BackdropUnlit.shader"
+    if mat.SetSurfaceShader and (not cache.Exists or cache:Exists(shaderPath)) and mat:SetSurfaceShader(shaderPath) then
+        if mat.SetSurfaceTexture then
+            mat:SetSurfaceTexture("albedo_map", tex)
+        end
+        if Variant then
+            mat:SetShaderParameter("brightness", Variant(alphaMode and 1.28 or 1.12))
+        end
+        mat.cullMode = CULL_NONE
+        return mat, true
+    end
     local tech = "Techniques/DiffUnlit.xml"
     if alphaMode == "alphamask" then
         if cache.Exists and cache:Exists("Techniques/DiffUnlitAlphaMask.xml") then
@@ -110,7 +128,7 @@ local function MakeTexturedUnlit(texPath, alphaMode, tintCol)
     local c = tintCol or { 1.0, 1.0, 1.0, 1.0 }
     mat:SetShaderParameter("MatDiffColor", Variant(Color(c[1], c[2], c[3], c[4] or 1.0)))
     mat.cullMode = CULL_NONE
-    return mat
+    return mat, false
 end
 
 local function AddPart(parent, name, model, mat, pos, scale, rot)
@@ -205,13 +223,15 @@ local function ApplyThemeColors(themeIdx, boostOn, feverOn, feverPhase)
         c2 = { 1.0, 0.86, 0.22 }
     end
 
-    local pulse = (feverOn or boostOn) and 1.45 or 1.05
+    local pulse = (feverOn or boostOn) and 1.15 or 0.85
+    local lc1 = { SrgbToLinear(c1[1]), SrgbToLinear(c1[2]), SrgbToLinear(c1[3]) }
+    local lc2 = { SrgbToLinear(c2[1]), SrgbToLinear(c2[2]), SrgbToLinear(c2[3]) }
     SetMatEmissive(M.mats.neonPrimary, { c1[1] * pulse, c1[2] * pulse, c1[3] * pulse })
-    SetMatColor(M.mats.neonPrimary, c1, 1.0)
+    SetMatColor(M.mats.neonPrimary, lc1, 1.0)
     SetMatEmissive(M.mats.neonSecondary, { c2[1] * pulse, c2[2] * pulse, c2[3] * pulse })
-    SetMatColor(M.mats.neonSecondary, c2, 1.0)
+    SetMatColor(M.mats.neonSecondary, lc2, 1.0)
     SetMatEmissive(M.pusherNeonMat, { c2[1] * pulse, c2[2] * pulse, c2[3] * pulse })
-    SetMatColor(M.pusherNeonMat, c2, 1.0)
+    SetMatColor(M.pusherNeonMat, lc2, 1.0)
 
     if M.ptLights[1] then M.ptLights[1].color = Color(c2[1] * 0.4 + 0.6, c2[2] * 0.4 + 0.5, c2[3] * 0.4 + 0.5) end
 
@@ -221,7 +241,11 @@ local function ApplyThemeColors(themeIdx, boostOn, feverOn, feverPhase)
         if M.backboardMat and cache and (not cache.Exists or cache:Exists(bgPath)) then
             local tex = cache:GetResource("Texture2D", bgPath)
             if tex then
-                M.backboardMat:SetTexture(TU_DIFFUSE, tex)
+                if M.backboardSurface and M.backboardMat.SetSurfaceTexture then
+                    M.backboardMat:SetSurfaceTexture("albedo_map", tex)
+                else
+                    M.backboardMat:SetTexture(TU_DIFFUSE, tex)
+                end
             end
         end
     end
@@ -231,20 +255,17 @@ local function GetCoinMaterials(kind)
     if M.coinMats[kind] then return M.coinMats[kind] end
     local def = Config.COINS[kind] or Config.COINS.gold
     local rawCol = def and def.color
-    local col = (type(rawCol) == "table" and (rawCol.rim or rawCol.base or (rawCol[1] and rawCol))) or { 255, 210, 64 }
-    local r, g, b = (col[1] or 255) / 255, (col[2] or 210) / 255, (col[3] or 64) / 255
-    local isEmissive = (def.rarity == "legendary" or def.rarity == "rare")
-    local rimMat = MakePBR(
-        { min(1, r * 0.96 + 0.04), min(1, g * 0.96 + 0.04), min(1, b * 0.96 + 0.04) },
-        0.78,
-        0.20,
-        isEmissive and { r * 0.32, g * 0.32, b * 0.32 } or { r * 0.16, g * 0.16, b * 0.16 }
-    )
+    local baseCol = (type(rawCol) == "table" and (rawCol.base or rawCol.dark or (rawCol[1] and rawCol))) or { 248, 196, 48 }
+    local darkCol = (type(rawCol) == "table" and rawCol.dark) or baseCol
+    local lr = SrgbToLinear(((baseCol[1] or 248) * 0.65 + (darkCol[1] or 164) * 0.35) / 255)
+    local lg = SrgbToLinear(((baseCol[2] or 196) * 0.65 + (darkCol[2] or 108) * 0.35) / 255)
+    local lb = SrgbToLinear(((baseCol[3] or 48)  * 0.65 + (darkCol[3] or 18)  * 0.35) / 255)
+    local rimMat = MakePBR({ lr, lg, lb }, 0.62, 0.38, nil)
 
     local spr = Skin.SPRITES["coin_" .. tostring(kind)]
-    local faceMat = spr and MakeTexturedUnlit(spr, true, { 1.0, 1.0, 1.0, 1.0 }) or nil
+    local faceMat = spr and select(1, MakeTexturedUnlit(spr, true)) or nil
     if not faceMat then
-        faceMat = MakePBR({ r, g, b }, 0.80, 0.22, { r * 0.25, g * 0.25, b * 0.25 })
+        faceMat = MakePBR({ lr, lg, lb }, 0.72, 0.28, nil)
     end
     M.coinMats[kind] = { rim = rimMat, face = faceMat }
     return M.coinMats[kind]
@@ -314,8 +335,9 @@ local function BuildCabinet()
     AddPart(root, "GlassR", box, M.mats.glass, Vector3(1.53, 0.35, 0.0),  Vector3(0.025, 0.68, 3.06), nil, false)
 
     -- 7. 3D 霓虹背板（Plane.mdl 默认法线 +Y，绕 X 旋 -90 度后法线朝 -Z 面向相机）
-    M.backboardMat = MakeTexturedUnlit("image/machine/backdrop_act1.png", false, { 0.96, 0.96, 1.0, 1.0 })
-        or MakePBR({ 0.08, 0.10, 0.22 }, 0.2, 0.7)
+    local bbMat, bbSurf = MakeTexturedUnlit("image/machine/backdrop_act1.png", false)
+    M.backboardMat = bbMat or MakePBR({ 0.03, 0.04, 0.10 }, 0.2, 0.7)
+    M.backboardSurface = (bbMat ~= nil and bbSurf == true)
     M.backboardNode = AddPart(
         M.scene, "Backboard", plane, M.backboardMat,
         Vector3(0, 1.44, 1.49), Vector3(2.84, 1.0, 2.36), Quaternion(-90, Vector3.RIGHT), false
@@ -347,7 +369,7 @@ local function BuildAnimatedMechanisms()
     local box, cyl = M.models.box, M.models.cyl
 
     -- 1. 推板：前缘紧贴局部 z = 0，板身向后延伸到 z = +1.40
-    M.pusherNeonMat = MakePBR({ 1.0, 0.28, 0.72 }, 0.3, 0.2, { 2.2, 0.45, 1.3 })
+    M.pusherNeonMat = MakePBR({ 0.95, 0.07, 0.45 }, 0.3, 0.2, { 1.35, 0.18, 0.65 })
     M.pusherNode = M.scene:CreateChild("Pusher")
     M.pusherNode.position = Vector3(0, 0.0, 0.90)
     AddPart(M.pusherNode, "Body", box, M.mats.pusherTop, Vector3(0, 0.115, 0.71),   Vector3(2.74, 0.21, 1.40))
@@ -379,12 +401,83 @@ local function BuildCoinPool()
     M.coinPool = {}
     for i = 1, S.MAX_COINS do
         local n = M.scene:CreateChild("Coin3D_" .. i)
-        local _, rimSm  = AddPart(n, "Rim",  cyl,   initMats.rim,  Vector3(0, 0, 0),     Vector3(1.0, 0.24, 1.0))
-        local _, faceSm = AddPart(n, "Face", plane, initMats.face, Vector3(0, 0.125, 0), Vector3(0.90, 1.0, 0.90))
+        local _, rimSm  = AddPart(n, "Rim",  cyl,   initMats.rim,  Vector3(0, 0, 0),     Vector3(0.92, 0.22, 0.92))
+        local _, faceSm = AddPart(n, "Face", plane, initMats.face, Vector3(0, 0.114, 0), Vector3(1.00, 1.0, 1.00))
         n:SetDeepEnabled(false)
         M.coinPool[i] = {
             node = n, rim = rimSm, face = faceSm, lastKind = "gold", enabled = false,
             lastDia = -1, lastZone = "", lastOnPusher = nil, lastX = -9999, lastY = -9999, lastZ = -9999, lastRot = -999,
+        }
+    end
+end
+
+local TOWER_MAX_LAYERS = 24
+local TOWER_LAYER_H = 0.064
+local TOWER_RING_R = 0.215
+local TOWER_DISC_DIA = 0.215
+local TOWER_TWIST_DEG = 7.5
+
+-- 复用型 3D 六柱螺旋摩天金币塔（7 币梅花编织 + 7.5° 逐层盘旋 + 45 倍金库顶冠 + 前沿倾倒铰链）
+local function BuildSpiralTowers()
+    local cyl, plane = M.models.cyl, M.models.plane
+    local initMats = GetCoinMaterials("gold")
+    local vaultMats = GetCoinMaterials("vault")
+    M.towerRigs = {}
+    for ti = 1, 2 do
+        local rootNode = M.scene:CreateChild("SpiralTower_" .. ti)
+        local pivotNode = rootNode:CreateChild("Pivot")
+        pivotNode.position = Vector3(0, 0, -0.22)
+        local stackNode = pivotNode:CreateChild("Stack")
+        stackNode.position = Vector3(0, 0, 0.22)
+
+        local layers = {}
+        for L = 1, TOWER_MAX_LAYERS do
+            local ln = stackNode:CreateChild("Layer_" .. L)
+            local baseY = (L - 0.5) * TOWER_LAYER_H
+            ln.position = Vector3(0, baseY, 0)
+            ln.rotation = Quaternion((L - 1) * TOWER_TWIST_DEG, Vector3.UP)
+            local rimMat = (L % 2 == 1) and M.mats.gold or M.mats.chrome
+            AddPart(ln, "Core", cyl, rimMat, Vector3(0, 0, 0), Vector3(TOWER_DISC_DIA * 1.15, TOWER_LAYER_H * 0.88, TOWER_DISC_DIA * 1.15))
+            for s = 1, 6 do
+                local a = (s - 1) * (math.pi / 3)
+                local pos = Vector3(math.cos(a) * TOWER_RING_R, 0, math.sin(a) * TOWER_RING_R)
+                AddPart(ln, "Col" .. s, cyl, rimMat, pos, Vector3(TOWER_DISC_DIA, TOWER_LAYER_H * 0.88, TOWER_DISC_DIA))
+            end
+            ln:SetDeepEnabled(false)
+            layers[L] = { node = ln, baseY = baseY, enabled = false, dirtyPos = false }
+        end
+
+        local capNode = stackNode:CreateChild("TopCap")
+        local capFaces = {}
+        for s = 1, 6 do
+            local a = (s - 1) * (math.pi / 3)
+            local _, sm = AddPart(capNode, "TopFace" .. s, plane, initMats.face,
+                Vector3(math.cos(a) * TOWER_RING_R, 0.005, math.sin(a) * TOWER_RING_R),
+                Vector3(TOWER_DISC_DIA * 1.02, 1.0, TOWER_DISC_DIA * 1.02))
+            capFaces[s] = sm
+        end
+        local _, cSm = AddPart(capNode, "TopCenter", plane, initMats.face,
+            Vector3(0, 0.006, 0), Vector3(TOWER_DISC_DIA * 1.18, 1.0, TOWER_DISC_DIA * 1.18))
+        capFaces[7] = cSm
+
+        local crownNode = capNode:CreateChild("VaultCrown")
+        crownNode.position = Vector3(0, 0.055, 0)
+        AddPart(crownNode, "Rim", cyl, vaultMats.rim, Vector3(0, 0, 0), Vector3(0.37, 0.072, 0.37))
+        AddPart(crownNode, "Face", plane, vaultMats.face, Vector3(0, 0.039, 0), Vector3(0.41, 1.0, 0.41))
+        capNode:SetDeepEnabled(false)
+
+        M.towerRigs[ti] = {
+            root = rootNode,
+            pivot = pivotNode,
+            cap = capNode,
+            crown = crownNode,
+            capFaces = capFaces,
+            layers = layers,
+            capActive = false,
+            lastKind = "gold",
+            lastTilted = false,
+            lastX = -9999,
+            lastY = -9999,
         }
     end
 end
@@ -492,7 +585,7 @@ function Machine3D.Init(tycoon)
     local zone = zoneNode:CreateComponent("Zone")
     zone.boundingBox = BoundingBox(Vector3(-200, -200, -200), Vector3(200, 200, 200))
     zone.ambientSource = AMBIENT_COLOR
-    zone.ambientColor = Color(0.32, 0.36, 0.50)
+    zone.ambientColor = Color(0.08, 0.10, 0.18)
     zone.ambientIntensity = 1.0
     zone.vignetteEnabled = false
     zone.autoExposureEnabled = false
@@ -514,7 +607,7 @@ function Machine3D.Init(tycoon)
     local dl = dlNode:CreateComponent("Light")
     dl.lightType = LIGHT_DIRECTIONAL
     dl.color = Color(1.0, 0.96, 0.90)
-    dl.brightness = 1.85
+    dl.brightness = 1.45
     dl.castShadows = false
     M.dirLight = dl
 
@@ -523,7 +616,7 @@ function Machine3D.Init(tycoon)
     plNode.position = Vector3(0.0, 1.35, -1.65)
     local pl = plNode:CreateComponent("Light")
     pl.lightType = LIGHT_POINT
-    pl.brightness = 1.65
+    pl.brightness = 1.15
     pl.range = 10.0
     pl.castShadows = false
     M.ptLights[1] = pl
@@ -545,21 +638,22 @@ function Machine3D.Init(tycoon)
 
     -- 共享 PBR 材质表
     M.mats = {
-        chassis       = MakePBR({ 0.08, 0.10, 0.18 }, 0.72, 0.36),
-        deck          = MakePBR({ 0.12, 0.15, 0.28 }, 0.82, 0.26),
-        pusherTop     = MakePBR({ 0.20, 0.26, 0.44 }, 0.88, 0.22),
-        chrome        = MakePBR({ 0.76, 0.82, 0.92 }, 0.92, 0.18),
-        gold          = MakePBR({ 0.94, 0.70, 0.16 }, 0.92, 0.20, { 0.06, 0.04, 0.01 }),
-        neonPrimary   = MakePBR({ 0.18, 0.88, 1.0 }, 0.2, 0.2, { 0.22, 1.05, 1.25 }),
-        neonSecondary = MakePBR({ 1.0, 0.25, 0.72 }, 0.2, 0.2, { 1.15, 0.28, 0.85 }),
-        chuteGold     = MakePBR({ 0.95, 0.72, 0.18 }, 0.4, 0.25, { 0.65, 0.42, 0.08 }),
-        glass         = MakePBR({ 0.55, 0.86, 1.0 }, 0.1, 0.06, nil, 0.14),
+        chassis       = MakePBR({ 0.025, 0.032, 0.065 }, 0.72, 0.36),
+        deck          = MakePBR({ 0.035, 0.048, 0.11 },  0.82, 0.26),
+        pusherTop     = MakePBR({ 0.06,  0.09,  0.19 },  0.88, 0.22),
+        chrome        = MakePBR({ 0.52,  0.58,  0.70 },  0.92, 0.18),
+        gold          = MakePBR({ 0.86,  0.46,  0.04 },  0.92, 0.20, { 0.04, 0.02, 0.005 }),
+        neonPrimary   = MakePBR({ 0.03,  0.74,  1.0 },   0.2,  0.2,  { 0.18, 0.88, 1.0 }),
+        neonSecondary = MakePBR({ 1.0,   0.06,  0.48 },  0.2,  0.2,  { 1.0,  0.22, 0.68 }),
+        chuteGold     = MakePBR({ 0.88,  0.48,  0.05 },  0.4,  0.25, { 0.45, 0.25, 0.03 }),
+        glass         = MakePBR({ 0.26,  0.70,  1.0 },   0.1,  0.06, nil, 0.14),
     }
 
     M.quatSlotBase = Quaternion(-90, Vector3.RIGHT)
     BuildCabinet()
     BuildAnimatedMechanisms()
     BuildCoinPool()
+    BuildSpiralTowers()
 
     M.lastTheme = -1
     M.lastThemeKey = -1
@@ -577,6 +671,101 @@ end
 
 function Machine3D.IsActive()
     return M.active == true
+end
+
+local function SyncSpiralTowers(phys, tNow)
+    local rigs = M.towerRigs
+    if not rigs or #rigs == 0 then return end
+    local towers = phys and phys.towers
+    for ti = 1, #rigs do
+        local rig = rigs[ti]
+        local tw = towers and towers[ti]
+        if tw then
+            local tx, ty = tw.x or 180, tw.y or 444
+            if tx ~= rig.lastX or ty ~= rig.lastY then
+                rig.lastX, rig.lastY = tx, ty
+                rig.root.position = LogicToWorld3D(tx, ty, "deck", 0, false)
+            end
+
+            local total = min(TOWER_MAX_LAYERS, tw.total or 24)
+            local visLayers
+            if tw.phase == "building" then
+                visLayers = min(total, tw.built or 0)
+            elseif tw.phase == "hold" then
+                visLayers = total
+            else
+                local tp = tw.toppleP or 0
+                visLayers = max(0, floor(total * (1 - max(0, (tp - 0.18) / 0.82))))
+            end
+
+            local layers = rig.layers
+            for L = 1, TOWER_MAX_LAYERS do
+                local rec = layers[L]
+                local show = (L <= visLayers)
+                if show ~= rec.enabled then
+                    rec.enabled = show
+                    rec.node:SetDeepEnabled(show)
+                end
+                if show and tw.phase == "building" and L == visLayers then
+                    local drop = max(0, 1 - (tw.layerDropT or 0) / max(0.02, tw.layerInterval or 0.058)) * 0.28
+                    rec.node.position = Vector3(0, rec.baseY + drop, 0)
+                    rec.dirtyPos = true
+                elseif rec.dirtyPos then
+                    rec.node.position = Vector3(0, rec.baseY, 0)
+                    rec.dirtyPos = false
+                end
+            end
+
+            if tw.phase == "toppling" then
+                local p = tw.toppleP or 0
+                rig.pivot.rotation = Quaternion(-(p * p * 82), Vector3.RIGHT)
+                rig.lastTilted = true
+            elseif rig.lastTilted then
+                rig.pivot.rotation = Quaternion(0, Vector3.RIGHT)
+                rig.lastTilted = false
+            end
+
+            local capOn = (visLayers > 0)
+            if capOn ~= rig.capActive then
+                rig.capActive = capOn
+                rig.cap:SetDeepEnabled(capOn)
+            end
+            if capOn then
+                rig.cap.position = Vector3(0, visLayers * TOWER_LAYER_H + 0.01, 0)
+                rig.cap.rotation = Quaternion((visLayers - 1) * TOWER_TWIST_DEG, Vector3.UP)
+                rig.crown.rotation = Quaternion((tNow or 0) * 90, Vector3.UP)
+                local k = tw.kind or "gold"
+                if rig.lastKind ~= k then
+                    rig.lastKind = k
+                    local cm = GetCoinMaterials(k)
+                    for fi = 1, #rig.capFaces do
+                        rig.capFaces[fi]:SetMaterial(cm.face)
+                    end
+                end
+            end
+        else
+            if rig.capActive then
+                rig.capActive = false
+                rig.cap:SetDeepEnabled(false)
+            end
+            if rig.lastTilted then
+                rig.pivot.rotation = Quaternion(0, Vector3.RIGHT)
+                rig.lastTilted = false
+            end
+            local layers = rig.layers
+            for L = 1, TOWER_MAX_LAYERS do
+                local rec = layers[L]
+                if rec.enabled then
+                    rec.enabled = false
+                    rec.node:SetDeepEnabled(false)
+                end
+                if rec.dirtyPos then
+                    rec.node.position = Vector3(0, rec.baseY, 0)
+                    rec.dirtyPos = false
+                end
+            end
+        end
+    end
 end
 
 function Machine3D.Update(dt, tycoon, fx, timeSec)
@@ -618,7 +807,7 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
     if pl then
         local lf = fx and (fx.lightFlash or 0) or 0
         local heat = fx and (fx.heat or 0) or 0
-        local bright = 1.65 + min(1.4, lf) * 2.2 + heat * 0.6
+        local bright = 1.15 + min(1.2, lf) * 1.5 + heat * 0.45
         if math.abs(bright - M.lastLightB) > 0.03 then
             M.lastLightB = bright
             pl.brightness = bright
@@ -751,6 +940,8 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
             end
         end
     end
+
+    SyncSpiralTowers(phys, timeSec or phys.time or 0)
 end
 
 function Machine3D.ProjectFast(lx, ly, uiW, uiH)

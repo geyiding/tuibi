@@ -923,47 +923,99 @@ function Stage:DrawComboBadge(nvg, run, fx, cx, cy, u, t, font)
 end
 
 -- ----------------------------------------------------------------------------
--- 金币塔召唤光柱与筑塔进度指示（生成期锁定提示 / 满塔推倒信号）
+-- 螺旋摩天金币塔召唤光柱、2D螺旋实体堆叠与进度指示
 -- ----------------------------------------------------------------------------
 function Stage:DrawTowersOverlay(nvg, phys, u, t, font)
     local towers = phys and phys.towers
     if not towers or #towers == 0 then return end
+    local is3D = Machine3D.IsActive()
+    local sc = self.s_ or 1
     for i = 1, #towers do
         local tw = towers[i]
-        local sx, sy = self.toScreen_(tw.x or 180, tw.y or 440)
+        local sx, sy = self.toScreen_(tw.x or 180, tw.y or 444)
         if sx and sy then
             local isHold = (tw.phase == "hold")
-            local pulse = 0.5 + 0.5 * sin(t * (isHold and 14 or 8))
-            local beamH = 88 * u
-            local beamW = (isHold and 34 or 26) * u
+            local isTopple = (tw.phase == "toppling")
+            local pulse = 0.5 + 0.5 * sin(t * ((isHold or isTopple) and 14 or 8))
+            local total = max(1, tw.total or 24)
+            local built = tw.built or 0
+            local tp = tw.toppleP or 0
+            local vis = isTopple and max(0, floor(total * (1 - max(0, (tp - 0.18) / 0.82)))) or (isHold and total or built)
+            local beamH = 112 * u
+            local beamW = (isHold and 42 or 32) * u
 
             SetAdditive(nvg, true)
             nvgBeginPath(nvg)
             nvgRect(nvg, sx - beamW * 0.5, sy - beamH, beamW, beamH)
             nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, sy - beamH, 0, sy,
-                Col(C.gold, 0), Col(isHold and ORANGE or C.gold, floor(80 + 50 * pulse))))
+                Col(C.gold, 0), Col((isHold or isTopple) and ORANGE or C.gold, floor(78 + 52 * pulse))))
             nvgFill(nvg)
 
             nvgBeginPath(nvg)
-            nvgEllipse(nvg, sx, sy, 22 * u, 9 * u)
-            nvgFillPaint(nvg, nvgRadialGradient(nvg, sx, sy, 2 * u, 22 * u,
-                Col(isHold and ORANGE or C.gold, floor(145 + 60 * pulse)), Col(C.gold, 0)))
+            nvgEllipse(nvg, sx, sy, 32 * u, 13 * u)
+            nvgFillPaint(nvg, nvgRadialGradient(nvg, sx, sy, 2 * u, 32 * u,
+                Col((isHold or isTopple) and ORANGE or C.gold, floor(145 + 60 * pulse)), Col(C.gold, 0)))
             nvgFill(nvg)
             SetAdditive(nvg, false)
 
             nvgBeginPath(nvg)
-            nvgEllipse(nvg, sx, sy, 18 * u, 7 * u)
-            nvgStrokeColor(nvg, Col(isHold and ORANGE or C.gold, 220))
-            nvgStrokeWidth(nvg, 1.8 * u)
+            nvgEllipse(nvg, sx, sy, 28 * u, 11 * u)
+            nvgStrokeColor(nvg, Col((isHold or isTopple) and ORANGE or C.gold, 220))
+            nvgStrokeWidth(nvg, 2.0 * u)
             nvgStroke(nvg)
 
-            local built = tw.built or 0
-            local topY = sy - min(78 * u, (16 + built * 4.8) * u)
+            -- 2D 兜底渲染：按 6 柱螺旋摩天金塔层层盘旋叠高并前倾倒塌
+            if not is3D and vis > 0 then
+                local lean = isTopple and (tp * tp * 68 * sc) or 0
+                local cDef = Config.COINS[tw.kind] or Config.COINS.gold
+                local baseCol = (cDef.color and cDef.color.base) or C.gold
+                local rimCol = (cDef.color and cDef.color.rim) or C.white
+                local rxRing = 18 * sc
+                local rzRing = 7 * sc
+                local discRx = 9.5 * sc
+                local discRy = 4.6 * sc
+                local layerStep = 3.4 * sc
+                for L = 1, vis do
+                    local f = L / total
+                    local angBase = (L - 1) * rad(7.5)
+                    local ly = sy - L * layerStep + lean * f * 0.42
+                    local lxC = sx
+                    local fillC = (L % 2 == 1) and baseCol or rimCol
+                    for colIdx = 0, 5 do
+                        local a = angBase + colIdx * (pi / 3)
+                        local cx = lxC + cos(a) * rxRing
+                        local cy = ly + sin(a) * rzRing
+                        nvgBeginPath(nvg)
+                        nvgEllipse(nvg, cx, cy, discRx, discRy)
+                        nvgFillColor(nvg, Col(fillC, 240))
+                        nvgFill(nvg)
+                        nvgBeginPath(nvg)
+                        nvgEllipse(nvg, cx, cy, discRx, discRy)
+                        nvgStrokeColor(nvg, Col(INK, 190))
+                        nvgStrokeWidth(nvg, 1.0)
+                        nvgStroke(nvg)
+                    end
+                end
+                local capY = sy - vis * layerStep + lean * 0.42 - 4 * sc
+                nvgBeginPath(nvg)
+                nvgEllipse(nvg, sx, capY, 15 * sc, 7.5 * sc)
+                nvgFillColor(nvg, Col(C.gold, 255))
+                nvgFill(nvg)
+                nvgBeginPath(nvg)
+                nvgEllipse(nvg, sx, capY, 15 * sc, 7.5 * sc)
+                nvgStrokeColor(nvg, Col(C.white, 240))
+                nvgStrokeWidth(nvg, 1.5)
+                nvgStroke(nvg)
+            end
+
+            local topY = sy - min(114 * u, (24 + vis * 3.8) * u)
             nvgFontFace(nvg, font or "sans")
             nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-            nvgFontSize(nvg, (isHold and 13 or 11.5) * u)
-            local lbl = isHold and "塔成！推倒！" or string.format("筑塔 %d/%d · 锁定", built, tw.total or 0)
-            OutlinedText(nvg, sx, topY, lbl, isHold and C.gold or C.white, 255, 1.3)
+            nvgFontSize(nvg, ((isHold or isTopple) and 13 or 11.5) * u)
+            local lbl = isTopple and "巨塔雪崩倾倒!!"
+                or (isHold and "摩天金塔落成！准备推倒！"
+                or string.format("筑摩天塔 %d/%d · 锁定", built, total))
+            OutlinedText(nvg, sx, topY, lbl, (isHold or isTopple) and C.gold or C.white, 255, 1.3)
         end
     end
 end

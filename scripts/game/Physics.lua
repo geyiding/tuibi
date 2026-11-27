@@ -488,35 +488,39 @@ function Physics:HasActiveSlotCoins()
     return false
 end
 
---- 在台面上筑起一座锁定金币塔（筑塔期防推落，满塔后整体解锁前倾推倒）
+--- 在台面上筑起一座高耸螺旋摩天金币塔（建造/展示期围栏锁定防推散，满塔后整体前倾倒塌爆发多波物理雪崩币潮）
 function Physics:StartCoinTower(opts)
     opts = opts or {}
     local tx = opts.x or 180
-    local ty = opts.y or 440
+    local ty = opts.y or 444
     for i = 1, #self.towers do
         local ew = self.towers[i]
-        if abs((ew.x or 180) - tx) < 24 and abs((ew.y or 440) - ty) < 24 then
-            ty = max(S.PUSHER_Y_MAX + 32, ty - 26)
+        local dx = (ew.x or 180) - tx
+        local dy = (ew.y or 444) - ty
+        if dx * dx + dy * dy < 60 * 60 then
+            tx = (abs(tx - 180) < 20) and 118 or 242
         end
     end
 
-    -- 塔基周围 32px 内平铺币轻微向外推散，留出清晰地基
+    -- 塔基周围 44px 内平铺币向外推散，留出清晰地基
     for i = 1, self.activeCount do
         local c = self.coins[self.activeIds[i]]
         if c and c.active and c.zone == "deck" and not c.towerLocked then
             local dx = c.x - tx
             local dy = c.y - ty
             local d2 = dx * dx + dy * dy
-            if d2 < 32 * 32 then
+            if d2 < 44 * 44 then
                 local d = sqrt(d2)
-                local ux = (d > 0.01) and (dx / d) or ((i % 2 == 0) and 0.75 or -0.75)
-                local uy = (d > 0.01) and (dy / d) or 0.66
-                c.vx = (c.vx or 0) + ux * 85
-                c.vy = (c.vy or 0) + uy * 85
+                local ux = (d > 0.01) and (dx / d) or ((i % 2 == 0) and 0.78 or -0.78)
+                local uy = (d > 0.01) and (dy / d) or 0.62
+                c.vx = (c.vx or 0) + ux * 115
+                c.vy = (c.vy or 0) + uy * 115
             end
         end
     end
 
+    local avCoins = max(0, opts.avalancheCoins or 24)
+    local avVaults = max(0, opts.avalancheVaults or 2)
     self.nextTowerId = (self.nextTowerId or 0) + 1
     local tw = {
         id = self.nextTowerId,
@@ -524,24 +528,33 @@ function Physics:StartCoinTower(opts)
         y = ty,
         kind = opts.kind or "gold",
         level = opts.level or 1,
-        crownKind = opts.crownKind,
+        crownKind = opts.crownKind or "vault",
         crownLevel = opts.crownLevel or 1,
-        total = max(2, opts.count or 8),
+        total = max(4, opts.layers or opts.count or 24),
         built = 0,
-        zStep = opts.zStep or 7.4,
-        layerInterval = opts.layerInterval or 0.105,
-        holdDur = opts.holdDur or 0.48,
+        radius = opts.radius or 34,
+        layerInterval = opts.layerInterval or 0.058,
+        holdDur = opts.holdDur or 0.55,
+        toppleDur = opts.toppleDur or 0.72,
         timer = 0,
         holdT = 0,
+        toppleT = 0,
+        toppleP = 0,
+        waveIdx = 0,
+        layerDropT = 0,
         phase = "building",
-        fanDir = opts.fanDir or 0,
-        label = opts.label or "金币塔落成！",
+        avalancheCoins = avCoins,
+        avalancheVaults = avVaults,
+        coinsLeft = avCoins,
+        vaultsLeft = avVaults,
+        label = opts.label or "摩天金塔落成！",
         announceComplete = (opts.announceComplete ~= false),
-        coinIds = {},
     }
     self.towers[#self.towers + 1] = tw
     return tw
 end
+
+local TOPPLE_THRESH = { 0.16, 0.40, 0.66, 0.90 }
 
 function Physics:StepTowers(dt)
     local towers = self.towers
@@ -549,36 +562,14 @@ function Physics:StepTowers(dt)
     for idx = #towers, 1, -1 do
         local tw = towers[idx]
         if tw.phase == "building" then
+            tw.layerDropT = (tw.layerDropT or 0) + dt
             tw.timer = tw.timer - dt
             while tw.timer <= 0 and tw.built < tw.total do
                 tw.built = tw.built + 1
                 tw.timer = tw.timer + tw.layerInterval
-                local isCrown = (tw.built == tw.total and tw.crownKind ~= nil)
-                local targetZ = (tw.built - 1) * tw.zStep
-                local jx = (tw.built % 2 == 0) and 0.8 or -0.8
-                local jy = ((tw.built % 3) - 1) * 0.5
-                local c = self:SpawnCoin({
-                    kind = isCrown and tw.crownKind or tw.kind,
-                    level = isCrown and tw.crownLevel or tw.level,
-                    x = tw.x + jx,
-                    y = tw.y + jy,
-                    z = targetZ + 52,
-                    vz = -310,
-                    vx = 0,
-                    vy = 0,
-                    zone = "deck",
-                    onPusher = false,
-                    gateChecked = true,
-                    forceSpawn = true,
-                    towerId = tw.id,
-                    towerLocked = true,
-                    towerZ = targetZ,
-                    towerCrown = isCrown,
-                })
-                if c then
-                    tw.coinIds[#tw.coinIds + 1] = c.id
-                end
-                if self.cb.OnTowerLayer then
+                tw.layerDropT = 0
+                local isCrown = (tw.built == tw.total)
+                if self.cb.OnTowerLayer and (tw.built == 1 or tw.built % 2 == 0 or isCrown) then
                     self.cb.OnTowerLayer(tw.x, tw.y, tw.built, tw.total, isCrown)
                 end
             end
@@ -592,24 +583,56 @@ function Physics:StepTowers(dt)
         elseif tw.phase == "hold" then
             tw.holdT = tw.holdT - dt
             if tw.holdT <= 0 then
-                local ids = tw.coinIds
-                local nCoins = #ids
-                for layerIdx = 1, nCoins do
-                    local c = self.coins[ids[layerIdx]]
-                    if c and c.active and c.towerId == tw.id then
-                        c.towerLocked = false
-                        c.towerId = 0
-                        local frac = (layerIdx - 1) / max(1, nCoins - 1)
-                        c.vx = ((layerIdx % 2 == 0) and 1 or -1) * (14 + frac * 42) + (tw.fanDir or 0) * (18 + frac * 34)
-                        c.vy = 85 + frac * 150
-                        c.vz = 18 + frac * 55
-                        c.vrot = ((layerIdx % 2 == 0) and 1 or -1) * (4 + frac * 6)
-                    end
-                end
-                self:PulseDeckForward(26, 5)
+                tw.phase = "toppling"
+                tw.toppleT = 0
+                tw.toppleP = 0
+                tw.waveIdx = 0
+                self:PulseDeckForward(65, 14)
                 if self.cb.OnTowerTopple then
                     self.cb.OnTowerTopple(tw.x, tw.y, tw.label)
                 end
+            end
+        elseif tw.phase == "toppling" then
+            tw.toppleT = tw.toppleT + dt
+            tw.toppleP = min(1, tw.toppleT / max(0.1, tw.toppleDur))
+            while tw.waveIdx < 4 and tw.toppleP >= TOPPLE_THRESH[tw.waveIdx + 1] do
+                tw.waveIdx = tw.waveIdx + 1
+                local w = tw.waveIdx
+                local remW = 5 - w
+                local nCoins = math.ceil((tw.coinsLeft or 0) / remW)
+                tw.coinsLeft = max(0, (tw.coinsLeft or 0) - nCoins)
+                local nVaults = 0
+                if (tw.vaultsLeft or 0) > 0 and (w == 2 or w == 4 or remW == 1) then
+                    nVaults = (remW == 1) and tw.vaultsLeft or min(tw.vaultsLeft, math.ceil((tw.avalancheVaults or 0) * 0.5))
+                    tw.vaultsLeft = max(0, tw.vaultsLeft - nVaults)
+                end
+                local nTot = nCoins + nVaults
+                local baseY = min(S.FRONT_DROP_Y - 12, (tw.y or 444) + 10 + w * 16)
+                local hw = Physics.TrapezoidHalfW(baseY) - 18
+                for j = 1, nTot do
+                    local isVault = (j > nCoins)
+                    local frac = (nTot > 1) and ((j - 1) / (nTot - 1) - 0.5) or 0
+                    local px = max(180 - hw, min(180 + hw, (tw.x or 180) + frac * 78 + (((j + w) % 2 == 0) and 6 or -6)))
+                    local py = min(S.FRONT_DROP_Y - 8, baseY + (((j % 3) - 1) * 7))
+                    self:SpawnCoin({
+                        kind = isVault and (tw.crownKind or "vault") or tw.kind,
+                        level = isVault and (tw.crownLevel or 1) or tw.level,
+                        x = px,
+                        y = py,
+                        z = 16 + (5 - w) * 12,
+                        vz = 25 + w * 14,
+                        vx = frac * 110 + (((j % 2 == 0) and 1 or -1) * 14),
+                        vy = 115 + w * 32,
+                        vrot = ((j % 2 == 0) and 1 or -1) * (4 + w * 1.4),
+                        zone = "deck",
+                        onPusher = false,
+                        gateChecked = true,
+                        forceSpawn = true,
+                    })
+                end
+            end
+            if tw.toppleP >= 1 then
+                self:PulseDeckForward(45, 10)
                 table.remove(towers, idx)
             end
         end
@@ -1035,6 +1058,34 @@ function Physics:ResolveDeckCollisions(crowdBoost)
                                 end
                             end
                             idB = gridNext[idB]
+                        end
+                    end
+                end
+                -- 螺旋摩天金塔建造/展示期物理围栏：推散绕开周边平铺币，防提前碰撞散架
+                if not a.towerLocked and #self.towers > 0 then
+                    for ti = 1, #self.towers do
+                        local tw = self.towers[ti]
+                        if tw.phase == "building" or tw.phase == "hold" then
+                            local dx = a.x - (tw.x or 180)
+                            local dy = a.y - (tw.y or 444)
+                            local minD = a.r + (tw.radius or 34)
+                            local d2 = dx * dx + dy * dy
+                            if d2 < minD * minD then
+                                local d = sqrt(d2)
+                                local ux, uy
+                                if d > 0.001 then
+                                    ux, uy = dx / d, dy / d
+                                else
+                                    ux, uy = 0.0, 1.0
+                                end
+                                a.x = (tw.x or 180) + ux * minD
+                                a.y = (tw.y or 444) + uy * minD
+                                local vRad = (a.vx or 0) * ux + (a.vy or 0) * uy
+                                if vRad < 0 then
+                                    a.vx = (a.vx or 0) - ux * vRad * 1.4
+                                    a.vy = (a.vy or 0) - uy * vRad * 1.4
+                                end
+                            end
                         end
                     end
                 end

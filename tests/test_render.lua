@@ -403,8 +403,9 @@ dv:SetDice(9, 18, true, false)
 dv:Render("nvg_stub")
 
 ty.physics.towers = {
-    { id = 1, x = 120, y = 442, total = 9, built = 5, phase = "building" },
-    { id = 2, x = 240, y = 442, total = 9, built = 9, phase = "hold" },
+    { id = 1, x = 180, y = 446, total = 24, built = 14, phase = "building", kind = "carnival" },
+    { id = 2, x = 118, y = 446, total = 24, built = 24, phase = "hold", kind = "midas" },
+    { id = 3, x = 242, y = 446, total = 22, built = 22, phase = "toppling", toppleP = 0.52, kind = "vault" },
 }
 stg.GetAbsoluteLayout = function() return { x = 0, y = 108, w = 390, h = 580 } end
 stg:Render("nvg_stub")

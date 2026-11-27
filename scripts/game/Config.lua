@@ -232,7 +232,7 @@ Config.COINS = {
     },
     vault = {
         id = "vault", name = "装甲金库币", short = "金库", rarity = "legendary", family = "wealth",
-        baseChips = 900, multAdd = 2.5, massMul = 3.2, radiusMul = 1.38, restitution = 0.38, feverGain = 22,
+        baseChips = 900, multAdd = 2.5, massMul = 3.2, radiusMul = 1.42, restitution = 0.38, feverGain = 22,
         internal = true, desc = "金库巨币，推落结算当前最高解锁币 45 倍巨额暴击。",
         color = { base = { 240, 206, 98 }, dark = { 84, 70, 52 }, light = { 255, 248, 198 }, rim = { 116, 236, 255 }, glow = { 255, 226, 116 } },
         symbol = "vault",
@@ -466,30 +466,30 @@ Config.MACHINE_UPGRADES = {
 Config.MACHINE_BY_ID = {}
 for _, m in ipairs(Config.MACHINE_UPGRADES) do Config.MACHINE_BY_ID[m.id] = m end
 
--- 3. 22 种代币循序解锁与技能点升级表（×1.205 黄金平滑阶梯，适配超越×5供给，约 5.5 小时登顶世界首富且不看广告也可玩穿）
+-- 3. 22 种代币循序解锁与技能点升级表（×1.22 黄金平滑阶梯，适配超越×5供给，约 6 小时登顶世界首富且不看广告也可玩穿）
 Config.COIN_TIERS = {
     { id = "gold",        unlockSp = 0,  baseValue = 1.00,  upBaseSp = 2, upStepSp = 0.500, maxLv = 15 },
-    { id = "emerald",     unlockSp = 6,  baseValue = 1.21,  upBaseSp = 2, upStepSp = 0.525, maxLv = 15 },
-    { id = "split",       unlockSp = 7,  baseValue = 1.45,  upBaseSp = 2, upStepSp = 0.550, maxLv = 15 },
-    { id = "heavy",       unlockSp = 7,  baseValue = 1.75,  upBaseSp = 2, upStepSp = 0.575, maxLv = 15 },
-    { id = "thunder",     unlockSp = 8,  baseValue = 2.11,  upBaseSp = 2, upStepSp = 0.600, maxLv = 15 },
-    { id = "bomb",        unlockSp = 8,  baseValue = 2.54,  upBaseSp = 3, upStepSp = 0.625, maxLv = 15 },
-    { id = "spring",      unlockSp = 9,  baseValue = 3.06,  upBaseSp = 3, upStepSp = 0.650, maxLv = 15 },
-    { id = "magnet",      unlockSp = 9,  baseValue = 3.69,  upBaseSp = 3, upStepSp = 0.675, maxLv = 15 },
-    { id = "ruby",        unlockSp = 10, baseValue = 4.44,  upBaseSp = 3, upStepSp = 0.700, maxLv = 15 },
-    { id = "neon",        unlockSp = 10, baseValue = 5.35,  upBaseSp = 3, upStepSp = 0.725, maxLv = 15 },
-    { id = "frost",       unlockSp = 11, baseValue = 6.45,  upBaseSp = 4, upStepSp = 0.750, maxLv = 15 },
-    { id = "ghost",       unlockSp = 11, baseValue = 7.77,  upBaseSp = 4, upStepSp = 0.775, maxLv = 15 },
-    { id = "jackpot7",    unlockSp = 12, baseValue = 9.37,  upBaseSp = 4, upStepSp = 0.800, maxLv = 15 },
-    { id = "blackhole",   unlockSp = 12, baseValue = 11.3,  upBaseSp = 4, upStepSp = 0.825, maxLv = 15 },
-    { id = "giant",       unlockSp = 13, baseValue = 13.6,  upBaseSp = 4, upStepSp = 0.850, maxLv = 15 },
-    { id = "nuke",        unlockSp = 13, baseValue = 16.4,  upBaseSp = 5, upStepSp = 0.875, maxLv = 15 },
-    { id = "midas",       unlockSp = 14, baseValue = 19.7,  upBaseSp = 5, upStepSp = 0.900, maxLv = 15, parents = { "gold", "ruby" } },
-    { id = "thor",        unlockSp = 14, baseValue = 23.8,  upBaseSp = 5, upStepSp = 0.925, maxLv = 15, parents = { "heavy", "thunder" } },
-    { id = "supernova",   unlockSp = 15, baseValue = 28.7,  upBaseSp = 5, upStepSp = 0.950, maxLv = 15, parents = { "bomb", "neon" } },
-    { id = "hydra",       unlockSp = 15, baseValue = 34.5,  upBaseSp = 5, upStepSp = 0.975, maxLv = 15, parents = { "split", "spring" } },
-    { id = "singularity", unlockSp = 16, baseValue = 41.6,  upBaseSp = 6, upStepSp = 1.000, maxLv = 15, parents = { "blackhole", "magnet" } },
-    { id = "carnival",    unlockSp = 16, baseValue = 50.1,  upBaseSp = 6, upStepSp = 1.025, maxLv = 15, parents = { "jackpot7", "emerald" } },
+    { id = "emerald",     unlockSp = 6,  baseValue = 1.22,  upBaseSp = 2, upStepSp = 0.525, maxLv = 15 },
+    { id = "split",       unlockSp = 7,  baseValue = 1.49,  upBaseSp = 2, upStepSp = 0.550, maxLv = 15 },
+    { id = "heavy",       unlockSp = 7,  baseValue = 1.82,  upBaseSp = 2, upStepSp = 0.575, maxLv = 15 },
+    { id = "thunder",     unlockSp = 8,  baseValue = 2.22,  upBaseSp = 2, upStepSp = 0.600, maxLv = 15 },
+    { id = "bomb",        unlockSp = 8,  baseValue = 2.70,  upBaseSp = 3, upStepSp = 0.625, maxLv = 15 },
+    { id = "spring",      unlockSp = 9,  baseValue = 3.30,  upBaseSp = 3, upStepSp = 0.650, maxLv = 15 },
+    { id = "magnet",      unlockSp = 9,  baseValue = 4.02,  upBaseSp = 3, upStepSp = 0.675, maxLv = 15 },
+    { id = "ruby",        unlockSp = 10, baseValue = 4.91,  upBaseSp = 3, upStepSp = 0.700, maxLv = 15 },
+    { id = "neon",        unlockSp = 10, baseValue = 5.99,  upBaseSp = 3, upStepSp = 0.725, maxLv = 15 },
+    { id = "frost",       unlockSp = 11, baseValue = 7.30,  upBaseSp = 4, upStepSp = 0.750, maxLv = 15 },
+    { id = "ghost",       unlockSp = 11, baseValue = 8.91,  upBaseSp = 4, upStepSp = 0.775, maxLv = 15 },
+    { id = "jackpot7",    unlockSp = 12, baseValue = 10.9,  upBaseSp = 4, upStepSp = 0.800, maxLv = 15 },
+    { id = "blackhole",   unlockSp = 12, baseValue = 13.3,  upBaseSp = 4, upStepSp = 0.825, maxLv = 15 },
+    { id = "giant",       unlockSp = 13, baseValue = 16.2,  upBaseSp = 4, upStepSp = 0.850, maxLv = 15 },
+    { id = "nuke",        unlockSp = 13, baseValue = 19.7,  upBaseSp = 5, upStepSp = 0.875, maxLv = 15 },
+    { id = "midas",       unlockSp = 14, baseValue = 24.1,  upBaseSp = 5, upStepSp = 0.900, maxLv = 15, parents = { "gold", "ruby" } },
+    { id = "thor",        unlockSp = 14, baseValue = 29.4,  upBaseSp = 5, upStepSp = 0.925, maxLv = 15, parents = { "heavy", "thunder" } },
+    { id = "supernova",   unlockSp = 15, baseValue = 35.8,  upBaseSp = 5, upStepSp = 0.950, maxLv = 15, parents = { "bomb", "neon" } },
+    { id = "hydra",       unlockSp = 15, baseValue = 43.7,  upBaseSp = 5, upStepSp = 0.975, maxLv = 15, parents = { "split", "spring" } },
+    { id = "singularity", unlockSp = 16, baseValue = 53.3,  upBaseSp = 6, upStepSp = 1.000, maxLv = 15, parents = { "blackhole", "magnet" } },
+    { id = "carnival",    unlockSp = 16, baseValue = 65.1,  upBaseSp = 6, upStepSp = 1.025, maxLv = 15, parents = { "jackpot7", "emerald" } },
 }
 Config.COIN_TIER_BY_ID = {}
 for idx, t in ipairs(Config.COIN_TIERS) do
@@ -591,24 +591,24 @@ Config.SLOT_PRIZES = {
 -- 6. 商业级激励模拟广告位（节制冷却爆发，防止常驻主导数值）
 Config.AD_PLACEMENTS = {
     boost_3x = {
-        id = "boost_3x", title = "超级印钞 ×3", short = "×3印钞", cooldown = 1200,
+        id = "boost_3x", title = "超级印钞 ×3", short = "×3印钞", cooldown = 360,
         iconKind = "relic", iconKey = "vip_card", inWelfare = true,
-        desc = "全场收益翻 3 倍并持续 180 秒（上限 300 秒，冷却 20 分钟）！",
+        desc = "全场收益翻 3 倍并持续 180 秒（上限 300 秒，冷却 6 分钟）！",
     },
     instant_fever = {
         id = "instant_fever", title = "满槽超级狂欢", short = "超级狂欢", cooldown = 300,
         iconKind = "relic", iconKey = "fever_amp", inWelfare = true,
-        desc = "瞬间灌满狂欢槽，触发 14 秒狂欢极速 + 28 枚高阶金币雨！",
+        desc = "瞬间灌满狂欢槽，激活整整 60 秒超级狂欢极速 + 40 枚高阶金币雨！",
     },
     vault_drop = {
-        id = "vault_drop", title = "空投金库双币塔", short = "金库双塔", cooldown = 420,
+        id = "vault_drop", title = "空投摩天金库巨塔", short = "摩天金塔", cooldown = 420,
         iconKind = "boss", iconKey = "vaultbeast", inWelfare = true,
-        desc = "在台面筑起 2 座锁定金币塔（16枚高阶币+塔顶2枚45倍金库巨币），成塔后推倒狂落！",
+        desc = "在台面中央筑起 24 层六柱螺旋摩天金库塔（24枚高阶币+2枚45倍金库巨币），成塔倾倒！",
     },
     airdrop_5x = {
         id = "airdrop_5x", title = "风投空投 ×5 暴富", short = "风投暴富", cooldown = 360,
         iconKind = "event", iconKey = "vault_crack", inWelfare = true,
-        desc = "领大额金币 + 台面筑起 2 座高阶金库塔（10枚高阶币+2枚45倍金库币） + 5~20技能点！",
+        desc = "巨额现金 + 25~60技能点 + 22层螺旋金库巨塔(含4枚45倍巨币) + 整整60秒全场×5！",
     },
     offline_2x = {
         id = "offline_2x", title = "离线收益双倍领", short = "离线双倍", cooldown = 0,
@@ -626,9 +626,9 @@ Config.AD_PLACEMENTS = {
         desc = "看模拟广告立刻把超越世界排名获赠的技能点直接翻 3 倍！",
     },
     dice_reroll = {
-        id = "dice_reroll", title = "12面骰重掷翻倍", short = "重掷翻倍", cooldown = 0,
+        id = "dice_reroll", title = "12面骰狂飙×2 (60秒)", short = "翻倍60秒", cooldown = 0,
         iconKind = "relic", iconKey = "clover", inWelfare = false,
-        desc = "看广告重掷12面骰子，保底掷出 7~12 点并翻倍为 ×14~×24（持续 18 秒）！",
+        desc = "看广告把 12 面骰倍率翻倍至 ×14~×24，并延长至整整 60 秒！（不看广告仅 8 秒）",
     },
 }
 Config.AD_WELFARE_ORDER = { "boost_3x", "instant_fever", "vault_drop", "airdrop_5x" }
