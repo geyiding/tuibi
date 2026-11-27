@@ -217,10 +217,16 @@ local function DrawSlotGrid(st, nvg, run, gx, gy, cell, gap, u, t, font, drawSym
         for k = 1, 3 do
             local x, y = CellRect(gx, gy, cell, gap, ln[k])
             pts[k] = { x + cell * 0.5, y + cell * 0.5 }
+            SetAdditive(nvg, true)
             nvgBeginPath(nvg)
-            nvgRoundedRect(nvg, x - 1.5, y - 1.5, cell + 3, cell + 3, cell * 0.18)
-            nvgStrokeColor(nvg, Col(prizeCol, floor(255 * flash)))
-            nvgStrokeWidth(nvg, 2.6 * u)
+            nvgRoundedRect(nvg, x, y, cell, cell, cell * 0.16)
+            nvgFillPaint(nvg, nvgRadialGradient(nvg, x + cell * 0.5, y + cell * 0.5, cell * 0.1, cell * 0.7, Col(prizeCol, floor(110 * flash)), Col(prizeCol, 0)))
+            nvgFill(nvg)
+            SetAdditive(nvg, false)
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, x - 2, y - 2, cell + 4, cell + 4, cell * 0.18)
+            nvgStrokeColor(nvg, Col(C.white, floor(255 * flash)))
+            nvgStrokeWidth(nvg, 2.4 * u)
             nvgStroke(nvg)
         end
         SetAdditive(nvg, true)
@@ -259,15 +265,21 @@ local function DrawLotteryBoard(st, nvg, run, gx, gy, cell, gap, u, t, font)
         if not isLit then
             nvgBeginPath(nvg)
             nvgRoundedRect(nvg, x, y, cell, cell, cell * 0.16)
-            nvgFillColor(nvg, Col(INK, useTile and 165 or 150))
+            nvgFillColor(nvg, Col(INK, useTile and 115 or 150))
             nvgFill(nvg)
         elseif useTile then
+            -- 贴图本身够亮：亮灯只加一圈白描边 + 轻微提亮，避免冲白
             SetAdditive(nvg, true)
             nvgBeginPath(nvg)
             nvgRoundedRect(nvg, x, y, cell, cell, cell * 0.16)
-            nvgFillColor(nvg, Col(C.white, 70))
+            nvgFillColor(nvg, Col(C.white, 22))
             nvgFill(nvg)
             SetAdditive(nvg, false)
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, x - 1.5 * u, y - 1.5 * u, cell + 3 * u, cell + 3 * u, cell * 0.18)
+            nvgStrokeColor(nvg, Col(C.white, 255))
+            nvgStrokeWidth(nvg, 2.2 * u)
+            nvgStroke(nvg)
         end
         if not useTile then
             nvgFontSize(nvg, cell * ((tierId == "next") and 0.30 or 0.27))
@@ -287,7 +299,7 @@ local function DrawLotteryBoard(st, nvg, run, gx, gy, cell, gap, u, t, font)
             SetAdditive(nvg, true)
             nvgBeginPath(nvg)
             nvgRect(nvg, x - cell * 0.4, y - cell * 0.4, cell * 1.8, cell * 1.8)
-            nvgFillPaint(nvg, nvgBoxGradient(nvg, x, y, cell, cell, cell * 0.16, cell * 0.35, Col(tier.col, 190), Col(tier.col, 0)))
+            nvgFillPaint(nvg, nvgBoxGradient(nvg, x, y, cell, cell, cell * 0.16, cell * 0.35, Col(tier.col, useTile and 120 or 190), Col(tier.col, 0)))
             nvgFill(nvg)
             SetAdditive(nvg, false)
         end
