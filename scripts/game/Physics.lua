@@ -49,6 +49,8 @@ function Physics.New(callbacks)
     self.pusherVelY = 0
     self.gateX = S.LAUNCHER_X
     self.launchAngleDeg = 0
+    self.towers = {}
+    self.nextTowerId = 0
 
     -- 预分配硬币池（SoA/扁平槽，永不删除重建表）
     self.coins = {}
@@ -87,6 +89,10 @@ function Physics.New(callbacks)
             pegCashHits = 0,
             lastPegId = 0,
             spawnSeq = 0,
+            towerId = 0,
+            towerLocked = false,
+            towerZ = 0,
+            towerCrown = false,
         }
     end
     self.nextSeq = 0
@@ -165,9 +171,16 @@ function Physics:Reset(opts)
     self.gateX = S.LAUNCHER_X
     self.launchAngleDeg = 0
     self.nextSeq = 0
+    self.towers = {}
+    self.nextTowerId = 0
 
     for i = 1, S.MAX_COINS do
-        self.coins[i].active = false
+        local c = self.coins[i]
+        c.active = false
+        c.towerId = 0
+        c.towerLocked = false
+        c.towerZ = 0
+        c.towerCrown = false
     end
     self.activeCount = 0
     self:BuildPegs(opts.extraMultPegs or 0)
@@ -224,11 +237,11 @@ function Physics:AllocCoinSlot()
             return c
         end
     end
-    -- 2. 其次回收中后排分裂子币
+    -- 2. 其次回收中后排分裂子币（绝不回收塔内锁定的硬币）
     local pickMini, miniSeq = nil, math.huge
     for i = 1, S.MAX_COINS do
         local c = self.coins[i]
-        if c.active and c.zone == "deck" and c.isMini and c.y < 480 and c.spawnSeq < miniSeq then
+        if c.active and not c.towerLocked and c.zone == "deck" and c.isMini and c.y < 480 and c.spawnSeq < miniSeq then
             miniSeq = c.spawnSeq
             pickMini = c
         end
@@ -238,16 +251,25 @@ function Physics:AllocCoinSlot()
         pickMini.active = false
         return pickMini
     end
-    -- 3. 保护前沿悬崖带 (y > 460)，回收到极限前先推动前排跌落再回收最老普通币
+    -- 3. 保护前沿悬崖带 (y > 460) 与新生成金库巨币 / 锁定金币塔
     local pick, bestScore = nil, math.huge
     for i = 1, S.MAX_COINS do
         local c = self.coins[i]
-        if c.active and c.zone == "deck" then
+        if c.active and not c.towerLocked and c.zone == "deck" then
             local frontPen = (c.y > 460) and 200000 or 0
-            local prio = c.spawnSeq + frontPen + ((c.kind == "gold" or c.kind == "mini") and 0 or 50000)
+            local vaultPen = (c.kind == "vault" and (c.age or 0) < 15) and 300000 or 0
+            local prio = c.spawnSeq + frontPen + vaultPen + ((c.kind == "gold" or c.kind == "mini") and 0 or 50000)
             if prio < bestScore then
                 bestScore = prio
                 pick = c
+            end
+        end
+    end
+    if not pick then
+        for i = 1, S.MAX_COINS do
+            if not self.coins[i].towerLocked then
+                pick = self.coins[i]
+                break
             end
         end
     end
@@ -264,7 +286,7 @@ function Physics:SpawnCoin(params)
     if params.isMini and self.activeCount >= S.MAX_COINS - 14 then
         return nil
     end
-    if params.isRain and self.activeCount >= S.MAX_COINS - 6 then
+    if params.isRain and not params.forceSpawn and self.activeCount >= S.MAX_COINS - 6 then
         self:PulseDeckForward(45, 6)
         return nil
     end
@@ -309,6 +331,10 @@ function Physics:SpawnCoin(params)
     c.pegCashHits = 0
     c.lastPegId = 0
     c.spawnSeq = self.nextSeq
+    c.towerId = params.towerId or 0
+    c.towerLocked = params.towerLocked == true
+    c.towerZ = params.towerZ or 0
+    c.towerCrown = params.towerCrown == true
     if self._stepping then
         self._needSync = true
     else
@@ -462,6 +488,134 @@ function Physics:HasActiveSlotCoins()
     return false
 end
 
+--- 在台面上筑起一座锁定金币塔（筑塔期防推落，满塔后整体解锁前倾推倒）
+function Physics:StartCoinTower(opts)
+    opts = opts or {}
+    local tx = opts.x or 180
+    local ty = opts.y or 440
+    for i = 1, #self.towers do
+        local ew = self.towers[i]
+        if abs((ew.x or 180) - tx) < 24 and abs((ew.y or 440) - ty) < 24 then
+            ty = max(S.PUSHER_Y_MAX + 32, ty - 26)
+        end
+    end
+
+    -- 塔基周围 32px 内平铺币轻微向外推散，留出清晰地基
+    for i = 1, self.activeCount do
+        local c = self.coins[self.activeIds[i]]
+        if c and c.active and c.zone == "deck" and not c.towerLocked then
+            local dx = c.x - tx
+            local dy = c.y - ty
+            local d2 = dx * dx + dy * dy
+            if d2 < 32 * 32 then
+                local d = sqrt(d2)
+                local ux = (d > 0.01) and (dx / d) or ((i % 2 == 0) and 0.75 or -0.75)
+                local uy = (d > 0.01) and (dy / d) or 0.66
+                c.vx = (c.vx or 0) + ux * 85
+                c.vy = (c.vy or 0) + uy * 85
+            end
+        end
+    end
+
+    self.nextTowerId = (self.nextTowerId or 0) + 1
+    local tw = {
+        id = self.nextTowerId,
+        x = tx,
+        y = ty,
+        kind = opts.kind or "gold",
+        level = opts.level or 1,
+        crownKind = opts.crownKind,
+        crownLevel = opts.crownLevel or 1,
+        total = max(2, opts.count or 8),
+        built = 0,
+        zStep = opts.zStep or 7.4,
+        layerInterval = opts.layerInterval or 0.105,
+        holdDur = opts.holdDur or 0.48,
+        timer = 0,
+        holdT = 0,
+        phase = "building",
+        fanDir = opts.fanDir or 0,
+        label = opts.label or "金币塔落成！",
+        announceComplete = (opts.announceComplete ~= false),
+        coinIds = {},
+    }
+    self.towers[#self.towers + 1] = tw
+    return tw
+end
+
+function Physics:StepTowers(dt)
+    local towers = self.towers
+    if not towers or #towers == 0 then return end
+    for idx = #towers, 1, -1 do
+        local tw = towers[idx]
+        if tw.phase == "building" then
+            tw.timer = tw.timer - dt
+            while tw.timer <= 0 and tw.built < tw.total do
+                tw.built = tw.built + 1
+                tw.timer = tw.timer + tw.layerInterval
+                local isCrown = (tw.built == tw.total and tw.crownKind ~= nil)
+                local targetZ = (tw.built - 1) * tw.zStep
+                local jx = (tw.built % 2 == 0) and 0.8 or -0.8
+                local jy = ((tw.built % 3) - 1) * 0.5
+                local c = self:SpawnCoin({
+                    kind = isCrown and tw.crownKind or tw.kind,
+                    level = isCrown and tw.crownLevel or tw.level,
+                    x = tw.x + jx,
+                    y = tw.y + jy,
+                    z = targetZ + 52,
+                    vz = -310,
+                    vx = 0,
+                    vy = 0,
+                    zone = "deck",
+                    onPusher = false,
+                    gateChecked = true,
+                    forceSpawn = true,
+                    towerId = tw.id,
+                    towerLocked = true,
+                    towerZ = targetZ,
+                    towerCrown = isCrown,
+                })
+                if c then
+                    tw.coinIds[#tw.coinIds + 1] = c.id
+                end
+                if self.cb.OnTowerLayer then
+                    self.cb.OnTowerLayer(tw.x, tw.y, tw.built, tw.total, isCrown)
+                end
+            end
+            if tw.built >= tw.total then
+                tw.phase = "hold"
+                tw.holdT = tw.holdDur
+                if tw.announceComplete and self.cb.OnTowerComplete then
+                    self.cb.OnTowerComplete(tw.x, tw.y, tw.label)
+                end
+            end
+        elseif tw.phase == "hold" then
+            tw.holdT = tw.holdT - dt
+            if tw.holdT <= 0 then
+                local ids = tw.coinIds
+                local nCoins = #ids
+                for layerIdx = 1, nCoins do
+                    local c = self.coins[ids[layerIdx]]
+                    if c and c.active and c.towerId == tw.id then
+                        c.towerLocked = false
+                        c.towerId = 0
+                        local frac = (layerIdx - 1) / max(1, nCoins - 1)
+                        c.vx = ((layerIdx % 2 == 0) and 1 or -1) * (14 + frac * 42) + (tw.fanDir or 0) * (18 + frac * 34)
+                        c.vy = 85 + frac * 150
+                        c.vz = 18 + frac * 55
+                        c.vrot = ((layerIdx % 2 == 0) and 1 or -1) * (4 + frac * 6)
+                    end
+                end
+                self:PulseDeckForward(26, 5)
+                if self.cb.OnTowerTopple then
+                    self.cb.OnTowerTopple(tw.x, tw.y, tw.label)
+                end
+                table.remove(towers, idx)
+            end
+        end
+    end
+end
+
 function Physics:Step(dt)
     if dt <= 0 then return end
     if dt > 0.05 then dt = 0.05 end
@@ -492,6 +646,9 @@ function Physics:Step(dt)
     local pusherFront = self.pusherY
     local pusherLeft = 180 - S.DECK_TOP_HALF + 4
     local pusherRight = 180 + S.DECK_TOP_HALF - 4
+
+    -- 1.5 金币塔分帧筑塔 / 锁定展示 / 成塔推倒解锁（在 activeCount 采样前生成新层）
+    self:StepTowers(dt)
 
     -- 2. 单币积分、槽内碰撞与推台边界（遍历期间新增币延迟同步 activeIds）
     local cb = self.cb
@@ -618,6 +775,18 @@ function Physics:Step(dt)
                     if def and def.bhRadius then c.bhT = 2.1 end
                     if cb.OnEnterDeck then cb.OnEnterDeck(c) end
                 end
+
+            elseif c.zone == "deck" and c.towerLocked then
+                -- 筑塔锁定态：垂直高速落层到目标塔高 towerZ，期间不受推板/侧漏/悬崖跌落影响
+                c.vz = c.vz - 520 * dt
+                c.z = c.z + c.vz * dt
+                local floorZ = c.towerZ or 0
+                if c.z <= floorZ then
+                    c.z = floorZ
+                    c.vz = 0
+                end
+                c.vx = 0
+                c.vy = 0
 
             elseif c.zone == "deck" then
                 -- 2.5D Z 轴弹跳回落
@@ -817,7 +986,10 @@ function Physics:ResolveDeckCollisions(crowdBoost)
                         while idB ~= 0 do
                             if idB > idA then
                                 local b = coins[idB]
-                                if a.onPusher == b.onPusher then
+                                local skipPair = (a.towerLocked and b.towerLocked)
+                                    or (a.towerLocked and (a.towerZ or 0) > 10)
+                                    or (b.towerLocked and (b.towerZ or 0) > 10)
+                                if not skipPair and a.onPusher == b.onPusher then
                                     local dx = b.x - a.x
                                     local dy = b.y - a.y
                                     local minD = a.r + b.r
@@ -835,25 +1007,27 @@ function Physics:ResolveDeckCollisions(crowdBoost)
                                         if overlap > maxOv then maxOv = overlap end
                                         local moving = (abs(a.vx) + abs(a.vy) + abs(b.vx) + abs(b.vy)) >= 1.5
                                         if moving or overlap > 0.2 then
-                                            local wA = 1 / max(0.3, a.mass)
-                                            local wB = 1 / max(0.3, b.mass)
+                                            local wA = a.towerLocked and 0 or (1 / max(0.3, a.mass))
+                                            local wB = b.towerLocked and 0 or (1 / max(0.3, b.mass))
                                             local wSum = wA + wB
-                                            local rA = wA / wSum
-                                            local rB = wB / wSum
-                                            a.x = a.x - ux * overlap * rA
-                                            a.y = a.y - uy * overlap * rA
-                                            b.x = b.x + ux * overlap * rB
-                                            b.y = b.y + uy * overlap * rB
-                                            if moving then
-                                                local rvx = b.vx - a.vx
-                                                local rvy = b.vy - a.vy
-                                                local vn = rvx * ux + rvy * uy
-                                                if vn < 0 then
-                                                    local j = -1.18 * vn * pushGain / wSum
-                                                    a.vx = a.vx - ux * j * wA
-                                                    a.vy = a.vy - uy * j * wA
-                                                    b.vx = b.vx + ux * j * wB
-                                                    b.vy = b.vy + uy * j * wB
+                                            if wSum > 0 then
+                                                local rA = wA / wSum
+                                                local rB = wB / wSum
+                                                a.x = a.x - ux * overlap * rA
+                                                a.y = a.y - uy * overlap * rA
+                                                b.x = b.x + ux * overlap * rB
+                                                b.y = b.y + uy * overlap * rB
+                                                if moving then
+                                                    local rvx = b.vx - a.vx
+                                                    local rvy = b.vy - a.vy
+                                                    local vn = rvx * ux + rvy * uy
+                                                    if vn < 0 then
+                                                        local j = -1.18 * vn * pushGain / wSum
+                                                        a.vx = a.vx - ux * j * wA
+                                                        a.vy = a.vy - uy * j * wA
+                                                        b.vx = b.vx + ux * j * wB
+                                                        b.vy = b.vy + uy * j * wB
+                                                    end
                                                 end
                                             end
                                         end
@@ -864,15 +1038,17 @@ function Physics:ResolveDeckCollisions(crowdBoost)
                         end
                     end
                 end
-                -- 钳位回推板前侧与后壁（每轮迭代强制推板刚体不退让，确保推力传递到前沿）
-                if not a.onPusher and a.x >= pusherLeft and a.x <= pusherRight and a.y - a.r < pusherFront then
-                    a.y = pusherFront + a.r
-                end
-                if a.y - a.r < S.DECK_TOP_Y + 2 then a.y = S.DECK_TOP_Y + 2 + a.r end
-                local hw = Physics.TrapezoidHalfW(a.y)
-                if a.y < S.SIDE_GAP_Y then
-                    if a.x - a.r < 180 - hw then a.x = 180 - hw + a.r end
-                    if a.x + a.r > 180 + hw then a.x = 180 + hw - a.r end
+                -- 钳位回推板前侧与后壁（每轮迭代强制推板刚体不退让，确保推力传递到前沿；锁塔内币不动）
+                if not a.towerLocked then
+                    if not a.onPusher and a.x >= pusherLeft and a.x <= pusherRight and a.y - a.r < pusherFront then
+                        a.y = pusherFront + a.r
+                    end
+                    if a.y - a.r < S.DECK_TOP_Y + 2 then a.y = S.DECK_TOP_Y + 2 + a.r end
+                    local hw = Physics.TrapezoidHalfW(a.y)
+                    if a.y < S.SIDE_GAP_Y then
+                        if a.x - a.r < 180 - hw then a.x = 180 - hw + a.r end
+                        if a.x + a.r > 180 + hw then a.x = 180 + hw - a.r end
+                    end
                 end
             end
         end

@@ -142,8 +142,8 @@ assert(ty:ManualShoot(), "冷却就绪时手点应发射额外硬币")
 assert(ty.totalClicks == prevClicks + 1)
 
 -- 4. 机台 8 大升级与 ×1 / ×10 / MAX 购买模式（纯技能点 SP 购买，绝不扣现金！）
-ty.cash = 1e20
-ty.lifetimeCash = math.max(ty.lifetimeCash, 1e20)
+ty.cash = 1e9
+ty.lifetimeCash = math.max(ty.lifetimeCash, 1e9)
 ty.skillPoints = 20000
 local frozenCash = ty.cash
 
@@ -463,6 +463,163 @@ fxR.modalOpen = true
 fxR:Reset()
 assert(fxR.liveRankTxt == "" and fxR.modalOpen == false and fxR.activePopCount == 0, "Fx:Reset 必须清空瞬态文字与弹窗态")
 assert(fxR.ancCashX == 180 and fxR.ancCashY == 32 and fxR.ancRankX == 110, "Fx:Reset 必须保留组件注入的屏幕锚点")
+
+-- 11.7 超越技能点 ×5 与 广告 ×3 校验
+for idx, rk in ipairs(Billionaires.LIST) do
+    local b = rk.spBounty or 0
+    assert(b >= 10, string.format("Rank %d spBounty 加强5倍后应 >= 10, 实际 %s", idx, tostring(b)))
+    if not rk.anonymous then
+        assert(idx <= (#Billionaires.LIST - 10) and b >= 10 or b == 25)
+    end
+end
+local tOvt = Tycoon.New(nil, { seed = 2040 })
+local sp0 = tOvt.skillPoints
+local adAdded = tOvt:ClaimOvertakeAdBonus(10)
+assert(adAdded == 20 and tOvt.skillPoints == sp0 + 20, "超越广告 ×3 额外应精确发放 +20 SP")
+
+-- 11.8 风投空投 Option A（动态预览 + 免费币 + 广告高阶币雨/金库币/技能点）
+local tAir = Tycoon.New(nil, { seed = 2041 })
+tAir.skillPoints = 500
+tAir:BuyCoin("emerald")
+tAir:AddWealth(1e6, false)
+local pv1 = tAir:GetAirdropPreview()
+assert(pv1.freeCash >= 50 and pv1.freeCoins == 2)
+assert(pv1.adCash >= 300 and pv1.adCoins == 10 and pv1.adVaults == 2 and pv1.adSp >= 5 and pv1.adSp <= 20)
+tAir.activeAirdrop = { eventId = "vault_crack" }
+local cPreFree = tAir.cash
+local cntPreFree = #tAir.physics.activeIds
+tAir:ClaimAirdrop(false)
+assert(tAir.activeAirdrop == nil and tAir.cash >= cPreFree + pv1.freeCash)
+assert(#tAir.physics.activeIds >= cntPreFree + 2, "风投空投免费领取应额外掉 2 枚最高解锁币")
+tAir.activeAirdrop = { eventId = "vault_crack" }
+local cPreAd = tAir.cash
+local spPreAd = tAir.skillPoints
+tAir:ClaimAirdrop(true)
+assert(tAir.activeAirdrop == nil and tAir.cash >= cPreAd + pv1.adCash)
+assert(tAir.skillPoints >= spPreAd + pv1.adSp, "风投空投广告必须同步发放动态技能点")
+assert(#tAir.physics.towers == 2, "风投空投广告应在台面立起 2 座高阶金库金币塔")
+for _ = 1, 130 do tAir:Update(1 / 60) end
+assert(#tAir.physics.towers == 0, "风投双塔应在成塔短暂展示后推倒释放完毕")
+
+-- 11.9 独立惊喜倍率 surpriseMult（与三连/狂欢/广告直接相乘，含 10×3=30 验证）
+local tSurp = Tycoon.New(nil, { seed = 2042 })
+tSurp.adBoostLeft = 60
+tSurp.luckMult = 5
+tSurp.luckTimer = 8
+tSurp:ApplySurpriseMult(10, 12, "测试奇遇")
+local totalM, det = tSurp:GetTotalMult(true)
+assert(det.ad == 3 and det.luck == 5 and det.surprise == 10, "奇遇倍率必须独立于三连与印钞存在")
+local expectProd = det.machine * det.tech * det.prestige * det.combo * det.fever * det.ad * det.luck * det.surprise
+assert(math.abs(totalM - expectProd) <= 1e-6 * totalM, "总倍率必须等于各独立乘区相乘（10×3=30）")
+
+-- 11.10 拖金袋小人 + 12面骰子（真实1~12点 + 低点看广告重掷7~12翻倍×14~24）+ 黄金气球（碰撞&3奖）+ 黄金暴走
+local tDice = Tycoon.New(nil, { seed = 2043 })
+tDice:SpawnRunner()
+assert(tDice.runner.active == true)
+local d0 = tDice:HitRunner(tDice.runner.x)
+assert(tDice.runner.active == false and d0 ~= nil and d0.face >= 1 and d0.face <= 12 and d0.mult == d0.face)
+assert(tDice.pendingDice == d0)
+tDice.pendingDice = { face = 3, mult = 3, dur = 18, rerolled = false }
+local d1 = tDice:RollDiceReroll()
+assert(d1 and d1.rerolled == true and d1.face >= 7 and d1.face <= 12 and d1.mult == d1.face * 2 and d1.mult >= 14 and d1.mult <= 24)
+assert(tDice:RollDiceReroll() == nil, "同一次掷骰仅限重掷一次")
+local cntBeforeDice = #tDice.physics.activeIds
+local dMult, dDur = tDice:ClaimPendingDice()
+assert(tDice.pendingDice == nil and dMult == d1.mult and dDur == 18 and tDice.surpriseMult == d1.mult)
+assert(#tDice.physics.activeIds >= cntBeforeDice + 6, "重掷领取后应加送 6 枚高阶币雨")
+tDice.pendingDice = { face = 1, mult = 1, dur = 18, rerolled = false }
+local cntLow = #tDice.physics.activeIds
+tDice:ClaimPendingDice()
+assert(#tDice.physics.activeIds >= cntLow + 3, "掷出1点未重掷应保底赠送 3 枚高阶币")
+
+-- 黄金气球：槽内硬币碰撞引爆 + 3类奖池覆盖
+local tBal = Tycoon.New(nil, { seed = 2044 })
+tBal.balloon.active = true
+tBal.balloon.x = 180
+tBal.balloon.baseY = 118
+tBal.balloon.y = 118
+tBal.balloon.speed = 0
+tBal.balloon.dir = 1
+tBal.balloon.bobT = 0
+tBal.physics:SpawnCoin({ kind = "gold", level = 1, x = 180, y = 118, vx = 0, vy = 0, zone = "slot" })
+tBal:Update(1 / 60)
+assert(tBal.balloon.active == false, "入槽硬币撞击气球范围必须立即打爆气球")
+local seenBal = {}
+for s = 1, 80 do
+    local tb = Tycoon.New(nil, { seed = 3000 + s })
+    tb.balloon.active = true
+    local k = tb:PopBalloon("tap")
+    if k then seenBal[k] = true end
+end
+assert(seenBal.mult and seenBal.vault and seenBal.sp, "黄金气球必须能开出高倍/45倍金库币/技能点福袋三种大奖")
+
+-- 突发黄金暴走
+local tRush = Tycoon.New(nil, { seed = 2045 })
+local cntRush = #tRush.physics.activeIds
+local rMult, rDur = tRush:TriggerGoldRush()
+assert((rMult == 10 or rMult == 12 or rMult == 15 or rMult == 20) and rDur == 10)
+assert(tRush.surpriseMult == rMult and #tRush.physics.activeIds >= cntRush + 12, "突发黄金暴走必须生效高倍并掉落12枚币雨")
+
+-- 11.11 奇遇倍率存档保留 + 瞬态弹幕重置
+tRush:SpawnRunner()
+tRush.balloon.active = true
+tRush.pendingDice = { face = 5, mult = 5, dur = 18, rerolled = false }
+local rushSnap = tRush:ExportState(os.time())
+local tRush2 = Tycoon.New(nil, { seed = 2046 })
+assert(tRush2:ImportState(rushSnap))
+assert(tRush2.surpriseMult == rMult and tRush2.surpriseTimer > 0 and tRush2.surpriseName == "黄金暴走")
+assert(tRush2.pendingDice == nil and not tRush2.runner.active and not tRush2.balloon.active, "读档后瞬态小人/气球/待确认骰子弹窗应安全复位")
+
+-- 11.12 满台 (MAX_COINS=120) 下金库双塔 & 风投暴富双塔：筑塔锁定防推落 -> 成塔推倒零吞币
+local twStats = { layers = 0, crowns = 0, completes = 0, topples = 0 }
+local twListener = {
+    OnTowerLayer = function(_, _, _, _, _, isCrown)
+        twStats.layers = twStats.layers + 1
+        if isCrown then twStats.crowns = twStats.crowns + 1 end
+    end,
+    OnTowerComplete = function() twStats.completes = twStats.completes + 1 end,
+    OnTowerTopple = function() twStats.topples = twStats.topples + 1 end,
+}
+local tTw = Tycoon.New(twListener, { seed = 2048 })
+for k = 1, Config.STAGE.MAX_COINS do
+    tTw.physics:SpawnCoin({
+        kind = "gold", level = 1,
+        x = 70 + ((k - 1) % 10) * 22, y = 260 + math.floor((k - 1) / 10) * 20,
+        zone = "deck", gateChecked = true,
+    })
+end
+assert(tTw.physics.activeCount == Config.STAGE.MAX_COINS, "台面应先铺满 120 枚硬币")
+tTw:ApplyAdReward("vault_drop")
+assert(#tTw.physics.towers == 2, "金库双塔必须同时开建 2 座金币塔")
+for f = 1, 35 do
+    if f % 10 == 0 then tTw:ManualShoot() end
+    tTw:Update(1 / 60)
+end
+local lockedMid, lockedOutOfDeck = 0, 0
+for i = 1, tTw.physics.activeCount do
+    local c = tTw.physics.coins[tTw.physics.activeIds[i]]
+    if c and c.active and c.towerLocked then
+        lockedMid = lockedMid + 1
+        if c.zone ~= "deck" or c.vx ~= 0 or c.vy ~= 0 then lockedOutOfDeck = lockedOutOfDeck + 1 end
+    end
+end
+assert(lockedMid >= 8 and lockedOutOfDeck == 0, string.format("筑塔期锁定币应稳立台面不滑动跌落 (locked=%d bad=%d)", lockedMid, lockedOutOfDeck))
+for _ = 1, 130 do tTw:Update(1 / 60) end
+local lockedAfter = 0
+for i = 1, tTw.physics.activeCount do
+    local c = tTw.physics.coins[tTw.physics.activeIds[i]]
+    if c and c.active and c.towerLocked then lockedAfter = lockedAfter + 1 end
+end
+assert(#tTw.physics.towers == 0 and lockedAfter == 0, "成塔后双塔必须完全解锁推倒")
+assert(twStats.layers == 18 and twStats.crowns == 2 and twStats.completes == 1 and twStats.topples == 2,
+    string.format("满台金库双塔需零吞币生成18枚含2金库顶冠并推倒 (layers=%d crowns=%d topples=%d)", twStats.layers, twStats.crowns, twStats.topples))
+
+twStats.layers, twStats.crowns, twStats.completes, twStats.topples = 0, 0, 0, 0
+tTw:ApplyAdReward("airdrop_5x")
+assert(#tTw.physics.towers == 2, "风投暴富必须同时开建 2 座高阶金库塔")
+for _ = 1, 120 do tTw:Update(1 / 60) end
+assert(#tTw.physics.towers == 0 and twStats.layers == 12 and twStats.crowns == 2 and twStats.topples == 2,
+    string.format("满台风投双塔需零吞币生成12枚含2金库顶冠并推倒 (layers=%d crowns=%d topples=%d)", twStats.layers, twStats.crowns, twStats.topples))
 
 print(string.format("[test_core] ALL PASS! prestiges=%d ranks=%d unlocks=%d slotWins=%d spGains=%d ads=%d",
     tIpo.totalPrestiges, #events.ranks, #events.unlocks, #events.slotWins, events.spGains, ty.adWatchCount))

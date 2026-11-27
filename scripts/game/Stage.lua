@@ -67,8 +67,9 @@ function Stage:Init(props)
     self.signPunch_ = 0
     self.signFlashCol_ = C.gold
     self.signRect_ = { x = 0, y = 0, w = 0, h = 0 }
-    self.chipTxt_ = { "", "", "", "" }
-    self.chipKey_ = { -1, -1, -1, -1 }
+    self.balloonRect_ = { x = 0, y = 0, w = 0, h = 0 }
+    self.chipTxt_ = { "", "", "", "", "" }
+    self.chipKey_ = { -1, -1, -1, -1, -1 }
     self.flameAcc_ = 0
     self.reelStop_ = { 0, 0, 0 }
     self.lastReelLock_ = { true, true, true }
@@ -96,6 +97,13 @@ function Stage:Init(props)
     props.onPointerDown = function(a, b)
         local e = PickEvent(a, b)
         if not e then return end
+        local br = selfRef.balloonRect_
+        local ty = selfRef.game and (selfRef.game.tycoon or selfRef.game.run)
+        if ty and ty.balloon and ty.balloon.active and e.x and e.y and br.w > 0
+            and e.x >= br.x and e.x <= br.x + br.w and e.y >= br.y and e.y <= br.y + br.h then
+            if selfRef.game.OnTapBalloon then selfRef.game.OnTapBalloon() end
+            return
+        end
         local sr = selfRef.signRect_
         if e.x and e.y and sr.w > 0 and e.x >= sr.x and e.x <= sr.x + sr.w and e.y >= sr.y and e.y <= sr.y + sr.h then
             if selfRef.game and selfRef.game.OnTapSign then selfRef.game.OnTapSign() end
@@ -480,8 +488,8 @@ end
 -- ----------------------------------------------------------------------------
 -- 倍率霓虹招牌
 -- ----------------------------------------------------------------------------
-local CHIP_COLS = { C.cyan, C.magenta, C.gold, C.green }
-local CHIP_HEAD = { "连击", "狂欢", "三连", "印钞" }
+local CHIP_COLS = { C.cyan, C.magenta, C.gold, C.green, ORANGE }
+local CHIP_HEAD = { "连击", "狂欢", "三连", "印钞", "奇遇" }
 
 function Stage:DrawMultSign(nvg, run, fx, cx, cy, u, t, dt, font)
     -- 1. 显示值追随实际值（增益上涨时快速滚动，过期回落时稍慢）
@@ -506,15 +514,16 @@ function Stage:DrawMultSign(nvg, run, fx, cx, cy, u, t, dt, font)
         self.multTxt_ = "×" .. Number.FormatMul(shown)
     end
 
-    -- 2. 增益芯片文本（仅数值变化时重建字符串）
+    -- 2. 增益芯片文本（含奇遇倍率，仅数值变化时重建字符串）
     local comboFactor = (run.HasTech and run:HasTech("metronome")) and 0.012 or 0.008
     local cv1 = 1 + min(100, run.combo or 0) * comboFactor
     local cv2 = run.feverActive and 2.2 or 1
     local cv3 = max(1, run.luckMult or 1)
     local cv4 = ((run.adBoostLeft or 0) > 0) and 3 or 1
-    local chipVals = self.chipVals_ or { 1, 1, 1, 1 }
+    local cv5 = max(1, run.surpriseMult or 1)
+    local chipVals = self.chipVals_ or { 1, 1, 1, 1, 1 }
     self.chipVals_ = chipVals
-    chipVals[1], chipVals[2], chipVals[3], chipVals[4] = cv1, cv2, cv3, cv4
+    chipVals[1], chipVals[2], chipVals[3], chipVals[4], chipVals[5] = cv1, cv2, cv3, cv4, cv5
 
     local pulse = self.signPunch_
     local heat = fx.heat or 0
@@ -583,32 +592,48 @@ function Stage:DrawMultSign(nvg, run, fx, cx, cy, u, t, dt, font)
     OutlinedText(nvg, 6 * u, 3 * u, self.multTxt_, tc, 255, 2.2)
     nvgRestore(nvg)
 
-    -- 3. 增益芯片行（招牌下方，只显示生效中的来源）
+    -- 3. 增益芯片行（招牌下方，只显示生效中的来源；多芯片自适应缩窄防溢出）
     local active = 0
-    for i = 1, 4 do if chipVals[i] > 1.001 then active = active + 1 end end
+    for i = 1, 5 do if chipVals[i] > 1.001 then active = active + 1 end end
     if active > 0 then
         local chipH = 19 * u
         local fsC = 12 * u
+        local padC = 12 * u
+        local gapC = 4 * u
         local totalW = 0
-        for i = 1, 4 do
+        for i = 1, 5 do
             local v = chipVals[i]
             if v > 1.001 then
-                local kk = floor(v * 10 + 0.5)
+                local kk = (v < 100) and floor(v * 10 + 0.5) or floor(v + 0.5) * 100
                 if kk ~= self.chipKey_[i] then
                     self.chipKey_[i] = kk
                     self.chipTxt_[i] = CHIP_HEAD[i] .. "×" .. Number.FormatMul(v)
                 end
-                totalW = totalW + EstTextW(self.chipTxt_[i], fsC) + 12 * u + 4 * u
+                totalW = totalW + EstTextW(self.chipTxt_[i], fsC) + padC + gapC
+            end
+        end
+        local maxChipsW = max(200, (self.uiW_ or 390) - 16)
+        if totalW > maxChipsW then
+            local kSc = maxChipsW / totalW
+            fsC = max(9 * u, fsC * kSc)
+            chipH = max(15 * u, chipH * kSc)
+            padC = padC * kSc
+            gapC = gapC * kSc
+            totalW = 0
+            for i = 1, 5 do
+                if chipVals[i] > 1.001 then
+                    totalW = totalW + EstTextW(self.chipTxt_[i], fsC) + padC + gapC
+                end
             end
         end
         local x = cx - totalW * 0.5
         local yy = y0 + h + 4 * u
         nvgFontSize(nvg, fsC)
-        for i = 1, 4 do
+        for i = 1, 5 do
             if chipVals[i] > 1.001 then
-                local cw = EstTextW(self.chipTxt_[i], fsC) + 12 * u
+                local cw = EstTextW(self.chipTxt_[i], fsC) + padC
                 local cc = CHIP_COLS[i]
-                local blink = (i == 2 or i == 3) and (0.75 + 0.25 * sin(t * 10)) or 1
+                local blink = (i == 2 or i == 3 or i == 5) and (0.75 + 0.25 * sin(t * 10)) or 1
                 nvgBeginPath(nvg)
                 nvgRoundedRect(nvg, x, yy, cw, chipH, chipH * 0.5)
                 nvgFillColor(nvg, Col(INK, 225))
@@ -618,7 +643,7 @@ function Stage:DrawMultSign(nvg, run, fx, cx, cy, u, t, dt, font)
                 nvgStroke(nvg)
                 nvgFillColor(nvg, Col(cc, 255))
                 nvgText(nvg, x + cw * 0.5, yy + chipH * 0.5 + 0.5, self.chipTxt_[i])
-                x = x + cw + 4 * u
+                x = x + cw + gapC
             end
         end
     end
@@ -727,7 +752,8 @@ function Stage:DrawSlotReels(nvg, run, cx, cy, u, t, font)
     OutlinedText(nvg, bx + boxW + sideW * 0.5 - 4 * u, cy, self.slotSideTxt_, scol, 255, 1.2)
 
     -- 幸运倍率倒计时光条
-    if luckMult > 1 and (run.luckTimer or 0) > 0 then
+    local luckOn = luckMult > 1 and (run.luckTimer or 0) > 0
+    if luckOn then
         local pw, ph = totalW, 16 * u
         local px, py = bx, by + bh + 4 * u
         local pCol = Stage.MultColor(luckMult, t)
@@ -742,6 +768,8 @@ function Stage:DrawSlotReels(nvg, run, cx, cy, u, t, font)
             nvgFillPaint(nvg, nvgLinearGradient(nvg, px, 0, px + pw, 0, Col(pCol, 200), Col(C.white, 230)))
             nvgFill(nvg)
         end
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, px, py, pw, ph, ph * 0.5)
         nvgStrokeColor(nvg, Col(pCol, 255))
         nvgStrokeWidth(nvg, 1.3)
         nvgStroke(nvg)
@@ -752,6 +780,37 @@ function Stage:DrawSlotReels(nvg, run, cx, cy, u, t, font)
         end
         nvgFontSize(nvg, 12 * u)
         OutlinedText(nvg, px + pw * 0.5, py + ph * 0.5 + 0.5, self.luckTxt_, C.white, 255, 1.2)
+    end
+
+    -- 奇遇高倍倒计时光条（骰子 / 黄金气球 / 黄金暴走）
+    local surpM = max(1, run.surpriseMult or 1)
+    if surpM > 1 and (run.surpriseTimer or 0) > 0 then
+        local pw, ph = totalW, 16 * u
+        local px, py = bx, by + bh + (luckOn and (23 * u) or (4 * u))
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, px, py, pw, ph, ph * 0.5)
+        nvgFillColor(nvg, Col(INK, 235))
+        nvgFill(nvg)
+        local prog = max(0, min(1, run.surpriseTimer / max(0.1, run.surpriseDur or 12)))
+        if prog > 0.02 then
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, px + 2, py + 2, (pw - 4) * prog, ph - 4, (ph - 4) * 0.5)
+            nvgFillPaint(nvg, nvgLinearGradient(nvg, px, 0, px + pw, 0, Col(ORANGE, 225), Col(C.gold, 240)))
+            nvgFill(nvg)
+        end
+        nvgBeginPath(nvg)
+        nvgRoundedRect(nvg, px, py, pw, ph, ph * 0.5)
+        nvgStrokeColor(nvg, Col(ORANGE, 255))
+        nvgStrokeWidth(nvg, 1.4)
+        nvgStroke(nvg)
+        local sName = run.surpriseName or "奇遇"
+        local sk = sName .. ":" .. tostring(floor(surpM * 10 + 0.5)) .. ":" .. tostring(math.ceil(run.surpriseTimer))
+        if sk ~= self.surpriseKey_ then
+            self.surpriseKey_ = sk
+            self.surpriseTxt_ = sName .. " ×" .. Number.FormatMul(surpM) .. " · " .. tostring(max(1, math.ceil(run.surpriseTimer))) .. "s"
+        end
+        nvgFontSize(nvg, 11.5 * u)
+        OutlinedText(nvg, px + pw * 0.5, py + ph * 0.5 + 0.5, self.surpriseTxt_, C.white, 255, 1.2)
     end
     return cx, cy
 end
@@ -864,6 +923,198 @@ function Stage:DrawComboBadge(nvg, run, fx, cx, cy, u, t, font)
 end
 
 -- ----------------------------------------------------------------------------
+-- 金币塔召唤光柱与筑塔进度指示（生成期锁定提示 / 满塔推倒信号）
+-- ----------------------------------------------------------------------------
+function Stage:DrawTowersOverlay(nvg, phys, u, t, font)
+    local towers = phys and phys.towers
+    if not towers or #towers == 0 then return end
+    for i = 1, #towers do
+        local tw = towers[i]
+        local sx, sy = self.toScreen_(tw.x or 180, tw.y or 440)
+        if sx and sy then
+            local isHold = (tw.phase == "hold")
+            local pulse = 0.5 + 0.5 * sin(t * (isHold and 14 or 8))
+            local beamH = 88 * u
+            local beamW = (isHold and 34 or 26) * u
+
+            SetAdditive(nvg, true)
+            nvgBeginPath(nvg)
+            nvgRect(nvg, sx - beamW * 0.5, sy - beamH, beamW, beamH)
+            nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, sy - beamH, 0, sy,
+                Col(C.gold, 0), Col(isHold and ORANGE or C.gold, floor(80 + 50 * pulse))))
+            nvgFill(nvg)
+
+            nvgBeginPath(nvg)
+            nvgEllipse(nvg, sx, sy, 22 * u, 9 * u)
+            nvgFillPaint(nvg, nvgRadialGradient(nvg, sx, sy, 2 * u, 22 * u,
+                Col(isHold and ORANGE or C.gold, floor(145 + 60 * pulse)), Col(C.gold, 0)))
+            nvgFill(nvg)
+            SetAdditive(nvg, false)
+
+            nvgBeginPath(nvg)
+            nvgEllipse(nvg, sx, sy, 18 * u, 7 * u)
+            nvgStrokeColor(nvg, Col(isHold and ORANGE or C.gold, 220))
+            nvgStrokeWidth(nvg, 1.8 * u)
+            nvgStroke(nvg)
+
+            local built = tw.built or 0
+            local topY = sy - min(78 * u, (16 + built * 4.8) * u)
+            nvgFontFace(nvg, font or "sans")
+            nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            nvgFontSize(nvg, (isHold and 13 or 11.5) * u)
+            local lbl = isHold and "塔成！推倒！" or string.format("筑塔 %d/%d · 锁定", built, tw.total or 0)
+            OutlinedText(nvg, sx, topY, lbl, isHold and C.gold or C.white, 255, 1.3)
+        end
+    end
+end
+
+-- ----------------------------------------------------------------------------
+-- 空中黄金气球（飘在落币槽区，点击或入槽币撞破有惊喜）
+-- ----------------------------------------------------------------------------
+function Stage:DrawBalloon(nvg, run, u, t, font)
+    local b = run.balloon
+    if not (b and b.active) then
+        self.balloonRect_.w = 0
+        self.balloonRect_.h = 0
+        return
+    end
+    local bx, by = self.toScreen_(b.x or 180, b.y or 118)
+    local br = 17 * u
+    self.balloonRect_.x = bx - br - 8 * u
+    self.balloonRect_.y = by - br - 8 * u
+    self.balloonRect_.w = (br + 8 * u) * 2
+    self.balloonRect_.h = (br + 14 * u) * 2
+
+    SetAdditive(nvg, true)
+    nvgBeginPath(nvg)
+    nvgCircle(nvg, bx, by, br * 1.9)
+    nvgFillPaint(nvg, nvgRadialGradient(nvg, bx, by, br * 0.2, br * 1.9,
+        Col(C.gold, floor(110 + 40 * sin(t * 7))), Col(ORANGE, 0)))
+    nvgFill(nvg)
+    SetAdditive(nvg, false)
+
+    -- 飘带尾绳
+    nvgBeginPath(nvg)
+    nvgMoveTo(nvg, bx, by + br * 1.02)
+    nvgQuadTo(nvg, bx + sin(t * 6) * 6 * u, by + br + 9 * u, bx - sin(t * 4) * 5 * u, by + br + 18 * u)
+    nvgStrokeColor(nvg, Col(C.gold, 230))
+    nvgStrokeWidth(nvg, 1.8 * u)
+    nvgStroke(nvg)
+
+    -- 饱满气球本体
+    local rw, rh = br * 0.94, br * 1.08
+    nvgBeginPath(nvg)
+    nvgEllipse(nvg, bx, by, rw, rh)
+    nvgFillPaint(nvg, nvgRadialGradient(nvg, bx - rw * 0.35, by - rh * 0.35, 1, br * 1.35, Col(C.white, 255), Col(ORANGE, 255)))
+    nvgFill(nvg)
+    nvgBeginPath(nvg)
+    nvgEllipse(nvg, bx, by, rw, rh)
+    nvgStrokeColor(nvg, Col(INK, 230))
+    nvgStrokeWidth(nvg, 1.6 * u)
+    nvgStroke(nvg)
+
+    -- 反光高光与标志字
+    nvgBeginPath(nvg)
+    nvgEllipse(nvg, bx - rw * 0.36, by - rh * 0.34, rw * 0.24, rh * 0.32)
+    nvgFillColor(nvg, Col(C.white, 150))
+    nvgFill(nvg)
+
+    nvgFontFace(nvg, font or "sans")
+    nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFontSize(nvg, 11 * u)
+    OutlinedText(nvg, bx, by - 1 * u, "★气球", C.white, 255, 1.3)
+    nvgFontSize(nvg, 9.5 * u)
+    OutlinedText(nvg, bx, by + rh + 7 * u, "点我/撞爆", C.gold, 240, 1.1)
+end
+
+-- ----------------------------------------------------------------------------
+-- 拖金袋小人（沿着机台前边缘左右横穿，前缘落币砸中触发 12 面骰）
+-- ----------------------------------------------------------------------------
+function Stage:DrawRunner(nvg, run, l, u, t, font)
+    local r = run.runner
+    if not (r and r.active) then return end
+    local rx, ry = self.toScreen_(r.x or 180, r.y or (S.DECK_BOT_Y + 14))
+    rx = max(l.x + 26 * u, min(l.x + l.w - 26 * u, rx))
+    ry = max(l.y + 30 * u, min(l.y + l.h - 24 * u, ry))
+    local dir = ((r.dir or 1) >= 0) and 1 or -1
+    local step = sin(t * 15) * 4.5 * u
+    local bob = abs(sin(t * 15)) * 2.5 * u
+
+    -- 地面投影
+    nvgBeginPath(nvg)
+    nvgEllipse(nvg, rx - dir * 5 * u, ry + 13 * u, 19 * u, 5 * u)
+    nvgFillColor(nvg, Col(INK, 140))
+    nvgFill(nvg)
+
+    -- 拖在身后的沉甸金袋
+    local gx = rx - dir * 16 * u
+    local gy = ry + 3 * u - bob * 0.4
+    nvgBeginPath(nvg)
+    nvgMoveTo(nvg, rx - dir * 2 * u, ry + 2 * u - bob)
+    nvgLineTo(nvg, gx + dir * 4 * u, gy - 3 * u)
+    nvgStrokeColor(nvg, Col(C.gold, 230))
+    nvgStrokeWidth(nvg, 1.8 * u)
+    nvgStroke(nvg)
+
+    nvgBeginPath(nvg)
+    nvgEllipse(nvg, gx, gy + 2 * u, 10 * u, 8.5 * u)
+    nvgFillPaint(nvg, nvgRadialGradient(nvg, gx - 3 * u, gy - 2 * u, 1, 11 * u, Col(C.gold, 255), Col(ORANGE, 255)))
+    nvgFill(nvg)
+    nvgBeginPath(nvg)
+    nvgEllipse(nvg, gx, gy + 2 * u, 10 * u, 8.5 * u)
+    nvgStrokeColor(nvg, Col(INK, 235))
+    nvgStrokeWidth(nvg, 1.4 * u)
+    nvgStroke(nvg)
+    -- 袋口红绳束
+    nvgBeginPath(nvg)
+    nvgRoundedRect(nvg, gx - 4 * u, gy - 7 * u, 8 * u, 4 * u, 2 * u)
+    nvgFillColor(nvg, Col(C.magenta, 240))
+    nvgFill(nvg)
+
+    -- 双腿迈步
+    nvgBeginPath(nvg)
+    nvgMoveTo(nvg, rx - 3 * u, ry + 5 * u - bob)
+    nvgLineTo(nvg, rx - 3 * u + step, ry + 12 * u)
+    nvgMoveTo(nvg, rx + 3 * u, ry + 5 * u - bob)
+    nvgLineTo(nvg, rx + 3 * u - step, ry + 12 * u)
+    nvgStrokeColor(nvg, Col(C.white, 240))
+    nvgStrokeWidth(nvg, 2.4 * u)
+    nvgStroke(nvg)
+
+    -- 身体 + 头部 + 护目镜
+    nvgBeginPath(nvg)
+    nvgRoundedRect(nvg, rx - 6.5 * u, ry - 4 * u - bob, 13 * u, 11 * u, 4 * u)
+    nvgFillColor(nvg, Col(C.cyan, 245))
+    nvgFill(nvg)
+    nvgBeginPath(nvg)
+    nvgRoundedRect(nvg, rx - 6.5 * u, ry - 4 * u - bob, 13 * u, 11 * u, 4 * u)
+    nvgStrokeColor(nvg, Col(INK, 235))
+    nvgStrokeWidth(nvg, 1.3 * u)
+    nvgStroke(nvg)
+
+    nvgBeginPath(nvg)
+    nvgCircle(nvg, rx, ry - 9.5 * u - bob, 6.2 * u)
+    nvgFillColor(nvg, Col(C.gold, 255))
+    nvgFill(nvg)
+    nvgBeginPath(nvg)
+    nvgCircle(nvg, rx, ry - 9.5 * u - bob, 6.2 * u)
+    nvgStrokeColor(nvg, Col(INK, 235))
+    nvgStrokeWidth(nvg, 1.3 * u)
+    nvgStroke(nvg)
+
+    nvgBeginPath(nvg)
+    nvgRoundedRect(nvg, rx + (dir > 0 and 0 or -5 * u), ry - 11.5 * u - bob, 5 * u, 3 * u, 1.5 * u)
+    nvgFillColor(nvg, Col(INK, 240))
+    nvgFill(nvg)
+
+    -- 头顶醒目提示牌
+    nvgFontFace(nvg, font or "sans")
+    nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFontSize(nvg, 10 * u)
+    OutlinedText(nvg, rx, ry - 21 * u - bob, "砸金袋!", C.gold, 255, 1.2)
+end
+
+-- ----------------------------------------------------------------------------
 -- 主渲染
 -- ----------------------------------------------------------------------------
 function Stage:Render(nvg)
@@ -941,6 +1192,9 @@ function Stage:Render(nvg)
     local comboX = min(l.x + l.w - 40 * u, slTRx + 2 * u) -- 放大 1.25 倍后仍距右边 ≥ 8
     local comboY = (slTLy + slBotY) * 0.5 + 20 * u
 
+    self:DrawTowersOverlay(nvg, phys, u, t, g.font)
+    self:DrawBalloon(nvg, run, u, t, g.font)
+    self:DrawRunner(nvg, run, l, u, t, g.font)
     self:DrawFeverTube(nvg, run, tubeX, tubeY0, tubeY1, u, t, g.font)
     self:DrawComboBadge(nvg, run, fx, comboX, comboY, u, t, g.font)
     self:DrawSlotReels(nvg, run, mqX, reelY, u, t, g.font)

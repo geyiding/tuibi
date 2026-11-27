@@ -30,9 +30,22 @@ function nvgRGBA(r, g, b, a)
         "nvgRGBA 参数必须是 4 个数字")
     return { r = r, g = g, b = b, a = a }
 end
-function nvgLinearGradient() return {} end
-function nvgRadialGradient() return {} end
-function nvgBoxGradient() return {} end
+local function assertRGBA(c, fn)
+    assert(type(c) == "table" and type(c.r) == "number" and type(c.g) == "number" and type(c.b) == "number" and type(c.a) == "number",
+        fn .. " 颜色参数必须经 Skin.Col / nvgRGBA 生成，严禁直传裸 RGB 表")
+end
+function nvgLinearGradient(ctx, x0, y0, x1, y1, c0, c1)
+    assertRGBA(c0, "nvgLinearGradient(c0)"); assertRGBA(c1, "nvgLinearGradient(c1)")
+    return {}
+end
+function nvgRadialGradient(ctx, cx, cy, ir, orad, c0, c1)
+    assertRGBA(c0, "nvgRadialGradient(c0)"); assertRGBA(c1, "nvgRadialGradient(c1)")
+    return {}
+end
+function nvgBoxGradient(ctx, x, y, w, h, r, f, c0, c1)
+    assertRGBA(c0, "nvgBoxGradient(c0)"); assertRGBA(c1, "nvgBoxGradient(c1)")
+    return {}
+end
 NVG_LIGHTER = 8
 NVG_SOURCE_OVER = 0
 local compositeCalls = 0
@@ -324,15 +337,17 @@ local seen = {}
 for i = 1, RankLadder.COUNT do seen[OvertakePopup.TierOf(RankLadder.LIST[i])] = true end
 for tr = 1, 6 do assert(seen[tr], "六档都必须有条目: T" .. tr) end
 assert(OvertakePopup.TierOf(RankLadder.LIST[RankLadder.COUNT]) == 6, "No.1 = 巅峰档")
--- T1 自动收起
+-- T1 自动收起（已延长至 4.8s：3.0s 时仍在，5.5s 后收起）
 local idx = RankLadder.CountPassed(ty3.lifetimeCash)
 pop:Trigger(RankLadder.LIST[1], 1, 0)
 assert(pop:IsOpen())
 run(0.6)
 pop:Trigger(RankLadder.LIST[2], 2, 0)                 -- 演出中再超越 -> 连超 3 人
 assert(pop.count_ == 3, "连超必须累加")
-run(3.5)
-assert(not pop:IsOpen(), "无赏金低档弹窗必须自动收起")
+run(3.0)
+assert(pop:IsOpen(), "延长展示时间后，T1 在 3 秒时仍应保持显示")
+run(2.5)
+assert(not pop:IsOpen(), "超过 4.8 秒后无赏金低档弹窗必须自动收起")
 -- 带赏金：不自动收起，按钮可点
 pop:Trigger(RankLadder.LIST[RankLadder.COUNT - 5], 1, 6)
 run(1.0)
@@ -366,5 +381,48 @@ cc:ResetDisplay()
 rt:ResetDisplay()
 pop:Reset()
 assert(not pop:IsOpen() and pop.pending_ == nil, "OvertakePopup:Reset 必须清空弹窗与排队队列")
+
+-- 8. 奇遇惊喜渲染（5 芯片招牌 + 奇遇倒计时光条 + 拖金袋小人 + 黄金气球 + 12 面晶体骰子 + Fx 奇遇事件）
+ty.runner.active = true; ty.runner.x = 160; ty.runner.dir = 1
+ty.balloon.active = true; ty.balloon.x = 180; ty.balloon.y = 120
+ty.luckMult = 10; ty.luckTimer = 8.0; ty.luckDur = 10.0
+ty.surpriseMult = 18; ty.surpriseTimer = 14.5; ty.surpriseDur = 18.0; ty.surpriseName = "12面骰子"
+stg.GetAbsoluteLayout = function() return { x = 0, y = 108, w = 390, h = 580 } end
+stg:Render("nvg_stub")
+assert(stg.balloonRect_.w > 0 and stg.balloonRect_.h > 0, "黄金气球渲染后必须更新可点击矩形")
+stg.GetAbsoluteLayout = function() return { x = 0, y = 102, w = 360, h = 493 } end
+stg:Render("nvg_stub")
+assert(stg.balloonRect_.w > 0 and stg.balloonRect_.h > 0, "360x667 小屏下气球点击矩形也必须有效")
+
+local Widgets = require("game/Widgets")
+local dv = setmetatable({}, Widgets.DiceView)
+dv:Init({ width = 120, height = 120, face = 6, mult = 6, rolling = true })
+dv.GetAbsoluteLayout = function() return { x = 100, y = 200, w = 160, h = 136 } end
+dv:Render("nvg_stub")
+dv:SetDice(9, 18, true, false)
+dv:Render("nvg_stub")
+
+ty.physics.towers = {
+    { id = 1, x = 120, y = 442, total = 9, built = 5, phase = "building" },
+    { id = 2, x = 240, y = 442, total = 9, built = 9, phase = "hold" },
+}
+stg.GetAbsoluteLayout = function() return { x = 0, y = 108, w = 390, h = 580 } end
+stg:Render("nvg_stub")
+stg.GetAbsoluteLayout = function() return { x = 0, y = 102, w = 360, h = 493 } end
+stg:Render("nvg_stub")
+ty.physics.towers = {}
+
+fx2:OnRunnerHit(160, 500, { face = 9, mult = 9, dur = 18 })
+fx2:OnBalloonPop(180, 120, "黄金气球 ×15!", "mult")
+fx2:OnGoldRush(15, 10, 12)
+fx2:OnSurpriseMult(18, 18, "12面骰子")
+fx2:OnTowerLayer(120, 442, 9, 9, true)
+fx2:OnTowerComplete(120, 442, "金库双塔落成！")
+fx2:OnTowerTopple(120, 442, "金库双塔落成！")
+ty2.surpriseMult = 18; ty2.surpriseTimer = 12
+fx2:TrackMult(ty2)
+fx2:Update(0.016)
+fx2:RenderWorld("nvg_stub", "sans")
+fx2:RenderOverlay("nvg_stub", 390, 844, "sans", ty2)
 
 print("[test_render] ALL PASS! ranks_drawn=" .. tostring(#Config.RANKS) .. " coins_drawn=" .. tostring(#Config.COIN_TIERS))

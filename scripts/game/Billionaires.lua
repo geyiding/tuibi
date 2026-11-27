@@ -118,7 +118,7 @@ for i, src in ipairs(ANON_MILESTONES) do
     local rank, target, name, title, quote, prop, isMile = src[1], src[2], src[3], src[4], src[5], src[6], src[7]
     local idx = #Billionaires.LIST + 1
     local bounty = max(120, floor(target * 0.06))
-    local spBounty = isMile and 3 or 2
+    local spBounty = isMile and 15 or 10
     local theme = (rank >= 1e6) and 1 or 2
     local entry = {
         id = idx,
@@ -153,7 +153,7 @@ for j = #REAL_TOP1000_DESCENDING, 1, -1 do
     local idx = #Billionaires.LIST + 1
     local bounty = max(1000, floor(target * 0.008))
     local isMilestone = (rank == 990 or rank == 102 or rank == 50 or rank == 23 or rank == 10 or rank == 5 or rank == 3 or rank == 2 or rank == 1)
-    local spBounty = (rank <= 10 and 5) or (isMilestone and 4) or 2
+    local spBounty = (rank <= 10 and 25) or (isMilestone and 20) or 10
     local entry = {
         id = idx,
         idx = idx,

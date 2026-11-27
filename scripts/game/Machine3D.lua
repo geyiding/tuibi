@@ -88,7 +88,7 @@ local function MakePBR(diffCol, metallic, roughness, emissiveCol, alpha)
     return mat
 end
 
--- 辅助：创建贴图无光照材质（硬币表面图案优先走 AlphaMask/不透明管线以支持合批，缺失时平滑退回 DiffUnlitAlpha）
+-- 辅助：创建贴图无光照材质（硬币表面图案强制走无光照 Unlit 管线，杜绝受光/环境光压暗泛灰）
 local function MakeTexturedUnlit(texPath, alphaMode, tintCol)
     if not cache or not texPath then return nil end
     if cache.Exists and not cache:Exists(texPath) then return nil end
@@ -99,8 +99,6 @@ local function MakeTexturedUnlit(texPath, alphaMode, tintCol)
     if alphaMode == "alphamask" then
         if cache.Exists and cache:Exists("Techniques/DiffUnlitAlphaMask.xml") then
             tech = "Techniques/DiffUnlitAlphaMask.xml"
-        elseif cache.Exists and cache:Exists("Techniques/DiffAlphaMask.xml") then
-            tech = "Techniques/DiffAlphaMask.xml"
         else
             tech = "Techniques/DiffUnlitAlpha.xml"
         end
@@ -237,16 +235,16 @@ local function GetCoinMaterials(kind)
     local r, g, b = (col[1] or 255) / 255, (col[2] or 210) / 255, (col[3] or 64) / 255
     local isEmissive = (def.rarity == "legendary" or def.rarity == "rare")
     local rimMat = MakePBR(
-        { min(1, r * 0.85 + 0.04), min(1, g * 0.85 + 0.04), min(1, b * 0.85 + 0.04) },
-        0.90,
-        0.22,
-        isEmissive and { r * 0.18, g * 0.18, b * 0.18 } or { r * 0.04, g * 0.04, b * 0.04 }
+        { min(1, r * 0.96 + 0.04), min(1, g * 0.96 + 0.04), min(1, b * 0.96 + 0.04) },
+        0.78,
+        0.20,
+        isEmissive and { r * 0.32, g * 0.32, b * 0.32 } or { r * 0.16, g * 0.16, b * 0.16 }
     )
 
     local spr = Skin.SPRITES["coin_" .. tostring(kind)]
-    local faceMat = spr and MakeTexturedUnlit(spr, "alphamask", { 0.86, 0.86, 0.86, 1.0 }) or nil
+    local faceMat = spr and MakeTexturedUnlit(spr, true, { 1.0, 1.0, 1.0, 1.0 }) or nil
     if not faceMat then
-        faceMat = MakePBR({ r, g, b }, 0.85, 0.24, { r * 0.12, g * 0.12, b * 0.12 })
+        faceMat = MakePBR({ r, g, b }, 0.80, 0.22, { r * 0.25, g * 0.25, b * 0.25 })
     end
     M.coinMats[kind] = { rim = rimMat, face = faceMat }
     return M.coinMats[kind]
@@ -697,7 +695,7 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
             end
             local cx, cy, cz, czZone, cOnPush = c.x, c.y, c.z or 0, c.zone or "deck", c.onPusher == true
             local isFall = (czZone == "falling" or czZone == "dropping")
-            local posThresh = isFall and 0.01 or 0.25
+            local posThresh = (isFall or cz > 0.5 or c.towerLocked) and 0.01 or 0.25
             if czZone ~= slot.lastZone or cOnPush ~= slot.lastOnPusher
                 or (cx - slot.lastX) * (cx - slot.lastX) + (cy - slot.lastY) * (cy - slot.lastY) + (cz - slot.lastZ) * (cz - slot.lastZ) > posThresh then
                 slot.lastX, slot.lastY, slot.lastZ = cx, cy, cz
@@ -712,8 +710,9 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
                 slot.node.scale = Vector3(dia, thickScale, dia)
             end
 
+            local isTumble = (not isFall and not c.towerLocked and czZone == "deck" and cz > 4 and (c.vy or 0) > 25)
             local crot = c.rot or 0
-            if isFall or czZone ~= slot.lastZone or (crot - slot.lastRot) * (crot - slot.lastRot) > 0.0025 then
+            if isFall or isTumble or slot.lastTumble or czZone ~= slot.lastZone or (crot - slot.lastRot) * (crot - slot.lastRot) > 0.0025 then
                 slot.lastRot = crot
                 local rotDeg = math.deg(crot)
                 if czZone == "slot" then
@@ -728,10 +727,13 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
                     local over = max(0, min(1, (math.abs(cx - 180) - hw) / 30))
                     local side = (cx < 180) and 1 or -1
                     slot.node.rotation = Quaternion(side * over * 75, Vector3.FORWARD) * Quaternion(rotDeg, Vector3.UP)
+                elseif isTumble then
+                    slot.node.rotation = Quaternion(min(48, cz * 0.75), Vector3.RIGHT) * Quaternion(rotDeg, Vector3.UP)
                 else
                     slot.node.rotation = Quaternion(rotDeg, Vector3.UP)
                 end
             end
+            slot.lastTumble = isTumble
             slot.lastZone = czZone
             slot.lastOnPusher = cOnPush
 

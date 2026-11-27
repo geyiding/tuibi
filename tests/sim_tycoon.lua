@@ -254,7 +254,8 @@ local function simulateMacro10Hours(mode, seed)
     local isAds = (mode == "ads")
     local actInterval = (mode == "idle") and 60 or 10
     local fevUptime = diagRef.feverUptime
-    local luckAvg = diagRef.avgLuckMult
+    local pooledLuckAvg = (diagAgg.idle.avgLuckMult + diagAgg.click2s.avgLuckMult + diagAgg.hold.avgLuckMult) / 3.0
+    local luckAvg = pooledLuckAvg
     local manualFrac = (mode == "hold" and 0.68) or ((mode == "click2s" or mode == "ads") and 0.40) or 0.0
 
     local top1000Min, world1Min, all22Min
@@ -293,11 +294,15 @@ local function simulateMacro10Hours(mode, seed)
         airdropCd = airdropCd - dt
         if airdropCd <= 0 then
             airdropCd = 75
+            local pv = ty:GetAirdropPreview()
+            local hiVal = ty:GetCoinUnitValue(ty:GetHighestUnlockedCoin()) * ty:GetPermMult()
             if isAds and adCds.airdrop_5x <= 0 then
-                ty:AddWealth(max(200.0, ty:GetBaselineCPS() * 45), false)
+                ty:AddWealth(pv.adCash + hiVal * pv.adCoins + hiVal * 45 * pv.adVaults, false)
+                ty.skillPoints = ty.skillPoints + pv.adSp
+                ty.totalSkillPoints = ty.totalSkillPoints + pv.adSp
                 adCds.airdrop_5x = Config.AD_PLACEMENTS.airdrop_5x.cooldown
             else
-                ty:AddWealth(max(30.0, ty:GetBaselineCPS() * 5), false)
+                ty:AddWealth(pv.freeCash + hiVal * pv.freeCoins, false)
             end
         end
 

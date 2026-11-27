@@ -550,6 +550,130 @@ function AvatarIcon:Render(nvg)
     })
 end
 
+-- ----------------------------------------------------------------------------
+-- DiceView：12面幸运晶体骰子控件（滚动旋转 -> 落定弹跳展示倍数）
+-- ----------------------------------------------------------------------------
+local DiceView = UI.Widget:Extend("DiceView")
+Widgets.DiceView = DiceView
+
+function DiceView:Init(props)
+    props = props or {}
+    self.face_ = props.face or 12
+    self.mult_ = props.mult or self.face_
+    self.rerolled_ = (props.rerolled == true)
+    self.rolling_ = (props.rolling == true)
+    self.t_ = 0
+    self.settlePunch_ = 0
+    self.displayFace_ = self.face_
+    self.cycleAcc_ = 0
+    self.font_ = props.font or "sans"
+    props.face, props.mult, props.rerolled, props.rolling, props.font = nil, nil, nil, nil, nil
+    UI.Widget.Init(self, props)
+end
+
+function DiceView:SetDice(face, mult, rerolled, rolling)
+    local wasRolling = self.rolling_
+    self.face_ = face or 1
+    self.mult_ = mult or self.face_
+    self.rerolled_ = (rerolled == true)
+    self.rolling_ = (rolling == true)
+    if self.rolling_ then
+        self.settlePunch_ = 0
+    else
+        self.displayFace_ = self.face_
+        if wasRolling then self.settlePunch_ = 1.0 end
+    end
+end
+
+function DiceView:Render(nvg)
+    local l = self:GetAbsoluteLayout()
+    if l.w <= 0 or l.h <= 0 then return end
+    local dt = 0.016
+    self.t_ = self.t_ + dt
+    if self.settlePunch_ > 0 then self.settlePunch_ = max(0, self.settlePunch_ - dt * 3.5) end
+    if self.rolling_ then
+        self.cycleAcc_ = self.cycleAcc_ + dt
+        if self.cycleAcc_ >= 0.065 then
+            self.cycleAcc_ = 0
+            self.displayFace_ = (floor(self.t_ * 23) % 12) + 1
+        end
+    else
+        self.displayFace_ = self.face_
+    end
+
+    local cx, cy = l.x + l.w * 0.5, l.y + l.h * 0.5
+    local rad = min(l.w, l.h) * 0.36
+    local big = (not self.rolling_) and (self.mult_ >= 14 or self.face_ >= 7)
+    local col = self.rerolled_ and C.magenta or (big and C.gold or C.cyan)
+    local rot = self.rolling_ and (self.t_ * 7.5) or (math.sin(self.t_ * 2.2) * 0.06)
+    local sc = (self.rolling_ and (0.94 + 0.06 * math.sin(self.t_ * 18)) or (1 + self.settlePunch_ * 0.22))
+
+    -- 光环光晕
+    nvgBeginPath(nvg)
+    nvgCircle(nvg, cx, cy, rad * 1.38)
+    nvgFillPaint(nvg, nvgRadialGradient(nvg, cx, cy, rad * 0.25, rad * 1.38,
+        Skin.Col(col, self.rolling_ and 115 or (big and 145 or 90)), Skin.Col(col, 0)))
+    nvgFill(nvg)
+
+    nvgSave(nvg)
+    nvgTranslate(nvg, cx, cy)
+    nvgScale(nvg, sc, sc)
+    nvgRotate(nvg, rot)
+
+    -- 10边形晶体外轮廓（模拟 12 面骰侧视多面体）
+    nvgBeginPath(nvg)
+    for k = 0, 9 do
+        local a = k * (math.pi * 2 / 10) - math.pi * 0.5
+        local px, py = math.cos(a) * rad, math.sin(a) * rad
+        if k == 0 then nvgMoveTo(nvg, px, py) else nvgLineTo(nvg, px, py) end
+    end
+    nvgClosePath(nvg)
+    nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, -rad, 0, rad,
+        Skin.Col(big and C.gold or C.purple, 240), Skin.Col(C.bgPanel, 245)))
+    nvgFill(nvg)
+    nvgStrokeColor(nvg, Skin.Col(col, 255))
+    nvgStrokeWidth(nvg, 2.8)
+    nvgStroke(nvg)
+
+    -- 内切正五边形晶面棱线
+    local ir = rad * 0.62
+    nvgBeginPath(nvg)
+    for k = 0, 4 do
+        local a = k * (math.pi * 2 / 5) - math.pi * 0.5
+        local px, py = math.cos(a) * ir, math.sin(a) * ir
+        if k == 0 then nvgMoveTo(nvg, px, py) else nvgLineTo(nvg, px, py) end
+    end
+    nvgClosePath(nvg)
+    nvgFillColor(nvg, Skin.Col(C.bgInset, 195))
+    nvgFill(nvg)
+    nvgStrokeColor(nvg, Skin.Col(C.white, 150))
+    nvgStrokeWidth(nvg, 1.4)
+    nvgStroke(nvg)
+
+    nvgBeginPath(nvg)
+    for k = 0, 4 do
+        local a = k * (math.pi * 2 / 5) - math.pi * 0.5
+        nvgMoveTo(nvg, math.cos(a) * ir, math.sin(a) * ir)
+        nvgLineTo(nvg, math.cos(a) * rad, math.sin(a) * rad)
+    end
+    nvgStrokeColor(nvg, Skin.Col(col, 175))
+    nvgStrokeWidth(nvg, 1.3)
+    nvgStroke(nvg)
+
+    -- 点数 / 翻倍倍数（回正后清晰显示）
+    nvgRotate(nvg, -rot)
+    nvgFontFace(nvg, self.font_)
+    nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    local txt = self.rolling_ and tostring(self.displayFace_)
+        or (self.rerolled_ and ("×" .. tostring(self.mult_)) or tostring(self.displayFace_))
+    nvgFontSize(nvg, (self.rerolled_ and 26 or 30))
+    nvgFillColor(nvg, Skin.Col(C.shadow, 230))
+    nvgText(nvg, 0, 2, txt)
+    nvgFillColor(nvg, Skin.Col(big and C.gold or C.white, 255))
+    nvgText(nvg, 0, 0, txt)
+    nvgRestore(nvg)
+end
+
 Widgets.FormatNum = Number.FormatNum
 Widgets.FormatMul = Number.FormatMul
 

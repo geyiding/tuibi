@@ -210,6 +210,41 @@ local function MakeListener()
         Sfx.Play("jackpot", 0.9)
         game.hudDirty = true
     end
+    function l:OnRunnerHit(x, y, diceInfo)
+        game.fx:OnRunnerHit(x, y, diceInfo)
+        Sfx.Play("jackpot", 0.95)
+        if not TycoonHud.GetCurModal() then
+            TycoonHud.OpenDiceModal(diceInfo)
+        end
+        game.hudDirty = true
+    end
+    function l:OnBalloonPop(x, y, label, kind)
+        game.fx:OnBalloonPop(x, y, label, kind)
+        Sfx.Play("jackpot", 0.92)
+        game.hudDirty = true
+    end
+    function l:OnGoldRush(mult, dur, rainCnt)
+        game.fx:OnGoldRush(mult, dur, rainCnt)
+        Sfx.Play("jackpot", 1.0)
+        game.hudDirty = true
+    end
+    function l:OnSurpriseMult(mult, dur, name)
+        game.fx:OnSurpriseMult(mult, dur, name)
+        game.hudDirty = true
+    end
+    function l:OnTowerLayer(x, y, layer, total, isCrown)
+        game.fx:OnTowerLayer(x, y, layer, total, isCrown)
+        Sfx.Play(isCrown and "win" or "coin", math.min(1.0, 0.52 + (layer or 1) * 0.045))
+    end
+    function l:OnTowerComplete(x, y, label)
+        game.fx:OnTowerComplete(x, y, label)
+        Sfx.Play("win", 0.95)
+    end
+    function l:OnTowerTopple(x, y, label)
+        game.fx:OnTowerTopple(x, y, label)
+        Sfx.Play("jackpot", 1.0)
+        game.hudDirty = true
+    end
     return l
 end
 
@@ -413,6 +448,37 @@ local callbacks = {
     OnOvertakeCollect = function()
         Sfx.Play("coin")
     end,
+    OnTapBalloon = function()
+        if not game.tycoon or TycoonHud.GetCurModal() then return end
+        local kind = game.tycoon:PopBalloon("tap")
+        if kind then
+            Sfx.Play("jackpot", 0.95)
+            PersistTycoon(false)
+            TycoonHud.RefreshMain(game.tycoon)
+        end
+    end,
+    OnDiceClaim = function()
+        if not game.tycoon then return end
+        local mult = game.tycoon:ClaimPendingDice()
+        Sfx.Play((mult and mult >= 10) and "jackpot" or "win", 0.95)
+        TycoonHud.CloseModal()
+        PersistTycoon(false)
+        TycoonHud.RefreshMain(game.tycoon)
+    end,
+    OnDiceRerollAd = function()
+        if not game.tycoon or not game.tycoon.pendingDice then return end
+        Sfx.Play("click")
+        MockAd.Show("dice_reroll",
+            "重掷 12 面幸运骰：保底掷出 7~12 点并翻倍至 ×14~×24！（模拟广告）",
+            function()
+                if game.tycoon and game.tycoon.pendingDice then
+                    local d = game.tycoon:RollDiceReroll()
+                    Sfx.Play("jackpot", 0.95)
+                    TycoonHud.OpenModal("dice")
+                    TycoonHud.StartDiceRerollAnim(d)
+                end
+            end)
+    end,
     OnClaimOvertakeAd = function(spBounty)
         if not game.tycoon then return end
         local bAmt = math.max(1, math.floor(spBounty or 2))
@@ -580,6 +646,7 @@ function Start()
             fx = game.fx,
             font = game.font,
             OnTapStage = callbacks.OnTapStage,
+            OnTapBalloon = callbacks.OnTapBalloon,
             OnTapSign = function()
                 if not TycoonHud.GetCurModal() then
                     Sfx.Play("click")
@@ -694,16 +761,22 @@ function HandleUpdate(eventType, eventData)
     TycoonHud.TickOvertake(dt)
     if curModal == "mockAd" then
         TycoonHud.TickMockAd(dt)
+    elseif curModal == "dice" then
+        TycoonHud.TickDice(dt)
     end
 
     local ty = game.tycoon
-    local simPaused = (curModal == "mockAd" or curModal == "cloudFail" or curModal == "offline" or curModal == "confirmReset")
+    local simPaused = (curModal == "mockAd" or curModal == "cloudFail" or curModal == "offline" or curModal == "confirmReset" or curModal == "dice")
     if ty and not simPaused then
         if not curModal and game.stage and game.stage:IsHolding() then
             ty:ManualShoot()
         end
         local gdt = dt * (fx and fx:TimeScale() or 1)
         ty:Update(gdt)
+    end
+    if ty and ty.pendingDice and not curModal then
+        TycoonHud.OpenDiceModal(ty.pendingDice)
+        curModal = TycoonHud.GetCurModal()
     end
     -- 倍率追踪：增益出现时生成“×N”令牌飞向机台倍率招牌
     if ty and fx then fx:TrackMult(ty) end
@@ -754,7 +827,7 @@ function HandleUpdate(eventType, eventData)
         TycoonHud.RefreshMain(ty)
     end
 
-    if curModal and curModal ~= "settings" and curModal ~= "cloudFail" and curModal ~= "mockAd" and curModal ~= "offline" and curModal ~= "confirmReset" then
+    if curModal and curModal ~= "settings" and curModal ~= "cloudFail" and curModal ~= "mockAd" and curModal ~= "offline" and curModal ~= "confirmReset" and curModal ~= "dice" then
         game.modalRefreshAccum = game.modalRefreshAccum + dt
         if game.modalRefreshAccum >= 0.25 then
             game.modalRefreshAccum = 0

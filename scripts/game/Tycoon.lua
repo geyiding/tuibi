@@ -65,6 +65,33 @@ function Tycoon.New(fxListener, opts)
     self.luckName = ""
     self.slotFlashT = 0
 
+    -- 独立奇遇乘区 & 三重突发惊喜（金袋小人 12 面骰 / 空中黄金气球 / 突发黄金暴走）
+    self.surpriseMult = 1
+    self.surpriseTimer = 0
+    self.surpriseDur = 0
+    self.surpriseName = ""
+    self.pendingDice = nil
+    self.runner = {
+        active = false,
+        x = 60,
+        y = S.DECK_BOT_Y + 14,
+        dir = 1,
+        speed = 44,
+        cooldown = 38,
+        hitCount = 0,
+    }
+    self.balloon = {
+        active = false,
+        x = 180,
+        y = 118,
+        baseY = 118,
+        dir = 1,
+        speed = 28,
+        bobT = 0,
+        cooldown = 26,
+    }
+    self.goldRushNext = 120 + floor(self.rng() * 70)
+
     -- 四大养成线 + 玩家常驻发射池配置
     self.machineLv = {}
     for _, m in ipairs(Config.MACHINE_UPGRADES) do self.machineLv[m.id] = 0 end
@@ -138,6 +165,9 @@ function Tycoon.New(fxListener, opts)
         OnCoinFuseExplode = function(coin) self:HandleBombExplode(coin) end,
         OnBlackholeBurst = function(coin) self:HandleBlackholeBurst(coin) end,
         OnOverclockCoin = function(coin) self:HandleOverclockCoin(coin) end,
+        OnTowerLayer = function(x, y, layer, total, isCrown) Emit(self.fx, "OnTowerLayer", x, y, layer, total, isCrown) end,
+        OnTowerComplete = function(x, y, label) Emit(self.fx, "OnTowerComplete", x, y, label) end,
+        OnTowerTopple = function(x, y, label) Emit(self.fx, "OnTowerTopple", x, y, label) end,
     })
 
     self:RebuildCoinCache()
@@ -272,19 +302,20 @@ function Tycoon:InvalidateCaches()
     self._avgVal = nil
 end
 
---- 临时爆发倍率（连击 × 狂欢 × 3x印钞 × 幸运三连），供结算与长期CPS去噪共用
+--- 临时爆发倍率（连击 × 狂欢 × 3x印钞 × 幸运三连 × 奇遇倍率），供结算与长期CPS去噪共用
 function Tycoon:GetTempMult()
     local comboFactor = self:HasTech("metronome") and 0.012 or 0.008
     local comboM = 1 + min(100, self.combo) * comboFactor
     local feverM = self.feverActive and 2.2 or 1.0
     local adM = (self.adBoostLeft > 0) and 3.0 or 1.0
     local luckM = max(1, self.luckMult or 1)
-    return comboM * feverM * adM * luckM, comboM, feverM, adM, luckM
+    local surpM = max(1, self.surpriseMult or 1)
+    return comboM * feverM * adM * luckM * surpM, comboM, feverM, adM, luckM, surpM
 end
 
 --- 总倍率；wantBreakdown 为 true 时额外返回分项表（仅 UI 公式页使用，避免每次结算建表）
 function Tycoon:GetTotalMult(wantBreakdown)
-    local tempM, comboM, feverM, adM, luckM = self:GetTempMult()
+    local tempM, comboM, feverM, adM, luckM, surpM = self:GetTempMult()
     local total = self:GetPermMult() * tempM
     if not wantBreakdown then return total end
     local machine, tech, prestige = self:GetPermParts()
@@ -297,7 +328,25 @@ function Tycoon:GetTotalMult(wantBreakdown)
         fever = feverM,
         ad = adM,
         luck = luckM,
+        surprise = surpM,
     }
+end
+
+function Tycoon:ApplySurpriseMult(mult, dur, name)
+    mult = max(1, mult or 1)
+    dur = max(1, dur or 10)
+    if mult >= (self.surpriseMult or 1) or (self.surpriseTimer or 0) <= 0 then
+        self.surpriseMult = mult
+        self.surpriseTimer = dur
+        self.surpriseDur = dur
+        self.surpriseName = name or "奇遇"
+    elseif mult > 1 then
+        local cap = max(self.surpriseDur or dur, dur)
+        self.surpriseTimer = min(cap, (self.surpriseTimer or 0) + 3.0)
+        self.surpriseDur = cap
+    end
+    Emit(self.fx, "OnSurpriseMult", self.surpriseMult, self.surpriseTimer, self.surpriseName)
+    return self.surpriseMult, self.surpriseTimer
 end
 
 function Tycoon:GetAutoRate(ignoreFever)
@@ -428,7 +477,7 @@ function Tycoon:CheckRankUp()
     end
 
     if jumped > 0 and latest then
-        local cappedSp = min(totalSp, 60)
+        local cappedSp = min(totalSp, 300)
         self.skillPoints = self.skillPoints + cappedSp
         self.totalSkillPoints = self.totalSkillPoints + cappedSp
         Emit(self.fx, "OnRankUp", latest, anyThemeChanged, {
@@ -457,7 +506,7 @@ function Tycoon:AddWealth(amount, addToCps, tempMul)
 end
 
 function Tycoon:ClaimOvertakeAdBonus(spBounty)
-    local extraSp = max(2, floor((spBounty or 0) * 2))
+    local extraSp = max(10, floor((spBounty or 0) * 2))
     self.adWatchCount = self.adWatchCount + 1
     self.skillPoints = self.skillPoints + extraSp
     self.totalSkillPoints = self.totalSkillPoints + extraSp
@@ -944,6 +993,22 @@ function Tycoon:HandleFrontDrop(coin)
 
     local dmg, crit = self:AwardCash(val, coin.x, coin.y - 12, coin.kind, true)
     Emit(self.fx, "OnFrontDrop", coin, dmg, crit)
+
+    -- 前沿落币砸中拖金袋小人 -> 弹出 12 面骰子奇遇
+    local runEnt = self.runner
+    if runEnt and runEnt.active and not self.pendingDice and abs((coin.x or 180) - (runEnt.x or 180)) <= 36 then
+        self:HitRunner(coin.x)
+    end
+
+    -- 突发黄金暴走：每累计一定落币随机无预警触发高倍 + 币雨（仅在不冲突高倍奇遇时触发）
+    if self.totalDrops >= (self.goldRushNext or 150) then
+        if (self.surpriseMult or 1) >= 15 and (self.surpriseTimer or 0) > 2 then
+            self.goldRushNext = self.totalDrops + 15
+        else
+            self.goldRushNext = self.totalDrops + 150 + floor(self.rng() * 90)
+            self:TriggerGoldRush()
+        end
+    end
 end
 
 function Tycoon:HandleSideDrain(coin)
@@ -952,6 +1017,122 @@ function Tycoon:HandleSideDrain(coin)
         self:AwardCash(val, coin.x, coin.y, "recycler", false)
     end
     Emit(self.fx, "OnSideDrain", coin)
+end
+
+-- ----------------------------------------------------------------------------
+-- 三重突发奇遇惊喜（拖金袋小人 12 面骰 / 空中黄金气球 / 突发黄金暴走）
+-- ----------------------------------------------------------------------------
+function Tycoon:SpawnRunner()
+    local r = self.runner
+    if not r then return end
+    local dir = (self.rng() < 0.5) and 1 or -1
+    r.active = true
+    r.dir = dir
+    r.x = (dir > 0) and 48 or 312
+    r.y = S.DECK_BOT_Y + 14
+    r.speed = 40 + self.rng() * 14
+end
+
+function Tycoon:HitRunner(hitX)
+    local r = self.runner
+    if not r or not r.active or self.pendingDice then return nil end
+    r.active = false
+    r.hitCount = (r.hitCount or 0) + 1
+    r.cooldown = 52 + self.rng() * 24
+    local face = floor(self.rng() * 12) + 1
+    self.pendingDice = {
+        face = face,
+        mult = face,
+        dur = 18,
+        rerolled = false,
+    }
+    Emit(self.fx, "OnRunnerHit", hitX or r.x, r.y, self.pendingDice)
+    return self.pendingDice
+end
+
+function Tycoon:RollDiceReroll()
+    local d = self.pendingDice
+    if not d or d.rerolled or (d.face or 0) > 6 then return nil end
+    local face2 = 7 + floor(self.rng() * 6)
+    d.face = face2
+    d.mult = face2 * 2 -- 14..24 倍
+    d.rerolled = true
+    self.adWatchCount = (self.adWatchCount or 0) + 1
+    return d
+end
+
+function Tycoon:ClaimPendingDice()
+    local d = self.pendingDice
+    if not d then return 1, 0 end
+    self.pendingDice = nil
+    local mult = max(1, d.mult or 1)
+    local dur = d.dur or 18
+    self:ApplySurpriseMult(mult, dur, "12面骰子")
+    local rainCnt = d.rerolled and 6 or ((mult <= 1) and 3 or 0)
+    if rainCnt > 0 then
+        local hi = self:GetHighestUnlockedCoin()
+        for k = 1, rainCnt do
+            self.physics:SpawnCoin({
+                kind = hi, level = self.coinLv[hi] or 1,
+                x = 100 + ((k - 1) % 6) * 32, y = S.DECK_TOP_Y + 32,
+                vx = (self.rng() - 0.5) * 44, vy = 52, zone = "deck", gateChecked = true, isRain = true,
+            })
+        end
+    end
+    return mult, dur
+end
+
+local BALLOON_MULTS = { 8, 15, 25 }
+function Tycoon:PopBalloon(source)
+    local b = self.balloon
+    if not b or not b.active then return nil end
+    local bx, by = b.x, b.y
+    b.active = false
+    b.cooldown = 55 + self.rng() * 30
+    local r = self.rng()
+    local label, kind
+    if r < 0.50 then
+        local m = BALLOON_MULTS[floor(self.rng() * #BALLOON_MULTS) + 1]
+        self:ApplySurpriseMult(m, 12, "黄金气球")
+        label = "黄金气球 ×" .. tostring(m) .. " (12秒)!"
+        kind = "mult"
+    elseif r < 0.75 then
+        for v = 1, 3 do
+            self.physics:SpawnCoin({
+                kind = "vault", level = 1,
+                x = 115 + (v - 1) * 65, y = S.DECK_TOP_Y + 38,
+                vx = (v - 2) * 18, vy = 50, zone = "deck", gateChecked = true,
+            })
+        end
+        label = "空降 3 枚 45倍金库巨币!"
+        kind = "vault"
+    else
+        local sp = min(20, max(8, 8 + floor((self.rankIdx or 0) / 4)))
+        self.skillPoints = self.skillPoints + sp
+        self.totalSkillPoints = self.totalSkillPoints + sp
+        Emit(self.fx, "OnSkillPointsGain", sp)
+        label = "技能点福袋 +" .. tostring(sp) .. "点!"
+        kind = "sp"
+    end
+    Emit(self.fx, "OnBalloonPop", bx, by, label, kind)
+    return kind, label
+end
+
+local GOLDRUSH_MULTS = { 10, 12, 15, 20 }
+function Tycoon:TriggerGoldRush()
+    local m = GOLDRUSH_MULTS[floor(self.rng() * #GOLDRUSH_MULTS) + 1]
+    local dur = 10
+    self:ApplySurpriseMult(m, dur, "黄金暴走")
+    local hi = self:GetHighestUnlockedCoin()
+    for k = 1, 12 do
+        self.physics:SpawnCoin({
+            kind = hi, level = self.coinLv[hi] or 1,
+            x = 92 + ((k - 1) % 6) * 35, y = S.DECK_TOP_Y + 26 + floor((k - 1) / 6) * 18,
+            vx = (self.rng() - 0.5) * 46, vy = 54, zone = "deck", gateChecked = true, isRain = true,
+        })
+    end
+    Emit(self.fx, "OnGoldRush", m, dur)
+    return m, dur
 end
 
 -- ----------------------------------------------------------------------------
@@ -1175,6 +1356,21 @@ function Tycoon:GetAdCooldown(id)
     return max(0, self.adCooldowns[id] or 0)
 end
 
+function Tycoon:GetAirdropPreview()
+    local effCps = max(self:GetBaselineCPS(), self:GetEstimatedCPS() * 0.55)
+    local freeCash = max(50.0, floor(effCps * 8) + 0.0)
+    local adCash = max(300.0, floor(effCps * 45) + 0.0)
+    local adSp = min(20, max(5, 5 + floor((self.rankIdx or 0) / 3)))
+    return {
+        freeCash = freeCash,
+        freeCoins = 2,
+        adCash = adCash,
+        adCoins = 10,
+        adVaults = 2,
+        adSp = adSp,
+    }
+end
+
 function Tycoon:ApplyAdReward(placementId)
     local def = Config.AD_PLACEMENTS[placementId]
     if not def then return false, nil end
@@ -1192,30 +1388,46 @@ function Tycoon:ApplyAdReward(placementId)
         Emit(self.fx, "OnAdReward", "满槽超级狂欢!")
         return true, "超级狂欢激活 14 秒!"
     elseif placementId == "vault_drop" then
-        for i = 1, 2 do
-            self.physics:SpawnCoin({
-                kind = "vault", level = 1,
-                x = 140 + (i - 1) * 80, y = S.DECK_TOP_Y + 46,
-                vx = (i == 1) and -12 or 12, vy = 55,
-                zone = "deck", gateChecked = true,
-            })
-        end
-        Emit(self.fx, "OnAdReward", "2枚45倍金库币空投!")
-        return true, "2 枚 45 倍金库巨币已落台!"
+        local hi = self:GetHighestUnlockedCoin()
+        local hiLv = self.coinLv[hi] or 1
+        self.physics:StartCoinTower({
+            x = 120, y = 442, kind = hi, level = hiLv,
+            crownKind = "vault", crownLevel = 1, count = 9,
+            zStep = 7.4, layerInterval = 0.10, holdDur = 0.50,
+            fanDir = -0.35, label = "金库双塔落成！", announceComplete = true,
+        })
+        self.physics:StartCoinTower({
+            x = 240, y = 442, kind = hi, level = hiLv,
+            crownKind = "vault", crownLevel = 1, count = 9,
+            zStep = 7.4, layerInterval = 0.10, holdDur = 0.50,
+            fanDir = 0.35, label = "金库双塔落成！", announceComplete = false,
+        })
+        Emit(self.fx, "OnAdReward", "金库双币塔建造中!")
+        return true, "2 座金库金币塔正在台面筑起，成塔即推倒狂落!"
     elseif placementId == "airdrop_5x" then
-        local amt = max(200.0, floor(self:GetBaselineCPS() * 45) + 0.0)
+        local pv = self:GetAirdropPreview()
+        local amt = pv.adCash
         self:AddWealth(amt, false)
         local hi = self:GetHighestUnlockedCoin()
-        for k = 1, 10 do
-            self.physics:SpawnCoin({
-                kind = hi, level = self.coinLv[hi] or 1,
-                x = 100 + ((k - 1) % 5) * 40, y = S.DECK_TOP_Y + 30 + floor((k - 1) / 5) * 20,
-                vx = (self.rng() - 0.5) * 40, vy = 45, zone = "deck", gateChecked = true, isRain = true,
-            })
-        end
+        local hiLv = self.coinLv[hi] or 1
+        self.physics:StartCoinTower({
+            x = 124, y = 434, kind = hi, level = hiLv,
+            crownKind = "vault", crownLevel = 1, count = 6,
+            zStep = 7.6, layerInterval = 0.11, holdDur = 0.45,
+            fanDir = -0.30, label = "风投双塔落成！", announceComplete = true,
+        })
+        self.physics:StartCoinTower({
+            x = 236, y = 434, kind = hi, level = hiLv,
+            crownKind = "vault", crownLevel = 1, count = 6,
+            zStep = 7.6, layerInterval = 0.11, holdDur = 0.45,
+            fanDir = 0.30, label = "风投双塔落成！", announceComplete = false,
+        })
+        self.skillPoints = self.skillPoints + pv.adSp
+        self.totalSkillPoints = self.totalSkillPoints + pv.adSp
+        Emit(self.fx, "OnSkillPointsGain", pv.adSp)
         self.activeAirdrop = nil
-        Emit(self.fx, "OnAdReward", "风投暴富 +" .. Number.FormatCash(amt))
-        return true, "到账 " .. Number.FormatCash(amt)
+        Emit(self.fx, "OnAdReward", string.format("风投暴富 +%s · +%d技能点 · 双塔升起!", Number.FormatCash(amt), pv.adSp))
+        return true, string.format("到账 %s + 2座高阶金库塔(10高阶+2金库币) + %d技能点!", Number.FormatCash(amt), pv.adSp)
     end
     return true, "奖励已发放"
 end
@@ -1224,14 +1436,25 @@ function Tycoon:ClaimAirdrop(isAd)
     local air = self.activeAirdrop
     if not air then return 0 end
     if isAd then
-        local amt = max(200.0, floor(self:GetBaselineCPS() * 45) + 0.0)
+        local pv = self:GetAirdropPreview()
         self:ApplyAdReward("airdrop_5x")
-        return amt
+        return pv.adCash
     end
-    local amt = (air.baseCash or max(30.0, floor(self:GetBaselineCPS() * 5) + 0.0)) + 0.0
+    local pv = self:GetAirdropPreview()
+    local amt = pv.freeCash + 0.0
     self:AddWealth(amt, false)
+    local hi = self:GetHighestUnlockedCoin()
+    for k = 1, pv.freeCoins do
+        self.physics:SpawnCoin({
+            kind = hi, level = self.coinLv[hi] or 1,
+            x = (k == 1) and 144 or 216, y = 438,
+            z = 72, vz = -240,
+            vx = (k == 1) and -10 or 10, vy = 22,
+            zone = "deck", onPusher = false, gateChecked = true, forceSpawn = true,
+        })
+    end
     self.activeAirdrop = nil
-    Emit(self.fx, "OnAdReward", "风投补贴 +" .. Number.FormatCash(amt))
+    Emit(self.fx, "OnAdReward", "风投空投 +" .. Number.FormatCash(amt))
     return amt
 end
 
@@ -1373,6 +1596,71 @@ function Tycoon:Update(dt)
             self.luckName = ""
         end
     end
+    if (self.surpriseTimer or 0) > 0 then
+        self.surpriseTimer = max(0, self.surpriseTimer - dt)
+        if self.surpriseTimer <= 0 then
+            self.surpriseMult = 1
+            self.surpriseDur = 0
+            self.surpriseName = ""
+        end
+    end
+
+    -- 拖金袋小人：周期性沿台前底部横穿，前沿落币砸中触发 12 面骰子
+    local runEnt = self.runner
+    if runEnt then
+        if runEnt.active then
+            runEnt.x = runEnt.x + (runEnt.dir or 1) * (runEnt.speed or 44) * dt
+            if runEnt.x < 40 or runEnt.x > 320 then
+                runEnt.active = false
+                runEnt.cooldown = 34 + self.rng() * 18
+            end
+        elseif not self.pendingDice then
+            runEnt.cooldown = (runEnt.cooldown or 30) - dt
+            if runEnt.cooldown <= 0 then
+                self:SpawnRunner()
+            end
+        end
+    end
+
+    -- 空中黄金气球：在推盘上方通道飘过，点击或刚入槽硬币撞击均可打爆
+    local bal = self.balloon
+    if bal then
+        if bal.active then
+            bal.bobT = (bal.bobT or 0) + dt * 2.6
+            bal.x = bal.x + (bal.dir or 1) * (bal.speed or 28) * dt
+            bal.y = (bal.baseY or 118) + math.sin(bal.bobT) * 14
+            if (bal.dir > 0 and bal.x > 304) or (bal.dir < 0 and bal.x < 56) then
+                bal.active = false
+                bal.cooldown = 40 + self.rng() * 24
+            elseif self.physics and self.physics.activeIds and self.physics.coins then
+                local ids, coins = self.physics.activeIds, self.physics.coins
+                local bx, by = bal.x, bal.y
+                for i = 1, #ids do
+                    local c = coins[ids[i]]
+                    if c and c.active and c.zone == "slot" then
+                        local dx = (c.x or 0) - bx
+                        local dy = (c.y or 0) - by
+                        if dx * dx + dy * dy <= 24 * 24 then
+                            self:PopBalloon("coin")
+                            break
+                        end
+                    end
+                end
+            end
+        else
+            bal.cooldown = (bal.cooldown or 24) - dt
+            if bal.cooldown <= 0 then
+                local dir = (self.rng() < 0.5) and 1 or -1
+                bal.active = true
+                bal.dir = dir
+                bal.x = (dir > 0) and 56 or 304
+                bal.baseY = 102 + self.rng() * 44
+                bal.y = bal.baseY
+                bal.speed = 24 + self.rng() * 12
+                bal.bobT = 0
+            end
+        end
+    end
     if self.slotSpinning then
         self.slotSpinT = self.slotSpinT + dt
         if self.slotSpinT >= self.slotSpinDur then
@@ -1434,7 +1722,6 @@ function Tycoon:Update(dt)
             local evId = evList[(floor(self.clock * 13) % #evList) + 1] or "vault_crack"
             self.activeAirdrop = {
                 eventId = evId,
-                baseCash = max(30.0, floor(self:GetBaselineCPS() * 5) + 0.0),
             }
         end
     end
@@ -1540,6 +1827,10 @@ function Tycoon:ExportState(nowTs)
         totalDrops = self.totalDrops,
         bestHit = (self.bestHit or 0) + 0.0,
         maxCombo = self.maxCombo,
+        surpriseMult = self.surpriseMult or 1,
+        surpriseTimer = floor((self.surpriseTimer or 0) * 10) / 10,
+        surpriseDur = self.surpriseDur or 0,
+        surpriseName = self.surpriseName or "",
         lastBaseCps = baseRate + 0.0,
         lastActiveAt = self.lastActiveAt,
     }
@@ -1613,7 +1904,7 @@ function Tycoon:ImportState(s)
             migSp = migSp + Config.GetSpReward(self.spStep, bonusLv)
         end
         for rIdx = 1, self.rankIdx do
-            migSp = migSp + (Config.RANKS[rIdx].spBounty or 2)
+            migSp = migSp + (Config.RANKS[rIdx].spBounty or 10)
         end
         self.skillPoints = migSp
         self.totalSkillPoints = migSp
@@ -1640,6 +1931,13 @@ function Tycoon:ImportState(s)
     self.feverChargeAcc = 0
     self.comboWaveT = 0
     self._baseRevSamples = 0
+    self.surpriseTimer = max(0, tonumber(s.surpriseTimer) or 0)
+    self.surpriseDur = max(0, tonumber(s.surpriseDur) or 0)
+    self.surpriseMult = (self.surpriseTimer > 0) and max(1, tonumber(s.surpriseMult) or 1) or 1
+    self.surpriseName = (self.surpriseTimer > 0 and type(s.surpriseName) == "string") and s.surpriseName or ""
+    self.pendingDice = nil
+    if self.runner then self.runner.active = false end
+    if self.balloon then self.balloon.active = false end
 
     self:RebuildCoinCache()
     self:CheckSpMilestones()

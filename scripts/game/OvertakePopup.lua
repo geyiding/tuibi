@@ -3,7 +3,7 @@
 --   版式（参考宣传图）：徽记 → 3D 金色大标题 → 紫色绶带副标题 → 「你的财富 ≫ 被超越者」对比双卡
 --                       → 对手吐槽 → 厚金按钮（带技能点赏金时：收下 / ×3 看广告）
 --   六档层层递进（按被超越者的世界排名）：
---     T1 身边人（≥1亿名）       超越!      上箭头徽记，彩纸，2.4s 自动收起
+--     T1 身边人（≥1亿名）       超越!      上箭头徽记，彩纸，4.8s 自动收起
 --     T2 1亿~10万名             阶层跃迁!  银勋章 + 光芒，金币雨
 --     T3 10万~1000名            身价暴涨!  金勋章 + 月桂 + 更强光芒
 --     T4 真名富豪前1000          超越富豪!  皇冠 + 金光芒 + 烟花，需点按收下
@@ -61,9 +61,9 @@ local GEM_P = { 190, 110, 255 }
 local LEAF = { 120, 220, 120 }
 
 local TIER_DEF = {
-    { title = "超越!",     auto = 2.4, rays = 0,  confetti = 18, coins = 0,  fireworks = 0 },
-    { title = "阶层跃迁!", auto = 2.8, rays = 10, confetti = 26, coins = 6,  fireworks = 0 },
-    { title = "身价暴涨!", auto = 3.4, rays = 14, confetti = 36, coins = 10, fireworks = 1 },
+    { title = "超越!",     auto = 4.8, rays = 0,  confetti = 18, coins = 0,  fireworks = 0 },
+    { title = "阶层跃迁!", auto = 5.6, rays = 10, confetti = 26, coins = 6,  fireworks = 0 },
+    { title = "身价暴涨!", auto = 6.8, rays = 14, confetti = 36, coins = 10, fireworks = 1 },
     { title = "超越富豪!", auto = 0,   rays = 16, confetti = 50, coins = 14, fireworks = 2 },
     { title = "超越传奇!", auto = 0,   rays = 20, confetti = 64, coins = 18, fireworks = 4 },
     { title = "超越巅峰!", auto = 0,   rays = 24, confetti = 90, coins = 24, fireworks = 8 },

@@ -108,29 +108,33 @@ local function MakeModalWrap(inner, closeOnOverlay)
     }
 end
 
--- B1 固定高度两行详情框（顶部全宽标题 + 底部图标/可滚动说明/买操作钮，彻底杜绝窄列挤压裁剪）
+-- B1 固定高度两行详情框（Row 1: 图标+标题+操作钮；Row 2: 全宽可滚动说明，彻底消除窄列挤折裁剪）
 local function MakeDetailBar(iconKind, iconKey, btnText, btnVar, onAction)
-    local ic = NeoIcon { kind = iconKind, key = iconKey, size = 46, flexShrink = 0 }
-    local title = UI.Label { text = "", fontSize = 14, fontWeight = "bold", fontColor = U.gold, width = "100%", flexShrink = 0 }
-    local desc = UI.Label { text = "", fontSize = 12, fontColor = U.textDim, whiteSpace = "normal", width = "100%" }
-    local scroll = UI.ScrollView {
-        flexGrow = 1, flexBasis = 0, minWidth = 0, height = "100%", scrollY = true, overflow = "hidden",
-        children = { desc },
-    }
+    local ic = NeoIcon { kind = iconKind, key = iconKey, size = 38, flexShrink = 0 }
+    local title = UI.Label { text = "", fontSize = 14, fontWeight = "bold", fontColor = U.gold, width = "100%" }
     local btn = NeoButton {
-        text = btnText, variant = btnVar or "primary", minWidth = 92, minHeight = 44, paddingHorizontal = 8, fontSize = 13,
+        text = btnText, variant = btnVar or "primary", minWidth = 88, minHeight = 38, height = 38, paddingHorizontal = 8, fontSize = 12,
         flexShrink = 0,
         onClick = onAction,
     }
+    local desc = UI.Label { text = "", fontSize = 12, lineHeight = 1.35, fontColor = U.textDim, whiteSpace = "normal", width = "100%" }
+    local scroll = UI.ScrollView {
+        width = "100%", flexGrow = 1, flexBasis = 0, minHeight = 0, scrollY = true, overflow = "hidden",
+        children = { desc },
+    }
     local bar = NeoFrame {
-        style = "card", width = "100%", height = 112, padding = 8, gap = 6,
+        style = "card", width = "100%", height = 114, padding = 8, gap = 6,
         flexDirection = "column", overflow = "hidden",
         children = {
-            UI.Panel { width = "100%", overflow = "hidden", flexShrink = 0, children = { title } },
             UI.Row {
-                width = "100%", flexGrow = 1, flexBasis = 0, minHeight = 0, alignItems = "center", gap = 8, overflow = "hidden",
-                children = { ic, scroll, btn },
+                width = "100%", height = 40, flexShrink = 0, alignItems = "center", gap = 6, overflow = "hidden",
+                children = {
+                    ic,
+                    UI.Panel { flexGrow = 1, flexBasis = 0, minWidth = 0, overflow = "hidden", children = { title } },
+                    btn,
+                },
             },
+            scroll,
         },
     }
     return bar, ic, title, desc, btn
@@ -298,6 +302,19 @@ local function BuildMainPage(stageWidget, cb)
         navRowChildren[i] = btn
     end
 
+    r.homeSpLbl = UI.Label { text = "技能点: 0", fontSize = 12, fontWeight = "bold", fontColor = U.gold, flexShrink = 0 }
+    r.homeSpNextLbl = UI.Label { text = "下档: ¥200", fontSize = 11, fontColor = U.cyan, width = "100%", textAlign = "right" }
+    local spStrip = NeoFrame(Widgets.PressFx {
+        style = "plate", width = "100%", height = 28, paddingHorizontal = 12, gap = 8, overflow = "hidden",
+        flexDirection = "row", alignItems = "center",
+        children = {
+            NeoIcon { kind = "icon", key = "star", size = 14, tint = C.gold, flexShrink = 0 },
+            r.homeSpLbl,
+            UI.Panel { flexGrow = 1, flexBasis = 0, minWidth = 0, overflow = "hidden", children = { r.homeSpNextLbl } },
+        },
+        onClick = function() TycoonHud.OpenModal("machine") end,
+    })
+
     local bottomBar = NeoFrame {
         style = "cloth", width = "100%", height = 72, paddingHorizontal = 8,
         flexDirection = "row", alignItems = "center", gap = 6,
@@ -307,7 +324,7 @@ local function BuildMainPage(stageWidget, cb)
     return UI.Panel {
         width = "100%", height = "100%", position = "absolute", top = 0, left = 0,
         flexDirection = "column",
-        children = { topPlate, stageHost, bottomBar },
+        children = { topPlate, stageHost, spStrip, bottomBar },
     }
 end
 
@@ -497,43 +514,76 @@ end
 -- ----------------------------------------------------------------------------
 local function BuildPrestigeModal(cb)
     local r = st.refs
-    r.presEraLbl = UI.Label { text = "不清空财富", fontSize = 11, fontWeight = "bold", fontColor = U.green, flexShrink = 1 }
-    r.presSpLbl = UI.Label { text = "点:0", fontSize = 12, fontWeight = "bold", fontColor = U.gold, flexShrink = 0 }
+    r.presEraLbl = UI.Label { text = "", fontSize = 11, fontWeight = "bold", fontColor = U.magenta, visible = false, flexShrink = 1 }
     local header = UI.Row {
-        width = "100%", height = 40, alignItems = "center", gap = 6,
+        width = "100%", height = 38, alignItems = "center", gap = 6,
         children = {
-            UI.Label { text = "资本上市敲钟", fontSize = 17, fontWeight = "bold", fontColor = U.gold },
+            UI.Label { text = "融资上市", fontSize = 18, fontWeight = "bold", fontColor = U.gold, flexShrink = 0 },
             r.presEraLbl,
-            r.presSpLbl,
             UI.Spacer(), MakeCloseBtn(function() TycoonHud.CloseModal() end),
         },
     }
 
-    r.presSharesLbl = UI.Label { text = "传奇股：0", fontSize = 13, fontWeight = "bold", fontColor = U.gold, whiteSpace = "normal", width = "100%" }
-    r.presPendLbl = UI.Label { text = "下轮融资：+0 股 · +0 点", fontSize = 12, fontColor = U.cyan, whiteSpace = "normal", width = "100%" }
-    r.presNextLbl = UI.Label { text = "★ 绝不清空现金、机台与已解币种", fontSize = 11, fontColor = U.green, whiteSpace = "normal", width = "100%" }
-    local topCard = NeoFrame {
-        style = "card", width = "100%", minHeight = 92, padding = 8, gap = 8, overflow = "hidden",
-        flexDirection = "row", alignItems = "center",
+    r.presSharesLbl = UI.Label { text = "持有传奇股: 0股", fontSize = 12, fontWeight = "bold", fontColor = U.gold, flexShrink = 0 }
+    r.presMulLbl = UI.Label { text = "全局×1.00 · 不清空金币", fontSize = 11, fontColor = U.cyan, width = "100%", textAlign = "right" }
+    local shareBar = NeoFrame {
+        style = "slot", width = "100%", height = 30, paddingHorizontal = 8,
+        flexDirection = "row", alignItems = "center", gap = 6, overflow = "hidden",
         children = {
-            NeoIcon { kind = "boss", key = "vaultbeast", size = 54, flexShrink = 0 },
-            UI.Column {
-                flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, overflow = "hidden", gap = 3,
-                children = { r.presSharesLbl, r.presPendLbl, r.presNextLbl },
-            },
+            r.presSharesLbl,
+            UI.Panel { flexGrow = 1, flexBasis = 0, minWidth = 0, overflow = "hidden", children = { r.presMulLbl } },
         },
+    }
+
+    r.presRoundLbl = UI.Label { text = "① 天使轮融资", fontSize = 13, fontWeight = "bold", fontColor = U.gold, flexShrink = 0 }
+    r.presRewardLbl = UI.Label { text = "达标奖 +2股 +4技能点", fontSize = 11, fontWeight = "bold", fontColor = U.green, width = "100%", textAlign = "right" }
+    r.presBar = NeoBar { width = "100%", height = 24, value = 0, text = "还差 ¥50,000 (0%)" }
+    r.presNormalBtn = NeoButton {
+        text = "身价未达标", variant = "dark", flexGrow = 1, flexBasis = 0, minHeight = 40, height = 40, fontSize = 12,
+        onClick = function() if cb.OnConfirmPrestige then cb.OnConfirmPrestige(false) end end,
+    }
+    r.presAdBtn = NeoButton {
+        text = "广告×2 (+4股)", variant = "primary", flexGrow = 1, flexBasis = 0, minHeight = 40, height = 40, fontSize = 12,
+        onClick = function() if cb.OnConfirmPrestige then cb.OnConfirmPrestige(true) end end,
+    }
+    r.presAscendBtn = NeoButton {
+        text = "星际飞升", variant = "magenta", flexGrow = 1, flexBasis = 0, minHeight = 40, height = 40, fontSize = 12, visible = false,
+        onClick = function() if cb.OnGalacticAscend then cb.OnGalacticAscend() end end,
+    }
+    r.presEndLbl = UI.Label { text = "", fontSize = 11, fontColor = U.magenta, visible = false, width = "100%", textAlign = "center" }
+    local actionRow = UI.Row { width = "100%", gap = 6, children = { r.presNormalBtn, r.presAdBtn, r.presAscendBtn } }
+    local topCard = NeoFrame {
+        style = "card", width = "100%", padding = 8, gap = 6, overflow = "hidden",
+        flexDirection = "column",
+        children = {
+            UI.Row {
+                width = "100%", alignItems = "center", gap = 6, overflow = "hidden",
+                children = {
+                    r.presRoundLbl,
+                    UI.Panel { flexGrow = 1, flexBasis = 0, minWidth = 0, overflow = "hidden", children = { r.presRewardLbl } },
+                },
+            },
+            r.presBar,
+            actionRow,
+            r.presEndLbl,
+        },
+    }
+
+    local step2Lbl = UI.Label {
+        text = "② 用传奇股点亮永久天赋（总身价达标即可免费融股）",
+        fontSize = 11, fontColor = U.textDim, width = "100%",
     }
 
     r.talentCells = {}
     local tNodes = {}
     for i = 1, 4 do
         local p = Config.PRESTIGE_TALENTS[i]
-        local ic = NeoIcon { kind = "relic", key = p.relic, size = 42, flexShrink = 0 }
+        local ic = NeoIcon { kind = "relic", key = p.relic, size = 38, flexShrink = 0 }
         local nm = UI.Label { text = p.name, fontSize = 13, fontWeight = "bold", fontColor = U.text, width = "100%" }
-        local lv = UI.Label { text = "Lv.0 · 2股", fontSize = 12, fontColor = U.cyan, width = "100%" }
+        local lv = UI.Label { text = "Lv.0 · 需2股", fontSize = 12, fontColor = U.cyan, width = "100%" }
         local cell = NeoFrame(Widgets.PressFx {
             style = "slot", skin = { rarity = "epic", selected = false, afford = false },
-            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 74, padding = 6, gap = 6, overflow = "hidden",
+            flexGrow = 1, flexBasis = 0, flexShrink = 1, minWidth = 0, height = 68, padding = 6, gap = 6, overflow = "hidden",
             flexDirection = "row", alignItems = "center",
             children = {
                 ic,
@@ -555,24 +605,10 @@ local function BuildPrestigeModal(cb)
     end)
     r.talDetIc, r.talDetTitle, r.talDetDesc, r.talDetBtn = detIc, detTitle, detDesc, detBtn
 
-    r.presNormalBtn = NeoButton {
-        text = "敲钟上市", variant = "dark", flexGrow = 1, flexBasis = 0, minHeight = 46, fontSize = 13,
-        onClick = function() if cb.OnConfirmPrestige then cb.OnConfirmPrestige(false) end end,
-    }
-    r.presAdBtn = NeoButton {
-        text = "广告×2", variant = "primary", flexGrow = 1, flexBasis = 0, minHeight = 46, fontSize = 13,
-        onClick = function() if cb.OnConfirmPrestige then cb.OnConfirmPrestige(true) end end,
-    }
-    r.presAscendBtn = NeoButton {
-        text = "星际飞升", variant = "magenta", flexGrow = 1, flexBasis = 0, minHeight = 46, fontSize = 13, visible = false,
-        onClick = function() if cb.OnGalacticAscend then cb.OnGalacticAscend() end end,
-    }
-    local botRow = UI.Row { width = "100%", gap = 6, children = { r.presNormalBtn, r.presAdBtn, r.presAscendBtn } }
-
     local panel = NeoFrame {
-        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 6,
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 12, gap = 7,
         flexDirection = "column", justifyContent = "space-between",
-        children = { header, topCard, tGrid, detBar, botRow },
+        children = { header, shareBar, topCard, step2Lbl, tGrid, detBar },
     }
     return MakeModalWrap(panel, true)
 end
@@ -622,7 +658,7 @@ local function BuildWelfareModal(cb)
         flexDirection = "column", justifyContent = "space-between",
         children = {
             header,
-            UI.Label { text = "模拟激励广告位：点击亮卡立即体验商业化增益", fontSize = 12, fontColor = U.cyan, width = "100%", whiteSpace = "normal", textAlign = "center" },
+            UI.Label { text = "模拟激励广告位：点击亮卡立即生效", fontSize = 12, fontColor = U.cyan, width = "100%", whiteSpace = "normal", textAlign = "center" },
             grid,
             UI.Spacer(),
             detBar,
@@ -797,7 +833,7 @@ local function BuildFormulaModal()
                 children = {
                     UI.Label { text = "1. 钱只涨不花直冲世界第1！达标与排名跃升均赠技能点。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
                     UI.Label { text = "2. 下方页签亮灯即点：用技能点升机台、解新币（可设6枚常驻）与黑科技。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
-                    UI.Label { text = "3. 硬币过幸运门激活幸运三连机（9秒限流爆发 1.5~100 倍）；长按推台可触发狂暴连发！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
+                    UI.Label { text = "3. 过幸运门激活三连机；砸中拖金袋小人摇12面骰、戳破黄金气球与随机黄金暴走可叠出惊喜高倍！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
                 },
             },
             NeoFrame {
@@ -812,6 +848,36 @@ local function BuildFormulaModal()
         },
     }
     return MakeModalWrap(box, true)
+end
+
+-- 砸中拖金袋小人 -> 12面幸运骰弹窗（点数 <= 6 可看广告重掷并保底翻倍至 ×14~×24）
+local function BuildDiceModal(cb)
+    local r = st.refs
+    r.diceTitle = UI.Label { text = "砸中金袋小人 · 12面幸运骰", fontSize = 18, fontWeight = "bold", fontColor = U.gold, textAlign = "center", width = "100%" }
+    r.diceView = Widgets.DiceView { width = "100%", height = 136, face = 12, mult = 12, rolling = true }
+    r.diceDesc = UI.Label {
+        text = "12面狂欢骰飞速旋转中，即将揭晓全场额外乘区倍率……",
+        fontSize = 13, lineHeight = 1.35, fontColor = U.textDim, whiteSpace = "normal", textAlign = "center", width = "100%",
+    }
+    r.diceClaimBtn = NeoButton {
+        text = "掷骰中...", variant = "primary", flexGrow = 1, flexBasis = 0, minHeight = 46, fontSize = 14,
+        onClick = function() if cb.OnDiceClaim then cb.OnDiceClaim() end end,
+    }
+    r.diceRerollBtn = NeoButton {
+        text = "广告重掷 ×14~24", variant = "primary", flexGrow = 1.2, flexBasis = 0, minHeight = 46, fontSize = 13, visible = false,
+        onClick = function() if cb.OnDiceRerollAd then cb.OnDiceRerollAd() end end,
+    }
+    local box = NeoFrame {
+        style = "panel", width = "88%", maxWidth = 360, padding = 16, gap = 10,
+        flexDirection = "column", alignItems = "center",
+        children = {
+            r.diceTitle,
+            r.diceView,
+            r.diceDesc,
+            UI.Row { width = "100%", gap = 10, children = { r.diceClaimBtn, r.diceRerollBtn } },
+        },
+    }
+    return MakeModalWrap(box, false)
 end
 
 local function BuildMockAdModal(cb)
@@ -850,8 +916,8 @@ local function BuildConfirmPrestigeModal(cb)
         style = "panel", width = "88%", maxWidth = 360, padding = 18, gap = 14,
         flexDirection = "column", alignItems = "center",
         children = {
-            NeoIcon { kind = "boss", key = "gatekeeper", size = 60 },
-            UI.Label { text = "确认 IPO 上市转生？", fontSize = 19, fontWeight = "bold", fontColor = U.gold },
+            NeoIcon { kind = "relic", key = "vip_card", size = 56 },
+            UI.Label { text = "确认融资上市？", fontSize = 19, fontWeight = "bold", fontColor = U.gold },
             r.cpDesc,
             UI.Row {
                 width = "100%", gap = 10,
@@ -894,6 +960,7 @@ function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal, confirm
     st.modals.airdrop         = BuildAirdropModal(st.cb)
     st.modals.formula         = BuildFormulaModal()
     st.modals.mockAd          = BuildMockAdModal(st.cb)
+    st.modals.dice            = BuildDiceModal(st.cb)
     st.modals.confirmPrestige = BuildConfirmPrestigeModal(st.cb)
     if settingsModal then st.modals.settings = settingsModal end
     if cloudFailModal then st.modals.cloudFail = cloudFailModal end
@@ -984,6 +1051,9 @@ function TycoonHud.ResetState()
     st.offlineSec = 0
     st.prestigeDouble = false
     st.mockAdLeft = 0
+    st.diceRolling = false
+    st.diceRollT = 0
+    st.diceInfo = nil
     st.overtakeOpen = false
     st.overtakeLeft = 0
     st.overtakeSticky = false
@@ -993,6 +1063,84 @@ function TycoonHud.ResetState()
     if st.refs.cashCounter and st.refs.cashCounter.ResetDisplay then st.refs.cashCounter:ResetDisplay() end
     if st.refs.rankTicker and st.refs.rankTicker.ResetDisplay then st.refs.rankTicker:ResetDisplay() end
     TycoonHud.CloseModal()
+end
+
+local function ApplyDiceSettledUI()
+    local d = st.diceInfo or (st.lastTycoon and st.lastTycoon.pendingDice)
+    if not d then return end
+    local r = st.refs
+    local face = d.face or 1
+    local mult = d.mult or face
+    local dur = d.dur or 18
+    if r.diceView and r.diceView.SetDice then
+        r.diceView:SetDice(face, mult, d.rerolled == true, false)
+    end
+    if d.rerolled then
+        SetLbl(r.diceTitle, string.format("广告重掷翻倍 · %d 点 ×%d!", face, mult))
+        SetLbl(r.diceDesc, string.format("重掷落定 %d 点翻倍至 ×%d（持续 %d 秒 + 6 枚高阶币雨），与三连/狂欢/印钞直接叠乘！", face, mult, dur))
+        if r.diceClaimBtn then r.diceClaimBtn:SetText("激活 ×" .. tostring(mult) .. " 狂欢!") end
+    elseif face <= 1 then
+        SetLbl(r.diceTitle, "掷出 1 点 · 保底暖心奖")
+        SetLbl(r.diceDesc, string.format("掷出 1 点，保底送你 3 枚当前最高币！点击右侧【广告重掷】可保底变 ×14~×24（持续 %d 秒）！", dur))
+        if r.diceClaimBtn then r.diceClaimBtn:SetText("收下 3 枚高阶币") end
+    else
+        SetLbl(r.diceTitle, string.format("掷出 %d 点 · 全场 ×%d!", face, mult))
+        SetLbl(r.diceDesc, string.format("激活【奇遇 ×%d】（持续 %d 秒），直接与三连/狂欢/印钞叠乘！%s",
+            mult, dur, (face <= 6) and "点数偏小？可看广告重掷保底 ×14~×24！" or "手气爆棚！"))
+        if r.diceClaimBtn then r.diceClaimBtn:SetText("激活 ×" .. tostring(mult) .. " 倍率!") end
+    end
+    if r.diceClaimBtn then r.diceClaimBtn:SetDisabled(false) end
+    local canReroll = (not d.rerolled) and (face <= 6)
+    if r.diceRerollBtn then
+        r.diceRerollBtn:SetVisible(canReroll)
+        if canReroll then r.diceRerollBtn:SetText("广告重掷 ×14~24") end
+    end
+end
+
+function TycoonHud.OpenDiceModal(diceInfo)
+    if not diceInfo then return end
+    st.diceInfo = diceInfo
+    st.diceRolling = true
+    st.diceRollT = 1.05
+    local r = st.refs
+    if r.diceView and r.diceView.SetDice then
+        r.diceView:SetDice(diceInfo.face or 12, diceInfo.mult or 12, diceInfo.rerolled == true, true)
+    end
+    SetLbl(r.diceTitle, "砸中金袋小人 · 12面幸运骰")
+    SetLbl(r.diceDesc, "12面狂欢骰飞速旋转中，即将揭晓全场额外乘区倍率……")
+    if r.diceClaimBtn then
+        r.diceClaimBtn:SetDisabled(true)
+        r.diceClaimBtn:SetText("掷骰中...")
+    end
+    if r.diceRerollBtn then r.diceRerollBtn:SetVisible(false) end
+    TycoonHud.OpenModal("dice")
+end
+
+function TycoonHud.StartDiceRerollAnim(diceInfo)
+    if not diceInfo then return end
+    st.diceInfo = diceInfo
+    st.diceRolling = true
+    st.diceRollT = 0.95
+    local r = st.refs
+    if r.diceView and r.diceView.SetDice then
+        r.diceView:SetDice(diceInfo.face or 12, diceInfo.mult or 24, true, true)
+    end
+    SetLbl(r.diceTitle, "广告重掷翻倍 · 保底 ×14~×24!")
+    SetLbl(r.diceDesc, "12面骰重新蓄力狂转，必出 7~12 点并直接翻倍……")
+    if r.diceClaimBtn then
+        r.diceClaimBtn:SetDisabled(true)
+        r.diceClaimBtn:SetText("重掷中...")
+    end
+    if r.diceRerollBtn then r.diceRerollBtn:SetVisible(false) end
+end
+
+function TycoonHud.TickDice(dt)
+    if not st.diceRolling then return end
+    st.diceRollT = max(0, (st.diceRollT or 0) - (dt or 0))
+    if st.diceRollT <= 0 then
+        st.diceRolling = false
+        ApplyDiceSettledUI()
+    end
 end
 
 function TycoonHud.OpenOfflineModal(amt, elapsed)
@@ -1119,6 +1267,11 @@ function TycoonHud.RefreshMain(ty)
     -- 世界排名由 RankTicker 每帧滚动绘制
 
     -- 现金 / 每秒产值由 CashCounter 每帧滚动绘制
+
+    local homeSpTxt = "技能点: " .. Number.FormatNum(ty.skillPoints or 0)
+    if sh.homeSpTxt ~= homeSpTxt then sh.homeSpTxt = homeSpTxt; SetLbl(r.homeSpLbl, homeSpTxt) end
+    local homeNextTxt = "下档: " .. Number.FormatCash(ty:GetNextSpThreshold())
+    if sh.homeNextTxt ~= homeNextTxt then sh.homeNextTxt = homeNextTxt; SetLbl(r.homeSpNextLbl, homeNextTxt) end
 
     -- 下一个超越目标（富豪榜 + 身边人阶梯合并），进度 = 从上一个目标到下一个目标的财富进度
     local passed = RankLadder.CountPassed(ty.lifetimeCash)
@@ -1256,7 +1409,7 @@ function TycoonHud.RefreshCoins()
         local cost, maxed, locked = ty:GetCoinCost(tier.id)
         local unitVal = ty:GetCoinUnitValue(tier.id, max(1, lv))
         r.coinDetIc:SetIcon("coin", tier.id, max(1, min(3, floor(lv / 4) + 1)))
-        SetLbl(r.coinDetTitle, string.format("%s (%s)", def and def.name or tier.id, lv == 0 and (locked and "需先解前一种币" or "未解锁") or ("Lv." .. lv .. (pinned and "·常驻" or ""))))
+        SetLbl(r.coinDetTitle, string.format("%s (%s)", def and def.name or tier.id, lv == 0 and (locked and "先解前币" or "未解锁") or ("Lv." .. lv .. (pinned and "·常驻" or ""))))
         SetLbl(r.coinDetDesc, string.format("单枚基值 %s · %s", Number.FormatCash(unitVal), def and def.desc or ""))
         if maxed then
             r.coinDetBtn:SetText("已满级")
@@ -1315,25 +1468,43 @@ function TycoonHud.RefreshPrestige()
     local canIpo = ty:CanDoIpo()
     local curMul = ty:GetShareMult()
     local eraTitle = ty.GetEraTitle and ty:GetEraTitle() or nil
-    SetLbl(r.presEraLbl, eraTitle and ("★ " .. eraTitle) or "不清空财富")
-    SetLbl(r.presSpLbl, "点:" .. Number.FormatNum(ty.skillPoints or 0))
-    SetLbl(r.presSharesLbl, string.format("持有传奇股：%s 股 (全局×%.2f)", Number.FormatNum(ty.prestigeShares), curMul))
-    SetLbl(r.presPendLbl, string.format("本轮【%s】：+%s 股 · +%s 技能点", info.name, Number.FormatNum(info.shares), Number.FormatNum(info.bonusSp or 0)))
+    SetCellVis(r.presEraLbl, eraTitle ~= nil)
+    if eraTitle then SetLbl(r.presEraLbl, "★ " .. eraTitle) end
+    SetLbl(r.presSharesLbl, string.format("持有传奇股: %s股", Number.FormatNum(ty.prestigeShares)))
+    SetLbl(r.presMulLbl, string.format("全局×%.2f · 不清空金币", curMul))
+    SetLbl(r.presRoundLbl, string.format("① %s", info.name))
+    SetLbl(r.presRewardLbl, string.format("达标奖 +%s股 +%s技能点", Number.FormatNum(info.shares), Number.FormatNum(info.bonusSp or 0)))
+
+    local curW = ty.lifetimeCash or 0
+    local targetW = max(1, info.targetWealth or 1)
+    local ratio = max(0, min(1, curW / targetW))
+    local pct = floor(ratio * 100)
+    local barTxt = canIpo and "身价已达标！点下方免费领股份"
+        or string.format("还差 %s (%d%%)", Number.FormatCash(max(0, targetW - curW)), pct)
+    local barCol = canIpo and C.green or C.gold
+    local sh = st.shown
+    if sh.presBarTxt ~= barTxt or sh.presBarRatio ~= ratio then
+        sh.presBarTxt, sh.presBarRatio = barTxt, ratio
+        r.presBar:SetProgress(canIpo and 1 or ratio, barTxt, barCol)
+    end
+
+    r.presNormalBtn:SetDisabled(not canIpo)
+    r.presNormalBtn:SetVariant(canIpo and "cyan" or "dark")
+    r.presNormalBtn:SetText(canIpo and ("免费领 +" .. Number.FormatNum(info.shares) .. "股") or "身价未达标")
+    r.presAdBtn:SetDisabled(not canIpo)
+    r.presAdBtn:SetText(string.format("广告×2 (+%s股)", Number.FormatNum((info.shares or 0) * 2)))
+
     local inEndgame = (ty.rankIdx or 0) >= #Config.RANKS
+    SetCellVis(r.presAscendBtn, inEndgame)
+    SetCellVis(r.presEndLbl, inEndgame)
     if inEndgame then
         local canAsc = ty:CanAscendEra()
-        SetLbl(r.presNextLbl, canAsc
-            and ("★ 可星际飞升! 永久全局×3 · +" .. tostring(40 * ((ty.era or 0) + 1)) .. " 技能点")
+        SetLbl(r.presEndLbl, canAsc
+            and ("★ 已达星际飞升门槛！永久×3 + " .. tostring(40 * ((ty.era or 0) + 1)) .. "技能点")
             or ("星际飞升需总身价 " .. Number.FormatCash(ty:GetEraAscendTarget())))
-        SetCellVis(r.presAscendBtn, true)
         r.presAscendBtn:SetDisabled(not canAsc)
         r.presAscendBtn:SetText(canAsc and "星际飞升" or "未达标")
-    else
-        SetCellVis(r.presAscendBtn, false)
-        SetLbl(r.presNextLbl, canIpo and "★ 达标可敲钟！绝不清空财富与已解进度" or ("需总身价 " .. Number.FormatCash(info.targetWealth) .. " · 不清空资产"))
     end
-    r.presNormalBtn:SetDisabled(not canIpo)
-    r.presAdBtn:SetDisabled(not canIpo)
 
     for i = 1, 4 do
         local p = Config.PRESTIGE_TALENTS[i]
@@ -1341,7 +1512,8 @@ function TycoonHud.RefreshPrestige()
         local lv = ty.prestigeLv[p.id] or 0
         local cost, maxed = ty:GetTalentCost(p.id)
         local canAff = (not maxed) and (ty.prestigeShares >= cost)
-        SetLbl(slot.lv, maxed and "MAX" or string.format("Lv.%d · %s股", lv, Number.FormatNum(cost)))
+        SetLbl(slot.lv, maxed and "MAX" or string.format("Lv.%d · 需%s股", lv, Number.FormatNum(cost)))
+        SetLblCol(slot.lv, maxed and U.green or (canAff and U.gold or U.textDim))
         slot.cell.skin_.selected = (i == st.talentSel)
         slot.cell.skin_.afford = canAff
     end
@@ -1352,7 +1524,7 @@ function TycoonHud.RefreshPrestige()
         r.talDetIc:SetIcon("relic", p.relic, 1)
         SetLbl(r.talDetTitle, string.format("%s (Lv.%d/%d)", p.name, lv, p.maxLv))
         SetLbl(r.talDetDesc, p.desc)
-        r.talDetBtn:SetText(maxed and "满级" or ("点亮 " .. Number.FormatNum(cost) .. "股"))
+        r.talDetBtn:SetText(maxed and "已满级" or ((ty.prestigeShares >= cost) and ("点亮 " .. Number.FormatNum(cost) .. "股") or ("缺股份(需" .. Number.FormatNum(cost) .. "股)")))
         r.talDetBtn:SetDisabled(maxed or ty.prestigeShares < cost)
     end
 end
@@ -1446,17 +1618,17 @@ function TycoonHud.RefreshAirdrop()
     local air = ty.activeAirdrop
     local ev = Config.EVENTS[air.eventId] or Config.EVENTS.vault_crack
     local cd = ty:GetAdCooldown("airdrop_5x")
-    local baseCash = air.baseCash or max(30, floor(ty:GetBaselineCPS() * 5))
-    local adCash = max(200, floor(ty:GetBaselineCPS() * 45))
+    local pv = ty:GetAirdropPreview()
     r.airArt:SetIcon("event", ev.id, 1)
     SetLbl(r.airTitle, "风投空投 · " .. ev.name)
     SetLbl(r.airDesc, string.format(
-        "免费领 %s，或看广告立即暴富（%s + 10 枚高阶币雨）！",
-        Number.FormatCash(baseCash), Number.FormatCash(adCash)
+        "随当前产值实时放大！\n免费领：%s + %d 枚当前最高币\n看广告暴富：%s + %d 枚高阶币雨 + %d 枚45倍金库巨币 + %d 技能点！",
+        Number.FormatCash(pv.freeCash), pv.freeCoins,
+        Number.FormatCash(pv.adCash), pv.adCoins, pv.adVaults, pv.adSp
     ))
     if r.airDetAdBtn then
         r.airDetAdBtn:SetDisabled(cd > 0)
-        r.airDetAdBtn:SetText((cd > 0) and ("冷却 " .. Number.FormatClock(cd)) or "广告×5暴富")
+        r.airDetAdBtn:SetText((cd > 0) and ("冷却 " .. Number.FormatClock(cd)) or ("广告+" .. tostring(pv.adSp) .. "点暴富"))
     end
 end
 
@@ -1467,11 +1639,12 @@ function TycoonHud.RefreshFormula()
     local eraTtl = ty.GetEraTitle and ty:GetEraTitle() or nil
     local eraNote = eraTtl and string.format("\n星际纪元【%s】：×%s 永久飞升加成", eraTtl, Number.FormatMul(3 ^ (ty.era or 0))) or ""
     SetLbl(st.refs.formMultLbl, string.format(
-        "机台全币：×%s   |   黑科技乘区：×%s\n传奇股+基因：×%s   |   连击加成：×%s\n狂欢时刻：×%s   |   幸运三连：×%s\n广告×3：×%s   |   合计总倍率：×%s\n下一技能点阈值：%s（可用 %s 点）%s",
+        "机台全币：×%s   |   黑科技乘区：×%s\n传奇股+基因：×%s   |   连击加成：×%s\n狂欢时刻：×%s   |   幸运三连：×%s\n奇遇惊喜：×%s   |   广告×3：×%s\n合计总倍率：×%s\n下一技能点阈值：%s（可用 %s 点）%s",
         Number.FormatMul(d.machine), Number.FormatMul(d.tech),
         Number.FormatMul(d.prestige), Number.FormatMul(d.combo),
         Number.FormatMul(d.fever), Number.FormatMul(d.luck or 1),
-        Number.FormatMul(d.ad), Number.FormatMul(d.total),
+        Number.FormatMul(d.surprise or 1), Number.FormatMul(d.ad),
+        Number.FormatMul(d.total),
         Number.FormatCash(ty:GetNextSpThreshold()), Number.FormatNum(ty.skillPoints or 0), eraNote
     ))
 end

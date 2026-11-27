@@ -223,6 +223,7 @@ function Fx.New()
     self.mtFever = false
     self.mtLuck = 1
     self.mtAd = false
+    self.mtSurprise = 1
     self.mtComboStep = 0
     self.mtPerm = 1
     self.multTotal = 1
@@ -333,6 +334,7 @@ function Fx:Reset()
     self.mtFever = false
     self.mtLuck = 1
     self.mtAd = false
+    self.mtSurprise = 1
     self.mtComboStep = 0
     self.mtPerm = 1
     self.multTotal = 1
@@ -753,6 +755,7 @@ function Fx:TrackMult(ty)
     local fever = ty.feverActive == true
     local luck = max(1, ty.luckMult or 1)
     local ad = (ty.adBoostLeft or 0) > 0
+    local surp = max(1, ty.surpriseMult or 1)
     local comboFactor = (ty.HasTech and ty:HasTech("metronome")) and 0.012 or 0.008
     local comboM = 1 + min(100, ty.combo or 0) * comboFactor
     local comboStep = floor((comboM - 1) * 10 + 1e-6)
@@ -765,7 +768,8 @@ function Fx:TrackMult(ty)
 
     if not self.mtInit then
         self.mtInit = true
-        self.mtFever, self.mtLuck, self.mtAd, self.mtComboStep, self.mtPerm = fever, luck, ad, comboStep, perm
+        self.mtFever, self.mtLuck, self.mtAd, self.mtSurprise, self.mtComboStep, self.mtPerm =
+            fever, luck, ad, surp, comboStep, perm
         return
     end
     if fever and not self.mtFever then
@@ -777,6 +781,9 @@ function Fx:TrackMult(ty)
     if ad and not self.mtAd then
         self:Token(self.ancAdX, self.ancAdY, "印钞 ×3", GREEN)
     end
+    if surp > self.mtSurprise + 0.01 then
+        self:Token(self.screenW * 0.5, self.screenH * 0.62, "奇遇 ×" .. Number.FormatMul(surp), ORANGE)
+    end
     if comboStep > self.mtComboStep and comboStep > 0 then
         self:Token(self.ancComboX, self.ancComboY, "连击 ×" .. string.format("%.1f", comboM), CYAN)
         if comboStep % 3 == 0 then
@@ -787,7 +794,8 @@ function Fx:TrackMult(ty)
         local gain = perm / max(1e-9, self.mtPerm)
         self:Token(self.screenW * 0.5, self.screenH * 0.78, "永久 ×" .. Number.FormatMul(gain), GOLD)
     end
-    self.mtFever, self.mtLuck, self.mtAd, self.mtComboStep, self.mtPerm = fever, luck, ad, comboStep, perm
+    self.mtFever, self.mtLuck, self.mtAd, self.mtSurprise, self.mtComboStep, self.mtPerm =
+        fever, luck, ad, surp, comboStep, perm
 end
 
 -- ----------------------------------------------------------------------------
@@ -938,6 +946,69 @@ function Fx:OnJackpot777(x, y)
     self:AddFlash(90, GOLD)
 end
 
+function Fx:OnRunnerHit(x, y, diceInfo)
+    local sx, sy = self:S(x or 180, y or 540)
+    self:Ring(sx, sy, 6, 75, GOLD, 0.42, 3.5)
+    self:Ring(sx, sy, 10, 110, MAGENTA, 0.5, 2.5)
+    self:Burst(sx, sy, 24, GOLD, 240, 3.4, 4)
+    self:CoinFountain(sx, sy, 8, 1.2)
+    self:AddFlash(110, GOLD, true)
+    self:AddTrauma(0.28, true)
+end
+
+function Fx:OnBalloonPop(x, y, label, kind)
+    local sx, sy = self:S(x or 180, y or 120)
+    local col = (kind == "sp") and GREEN or GOLD
+    self:Ring(sx, sy, 6, 85, col, 0.45, 3.0)
+    self:Burst(sx, sy, 24, col, 240, 3.5, 4)
+    self:Confetti(28, 0, self.screenW, -10)
+    self:Stamp("黄金气球奇遇!", label or "超级惊喜!", col, 3, 1.5, true, "balloon")
+    self:AddFlash(85, col, true)
+end
+
+function Fx:OnGoldRush(mult, dur)
+    self:Confetti(42, 0, self.screenW, -10)
+    self:AddFlash(150, GOLD, true)
+    self:AddTrauma(0.45, true)
+    self:AddKick(0.75, true)
+    self:Stamp("黄金暴走突发!!",
+        "奇遇 ×" .. tostring(mult or 10) .. " + 12枚高阶币雨 (" .. tostring(dur or 10) .. "秒)",
+        ORANGE, 4, 1.8, true, "goldrush")
+end
+
+function Fx:OnSurpriseMult(mult, dur, name)
+    if not mult or mult <= 1 then return end
+    local cx, cy = self.screenW * 0.5, self.screenH * 0.58
+    self:Burst(cx, cy, 18, ORANGE, 220, 3.2, 4)
+    self:UiPop(cx, cy - 28, (name or "奇遇") .. " ×" .. Number.FormatMul(mult) .. " (" .. tostring(math.ceil(dur or 10)) .. "秒!)", ORANGE, 18)
+end
+
+function Fx:OnTowerLayer(x, y, layer, total, isCrown)
+    local sx, sy = self:S(x or 180, y or 440)
+    local hOff = (layer or 1) * 5
+    local col = isCrown and MAGENTA or GOLD
+    self:Burst(sx, sy - hOff, isCrown and 22 or 8, col, isCrown and 220 or 120, isCrown and 3.4 or 2.2, isCrown and 4 or 1)
+    if isCrown then
+        self:UiPop(sx, sy - hOff - 16, "45倍金库加冕!", GOLD, 18)
+        self:AddKick(0.32, true)
+    end
+end
+
+function Fx:OnTowerComplete(x, y, label)
+    local sx, sy = self:S(x or 180, y or 440)
+    self:Burst(sx, sy - 20, 18, GOLD, 190, 3.0, 3)
+    self:Stamp(label or "金币塔落成！", "锁定稳固 · 即将推倒狂落!", GOLD, 3, 1.35, true, "tower_done")
+end
+
+function Fx:OnTowerTopple(x, y, label)
+    local sx, sy = self:S(x or 180, y or 440)
+    self:Burst(sx, sy, 28, ORANGE, 270, 3.8, 6)
+    self:AddFlash(110, GOLD, true)
+    self:AddTrauma(0.36, true)
+    self:AddKick(0.55, true)
+    self:UiPop(sx, sy - 26, "巨塔倾倒!! 全力推进!", ORANGE, 20)
+end
+
 function Fx:OnSlotWin(prize)
     if not prize then return end
     local m = prize.mult or 1
@@ -1000,8 +1071,8 @@ function Fx:OnSkillPointsGain(gained)
         p.text = "+" .. tostring(p.spSum) .. " 技能点"
         return
     end
-    -- 落点：底部升级栏上方居中（不再遮挡顶部资产数字）
-    self:UiPop(self.screenW * 0.5, self.screenH - 110, "+" .. tostring(gained) .. " 技能点", GREEN, 15)
+    -- 落点：底部技能点栏与导航栏上方居中（不遮挡顶部资产与底部技能点条）
+    self:UiPop(self.screenW * 0.5, self.screenH - 130, "+" .. tostring(gained) .. " 技能点", GREEN, 15)
     p = self.spops[self.spopCursor]
     p.isSp = true
     p.spSum = gained
