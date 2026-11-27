@@ -95,12 +95,25 @@ local function MakePBR(diffCol, metallic, roughness, emissiveCol, alpha)
     return mat
 end
 
+-- 辅助：币面贴图开启各向异性过滤。
+-- 机位俯角约 31°，平躺的币面在屏幕上纵向被压扁约一半；普通三线性过滤按“压得最狠”的方向选 mip，
+-- 会把整张 256 贴图降到 ~45px 级别再采样，横向也一起糊掉。各向异性过滤沿压缩方向多次采样，保留横向清晰度。
+local COIN_TEX_ANISOTROPY = 8
+local function EnableAnisotropic(tex)
+    if not tex then return end
+    if FILTER_ANISOTROPIC ~= nil then
+        pcall(function() tex.filterMode = FILTER_ANISOTROPIC end)
+    end
+    pcall(function() tex.anisotropy = COIN_TEX_ANISOTROPY end)
+end
+
 -- 辅助：创建贴图无光照材质（优先走 SurfaceShader 对 sRGB PNG 精确线性解码，绝不被 ACES/Gamma 提亮发白）
 local function MakeTexturedUnlit(texPath, alphaMode, tintCol)
     if not cache or not texPath then return nil, false end
     if cache.Exists and not cache:Exists(texPath) then return nil, false end
     local tex = cache:GetResource("Texture2D", texPath)
     if not tex then return nil, false end
+    if alphaMode then EnableAnisotropic(tex) end
     local mat = Material:new()
     local shaderPath = alphaMode and "Shaders/BLGL/CoinFace.shader" or "Shaders/BLGL/BackdropUnlit.shader"
     if mat.SetSurfaceShader and (not cache.Exists or cache:Exists(shaderPath)) and mat:SetSurfaceShader(shaderPath) then

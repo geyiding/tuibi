@@ -1,7 +1,7 @@
 shader_type spatial;
 render_mode shading_model_unlit, blend_mix, cull_disabled;
 
-uniform sampler2D albedo_map : filter_linear_mipmap, repeat_disable;
+uniform sampler2D albedo_map : filter_linear_mipmap_anisotropic, repeat_disable;
 uniform float brightness : hint_range(0.5, 2.5, 0.05) = 1.28;
 
 vec3 srgb_to_linear(vec3 c) {
