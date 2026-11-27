@@ -195,6 +195,36 @@ local function MakeListener()
         end
         game.hudDirty = true
     end
+    -- JP 大奖池
+    function l:OnJpLamp(lamps, added)
+        game.fx:OnJpLamp(lamps, added)
+        Sfx.Play((lamps >= Config.JACKPOT.LAMPS - 1) and "win" or "pick", 0.9, 1.0 + (lamps or 0) * 0.05)
+        game.hudDirty = true
+    end
+    function l:OnJpChance(pool, source)
+        game.fx:OnJpChance(pool, source)
+        Sfx.Play("fever", 1.0)
+        Sfx.Play("jackpot", 0.85, 1.15)
+        Music.SetIntensity(120, true)
+        game.hudDirty = true
+    end
+    function l:OnJpTick(cell)
+        if (game.time - (game._lastJpTick or -1)) >= 0.05 then
+            game._lastJpTick = game.time
+            Sfx.Play("click", 0.6, 1.25)
+        end
+    end
+    function l:OnJpResult(tierId, round, bonus)
+        game.fx:OnJpResult(tierId, round, bonus)
+        Sfx.Play((tierId == "grand" or tierId == "next") and "jackpot" or "win", 1.0)
+    end
+    function l:OnJpRelease(payout)
+        game.fx:OnJpRelease(payout)
+        Sfx.Play("jackpot", 1.0)
+        Sfx.Play("win", 0.9, 0.9)
+        MarkSaveDirty()
+        game.hudDirty = true
+    end
     function l:OnSkillPointsGain(gained, stepIdx)
         game.fx:OnSkillPointsGain(gained)
         Sfx.Play("pick", 0.72)
@@ -479,6 +509,28 @@ local callbacks = {
         TycoonHud.CloseModal()
         PersistTycoon(false)
         TycoonHud.RefreshMain(game.tycoon)
+    end,
+    OnJackpotClaim = function()
+        Sfx.Play("coin")
+        TycoonHud.CloseModal()
+        PersistTycoon(false)
+        if game.tycoon then TycoonHud.RefreshMain(game.tycoon) end
+    end,
+    OnJackpotAd = function()
+        local ty = game.tycoon
+        local payout = TycoonHud.GetJackpotPayout()
+        if not ty or not payout or payout.adClaimed then return end
+        Sfx.Play("click")
+        MockAd.Show("jackpot_2x",
+            string.format("JP 大奖再领一份：额外 +%s（模拟广告）", Number.FormatCash(payout.amount or 0)),
+            function()
+                if game.tycoon then
+                    game.tycoon:ClaimJpAdDouble(payout)
+                    Sfx.Play("jackpot", 1.0)
+                    PersistTycoon(false)
+                    TycoonHud.RefreshMain(game.tycoon)
+                end
+            end)
     end,
     OnDiceRerollAd = function()
         if not game.tycoon or not game.tycoon.pendingDice then return end
@@ -781,7 +833,7 @@ function HandleUpdate(eventType, eventData)
     end
 
     local ty = game.tycoon
-    local simPaused = (curModal == "mockAd" or curModal == "cloudFail" or curModal == "offline" or curModal == "confirmReset" or curModal == "dice")
+    local simPaused = (curModal == "mockAd" or curModal == "cloudFail" or curModal == "offline" or curModal == "confirmReset" or curModal == "dice" or curModal == "jackpot")
     if ty and not simPaused then
         if not curModal and game.stage and game.stage:IsHolding() then
             ty:ManualShoot()
@@ -791,6 +843,11 @@ function HandleUpdate(eventType, eventData)
     end
     if ty and ty.pendingDice and not curModal then
         TycoonHud.OpenDiceModal(ty.pendingDice)
+        curModal = TycoonHud.GetCurModal()
+    end
+    -- JP 倾泻演出结束 -> 结算弹窗（有其它弹窗时排队等待）
+    if ty and ty.jpPendingPopup and not curModal then
+        TycoonHud.OpenJackpotModal(ty:TakeJpPopup())
         curModal = TycoonHud.GetCurModal()
     end
     -- 倍率追踪：增益出现时生成“×N”令牌飞向机台倍率招牌

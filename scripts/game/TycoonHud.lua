@@ -833,7 +833,8 @@ local function BuildFormulaModal()
                 children = {
                     UI.Label { text = "1. 钱只涨不花直冲世界第1！达标与排名跃升均赠技能点。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
                     UI.Label { text = "2. 下方页签亮灯即点：用技能点升机台、解新币（可设6枚常驻）与黑科技。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
-                    UI.Label { text = "3. 过幸运门激活三连机；砸中拖金袋小人摇12面骰、戳破黄金气球与随机黄金暴走可叠出惊喜高倍！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
+                    UI.Label { text = "3. 过幸运门转九宫格老虎机；砸中拖金袋小人摇12面骰、戳破黄金气球与随机黄金暴走可叠出惊喜高倍！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
+                    UI.Label { text = "4. 每笔收入 10% 存进 JP 奖池；九宫格开出宝箱点亮 JP 灯，7 盏全亮进 JP CHANCE，跑灯停在 GRAND 就把整个奖池一次性倾泻给你！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
                 },
             },
             NeoFrame {
@@ -875,6 +876,34 @@ local function BuildDiceModal(cb)
             r.diceView,
             r.diceDesc,
             UI.Row { width = "100%", gap = 10, children = { r.diceClaimBtn, r.diceRerollBtn } },
+        },
+    }
+    return MakeModalWrap(box, false)
+end
+
+-- JP 大奖倾泻结算：已到账，看广告再领一份（翻倍）
+local function BuildJackpotModal(cb)
+    local r = st.refs
+    r.jpArt = NeoIcon { kind = "event", key = "vault_crack", width = "100%", height = 150 }
+    r.jpTitle = UI.Label { text = "GRAND JP!!", fontSize = 26, fontWeight = "bold", fontColor = U.gold, textAlign = "center", width = "100%" }
+    r.jpAmount = UI.Label { text = "+¥0", fontSize = 30, fontWeight = "bold", fontColor = U.gold, textAlign = "center", width = "100%" }
+    r.jpDesc = UI.Label {
+        text = "", fontSize = 13, lineHeight = 1.35, fontColor = U.textDim, whiteSpace = "normal", textAlign = "center", width = "100%",
+    }
+    r.jpClaimBtn = NeoButton {
+        text = "收下", variant = "dark", flexGrow = 1, flexBasis = 0, minHeight = 48, fontSize = 15,
+        onClick = function() if cb.OnJackpotClaim then cb.OnJackpotClaim() end end,
+    }
+    r.jpAdBtn = NeoButton {
+        text = "看广告再领一份 ×2", variant = "primary", flexGrow = 1.5, flexBasis = 0, minHeight = 48, fontSize = 15,
+        onClick = function() if cb.OnJackpotAd then cb.OnJackpotAd() end end,
+    }
+    local box = NeoFrame {
+        style = "panel", width = "90%", maxWidth = 370, padding = 16, gap = 10,
+        flexDirection = "column", alignItems = "center",
+        children = {
+            r.jpArt, r.jpTitle, r.jpAmount, r.jpDesc,
+            UI.Row { width = "100%", gap = 10, children = { r.jpClaimBtn, r.jpAdBtn } },
         },
     }
     return MakeModalWrap(box, false)
@@ -961,6 +990,7 @@ function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal, confirm
     st.modals.formula         = BuildFormulaModal()
     st.modals.mockAd          = BuildMockAdModal(st.cb)
     st.modals.dice            = BuildDiceModal(st.cb)
+    st.modals.jackpot         = BuildJackpotModal(st.cb)
     st.modals.confirmPrestige = BuildConfirmPrestigeModal(st.cb)
     if settingsModal then st.modals.settings = settingsModal end
     if cloudFailModal then st.modals.cloudFail = cloudFailModal end
@@ -1147,6 +1177,26 @@ function TycoonHud.TickDice(dt)
         ApplyDiceSettledUI()
     end
 end
+
+--- JP 倾泻后弹出结算（奖金已到账；广告再领一份）
+function TycoonHud.OpenJackpotModal(payout)
+    if not payout then return end
+    st.jpPayout = payout
+    local r = st.refs
+    local col = payout.col or C.gold
+    SetLbl(r.jpTitle, (payout.name or "JP") .. "!!" .. (((payout.bonus or 1) > 1) and ("  NEXT ×" .. tostring(payout.bonus)) or ""))
+    SetLblCol(r.jpTitle, { col[1], col[2], col[3], 255 })
+    SetLbl(r.jpAmount, "+" .. Number.FormatCash(payout.amount or 0))
+    SetLbl(r.jpDesc, "平时每一笔推币收入都有 10% 悄悄存进了 JP 奖池，这一刻一次性全部倾泻给你，奖金已经到账！看广告可以再领一份同样的奖金。")
+    if r.jpAdBtn then
+        r.jpAdBtn:SetVisible(payout.adClaimed ~= true)
+        r.jpAdBtn:SetText("看广告再领 +" .. Number.FormatCompact(payout.amount or 0))
+    end
+    if r.jpClaimBtn then r.jpClaimBtn:SetText("收下") end
+    TycoonHud.OpenModal("jackpot")
+end
+
+function TycoonHud.GetJackpotPayout() return st.jpPayout end
 
 function TycoonHud.OpenOfflineModal(amt, elapsed)
     st.offlineAmt = amt or 0

@@ -34,7 +34,7 @@ local function runPhysicsDiag(mode, seed)
     end
     ty:ResetPhysics(true)
 
-    local bucket = { front = 0.0, peg = 0.0, gate = 0.0, overclock = 0.0, wave = 0.0, other = 0.0 }
+    local bucket = { front = 0.0, peg = 0.0, gate = 0.0, overclock = 0.0, wave = 0.0, other = 0.0, jp = 0.0 }
     local ctx = "other"
     local origAward = ty.AwardCash
     local origFront = ty.HandleFrontDrop
@@ -66,6 +66,13 @@ local function runPhysicsDiag(mode, seed)
         local prev = ctx; ctx = "gate"
         origGate(self, coin)
         ctx = prev
+    end
+    local origJp = ty.JpRelease
+    ty.JpRelease = function(self, tierId)
+        local prev = ctx; ctx = "jp"
+        local amt = origJp(self, tierId)
+        ctx = prev
+        return amt
     end
     ty.HandleOverclockCoin = function(self, coin)
         local prev = ctx; ctx = "overclock"
@@ -174,6 +181,11 @@ assert(diagAgg.click2s.avgLuckMult <= 12.0,
     string.format("幸运三连均值倍率必须 <= 12x, 当前 %.2fx", diagAgg.click2s.avgLuckMult))
 assert(diagAgg.hold.gcKbPerSec < 50.0,
     string.format("每帧 GC 分配过高: %.2f KB/s >= 50 KB/s", diagAgg.hold.gcKbPerSec))
+
+-- JP 大奖池在宏观模型里按比例计入：普通收入先被抽走 FEED_TAX 养分，JP 再以“占抽成后收入的比例”返还
+-- （tests/jp_probe.lua 45 分钟实机物理实测：JP 约占总收入 17%~20% -> 相对抽成后收入约 +0.22；看广告翻倍再 +0.22）
+local JP_INCOME_RATIO = 0.22
+local JP_TAX = Config.JACKPOT.FEED_TAX or 0
 
 -- ----------------------------------------------------------------------------
 -- Part B: 10 小时宏观经济模拟器（使用真实 Tycoon 数值与策略购买，4 玩法 × 4 种子）
@@ -347,7 +359,8 @@ local function simulateMacro10Hours(mode, seed)
         local critMult = 2.0 + (ty.machineLv.crit_power or 0) * 0.18 + (ty.prestigeLv.tycoon_crit or 0) * 0.8
         local avgCrit = 1.0 + critChance * (critMult - 1.0)
         -- 除正面掉落外来自撞钉/过门/波次的正常比例（按实测 frontShare 缩放）
-        local totalSecRev = (effDropRate * avgCoin * perm * luckAvg * fevMul * adMul * avgCrit * bankMul) / max(0.60, diagRef.frontShare)
+        local jpMul = (1.0 - JP_TAX) * (1.0 + JP_INCOME_RATIO * (isAds and 2.0 or 1.0))
+        local totalSecRev = (effDropRate * avgCoin * perm * luckAvg * fevMul * adMul * avgCrit * bankMul * jpMul) / max(0.60, diagRef.frontShare)
         ty:AddWealth(totalSecRev * dt, false)
 
         if sec % actInterval == 0 then

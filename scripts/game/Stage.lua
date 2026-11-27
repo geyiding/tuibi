@@ -14,6 +14,7 @@ local Art = require("game/Art")
 local Machine3D = require("game/Machine3D")
 local Fx = require("game/Fx")
 local Number = require("game/Number")
+local JackpotPanel = require("game/JackpotPanel")
 
 local S = Config.STAGE
 local W, H = Config.WORLD_W, Config.WORLD_H
@@ -31,8 +32,6 @@ local PLATE_BOT = { 12, 10, 32 }
 local ORANGE = { 255, 132, 44 }
 local GLASS = { 140, 200, 255 }
 local SLOT_WELL_COL = { 8, 10, 26 }
-local SLOT_LOCK_AT = { 0.45, 0.72, 0.95 }
-local DEFAULT_REELS = { 1, 1, 1 }
 
 local Stage = UI.Widget:Extend("Stage")
 
@@ -71,16 +70,13 @@ function Stage:Init(props)
     self.chipTxt_ = { "", "", "", "", "" }
     self.chipKey_ = { -1, -1, -1, -1, -1 }
     self.flameAcc_ = 0
-    self.reelStop_ = { 0, 0, 0 }
-    self.lastReelLock_ = { true, true, true }
     self.comboTxt_ = ""
     self.comboShown_ = -1
     self.feverTxt_ = ""
     self.feverKey_ = -1
     self.luckTxt_ = ""
     self.luckKey_ = -1
-    self.slotSideTxt_ = ""
-    self.slotSideKey_ = ""
+    self.jp_ = JackpotPanel.New()
 
     local selfRef = self
     -- 世界(360×600 逻辑坐标) -> 屏幕坐标（闭包只建一次，供 Fx 在事件回调里换算）
@@ -171,6 +167,8 @@ local function DrawSlotSymbol(nvg, symIdx, cx, cy, r, font)
         nvgStrokeColor(nvg, Col(C.white, 210))
         nvgStrokeWidth(nvg, 1.0)
         nvgStroke(nvg)
+    elseif symIdx == Config.SLOT_JP_SYMBOL then
+        JackpotPanel.DrawChest(nvg, cx, cy, r, 0)
     elseif symIdx == 5 then
         nvgBeginPath(nvg)
         nvgMoveTo(nvg, cx - r * 0.65, cy + r * 0.50)
@@ -661,95 +659,15 @@ function Stage:DrawMultSign(nvg, run, fx, cx, cy, u, t, dt, font)
 end
 
 -- ----------------------------------------------------------------------------
--- 幸运三连滚轮 + 幸运倍率倒计时
+-- 幸运倍率 / 奇遇倍率倒计时光条（九宫格老虎机本体已移到机台下方的 JP 宝藏舱）
 -- ----------------------------------------------------------------------------
-function Stage:DrawSlotReels(nvg, run, cx, cy, u, t, font)
-    local spin = run.slotSpinning == true
+function Stage:DrawLuckBars(nvg, run, cx, cy, u, t, font)
     local luckMult = run.luckMult or 1
-    local hot = spin or (luckMult > 1) or ((run.slotFlashT or 0) > 0)
-    local zoom = spin and 1.12 or 1.0
-    local rw, rh, gap = 30 * u * zoom, 32 * u * zoom, 5 * u
-    local boxW = rw * 3 + gap * 2 + 14 * u
-    local sideW = 56 * u
-    local totalW = boxW + sideW
+    local totalW = 212 * u
     local bx = cx - totalW * 0.5
-    local by = cy - rh * 0.5 - 6 * u
-    local bh = rh + 12 * u
-    local border = (luckMult >= 25) and C.gold or (hot and C.magenta or C.cyan)
-
-    if hot then
-        SetAdditive(nvg, true)
-        nvgBeginPath(nvg)
-        nvgRect(nvg, bx - 14, by - 14, totalW + 28, bh + 28)
-        nvgFillPaint(nvg, nvgBoxGradient(nvg, bx, by, totalW, bh, 10, 18, Col(border, 110), Col(border, 0)))
-        nvgFill(nvg)
-        SetAdditive(nvg, false)
-    end
-    nvgBeginPath(nvg)
-    nvgRoundedRect(nvg, bx, by, totalW, bh, 10 * u)
-    nvgFillColor(nvg, Col(INK, 225))
-    nvgFill(nvg)
-    nvgStrokeColor(nvg, Col(border, hot and 255 or 170))
-    nvgStrokeWidth(nvg, hot and 2 or 1.3)
-    nvgStroke(nvg)
-
-    local reels = run.slotReels or DEFAULT_REELS
-    local ratio = spin and max(0, min(1, (run.slotSpinT or 0) / max(0.01, run.slotSpinDur or 0.85))) or 1
-    local x = bx + 7 * u
-    for kIdx = 1, 3 do
-        local rcx = x + rw * 0.5
-        local rcy = cy
-        nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, x, rcy - rh * 0.5, rw, rh, 5 * u)
-        nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, rcy - rh * 0.5, 0, rcy + rh * 0.5, Col({ 230, 232, 248 }, 255), Col({ 168, 174, 206 }, 255)))
-        nvgFill(nvg)
-        local locked = (not spin) or (ratio >= SLOT_LOCK_AT[kIdx])
-        if locked and not self.lastReelLock_[kIdx] then
-            self.reelStop_[kIdx] = 1
-        end
-        self.lastReelLock_[kIdx] = locked
-        nvgSave(nvg)
-        nvgIntersectScissor(nvg, x, rcy - rh * 0.5, rw, rh)
-        if locked then
-            local bounce = self.reelStop_[kIdx]
-            local yOff = -sin(bounce * pi) * 5 * u * bounce
-            DrawSlotSymbol(nvg, reels[kIdx] or 1, rcx, rcy + yOff, 11 * u * zoom, font)
-        else
-            -- 滚动：两枚符号循环下落 + 速度残影
-            local sp = t * 14 + kIdx * 0.37
-            local frac = sp - floor(sp)
-            local s1 = (floor(sp) + kIdx * 2) % 6 + 1
-            local s2 = (s1 % 6) + 1
-            DrawSlotSymbol(nvg, s1, rcx, rcy + frac * rh, 11 * u * zoom, font)
-            DrawSlotSymbol(nvg, s2, rcx, rcy + (frac - 1) * rh, 11 * u * zoom, font)
-            nvgBeginPath(nvg)
-            nvgRect(nvg, x, rcy - rh * 0.5, rw, rh)
-            nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, rcy - rh * 0.5, 0, rcy + rh * 0.5, Col({ 255, 255, 255 }, 150), Col({ 255, 255, 255 }, 0)))
-            nvgFill(nvg)
-        end
-        -- 玻璃上下阴影
-        nvgBeginPath(nvg)
-        nvgRect(nvg, x, rcy - rh * 0.5, rw, rh * 0.28)
-        nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, rcy - rh * 0.5, 0, rcy - rh * 0.22, Col(SLOT_WELL_COL, 160), Col(SLOT_WELL_COL, 0)))
-        nvgFill(nvg)
-        nvgRestore(nvg)
-        if self.reelStop_[kIdx] > 0 then self.reelStop_[kIdx] = max(0, self.reelStop_[kIdx] - 0.06) end
-        x = x + rw + gap
-    end
-
-    -- 右侧状态
-    local q = run.slotQueue or 0
-    local sideKey = (spin and "s" or "i") .. tostring(q) .. ":" .. tostring(luckMult)
-    if sideKey ~= self.slotSideKey_ then
-        self.slotSideKey_ = sideKey
-        self.slotSideTxt_ = spin and "转动中" or (q > 0 and ("待转+" .. q) or ((luckMult > 1) and ("×" .. Number.FormatMul(luckMult)) or "过门三连"))
-    end
+    local by, bh = cy - 10 * u, 0
     nvgFontFace(nvg, font or "sans")
     nvgTextAlign(nvg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    local sfs = ((luckMult > 1) and not spin and q == 0) and 16 * u or 12 * u
-    nvgFontSize(nvg, sfs)
-    local scol = hot and ((luckMult > 1) and Stage.MultColor(luckMult, t) or C.gold) or C.muted
-    OutlinedText(nvg, bx + boxW + sideW * 0.5 - 4 * u, cy, self.slotSideTxt_, scol, 255, 1.2)
 
     -- 幸运倍率倒计时光条
     local luckOn = luckMult > 1 and (run.luckTimer or 0) > 0
@@ -1249,12 +1167,16 @@ function Stage:Render(nvg)
     self:DrawRunner(nvg, run, l, u, t, g.font)
     self:DrawFeverTube(nvg, run, tubeX, tubeY0, tubeY1, u, t, g.font)
     self:DrawComboBadge(nvg, run, fx, comboX, comboY, u, t, g.font)
-    self:DrawSlotReels(nvg, run, mqX, reelY, u, t, g.font)
+    self:DrawLuckBars(nvg, run, mqX, reelY, u, t, g.font)
     self:DrawMultSign(nvg, run, fx, mqX, signY, u, t, dt, g.font)
+    -- JP 宝藏舱：前沿下方空带（九宫格老虎机 + JP 奖池 + JP 灯）
+    local slotAX, slotAY = JackpotPanel.Draw(self.jp_, nvg, run, l, dkBLy + 14 * u, u, t, dt, g.font, DrawSlotSymbol)
+    JackpotPanel.DrawOverlay(self.jp_, nvg, run, l, u, t, dt, g.font)
 
     if fx then
         fx.ancMultX, fx.ancMultY = mqX, signY
-        fx.ancSlotX, fx.ancSlotY = mqX, reelY
+        fx.ancSlotX, fx.ancSlotY = slotAX, slotAY
+        fx.ancJpX, fx.ancJpY = self.jp_.rect.x + self.jp_.rect.w * 0.68, self.jp_.rect.y + self.jp_.rect.h * 0.4
         fx.ancFeverX, fx.ancFeverY = tubeX, (tubeY0 + tubeY1) * 0.5
         fx.ancComboX, fx.ancComboY = comboX, comboY
         fx.ancAdX, fx.ancAdY = l.x + l.w - 50, l.y + 30

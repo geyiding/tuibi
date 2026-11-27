@@ -903,6 +903,74 @@ end
 function Fx:OnSideDrain(coin)
     local sx, sy = self:S(coin.x, coin.y)
     self:Burst(sx, sy, 5, RED, 80, 2, 0)
+    -- 侧漏的币流进 JP 奖池：小金星飞向宝藏舱
+    if self.ancJpX then
+        self:Emit(K_STAR, sx, sy, (self.ancJpX - sx) * 1.6, (self.ancJpY - sy) * 1.6 - 60, 0.55, 3.2 * self.ws, GOLD, 120, 0.2)
+    end
+end
+
+-- ----------------------------------------------------------------------------
+-- JP 大奖池：点灯 / JP CHANCE / 跑灯定格 / 奖池倾泻
+-- ----------------------------------------------------------------------------
+function Fx:OnJpLamp(lamps, added)
+    local x = self.ancJpX or self.screenW * 0.65
+    local y = self.ancJpY or self.screenH * 0.85
+    local near = (lamps or 0) >= (Config.JACKPOT.LAMPS - 1)
+    self:Burst(x, y, 10 + (added or 1) * 6, GOLD, 190, 3.0, 4)
+    self:Ring(x, y, 6, 60, GOLD, 0.4, 3)
+    self:UiPop(x, y - 34, near and "JP 灯 差 1 盏!!" or ("JP 灯 +" .. tostring(added or 1) .. "!"), GOLD, near and 19 or 16)
+    self.lightFlash = max(self.lightFlash, 0.6)
+    self.lightCol = GOLD
+end
+
+function Fx:OnJpChance(pool, source)
+    self:Confetti(36, 0, self.screenW, -10)
+    self:AddFlash(170, GOLD, true)
+    self:AddTrauma(0.45, true)
+    self:AddKick(0.7, true)
+    self:AddHitstop(0.1)
+    self.lightFlash = 1.6
+    self.lightCol = GOLD
+    local x, y = self.ancSlotX or self.screenW * 0.25, self.ancSlotY or self.screenH * 0.85
+    self:Ring(x, y, 10, 160, GOLD, 0.6, 5)
+    self:Burst(x, y, 30, GOLD, 260, 3.6, 8)
+end
+
+function Fx:OnJpResult(tierId, round, bonus)
+    local tier = Config.JACKPOT.TIERS[tierId] or Config.JACKPOT.TIERS.mini
+    local col = tier.col or GOLD
+    local x, y = self.ancSlotX or self.screenW * 0.25, self.ancSlotY or self.screenH * 0.85
+    self:Ring(x, y, 8, 120, col, 0.5, 4)
+    self:Burst(x, y, 24, col, 240, 3.4, 6)
+    self:AddFlash((tierId == "grand") and 170 or 110, col, true)
+    self.lightFlash = 1.3
+    self.lightCol = col
+    if tierId == "next" then
+        self:UiPop(x, y - 60, "NEXT!! 倍数 ×" .. tostring((bonus or 1) + 1), GREEN, 22)
+        self:AddKick(0.5, true)
+    else
+        self:AddHitstop(0.12)
+    end
+end
+
+function Fx:OnJpRelease(payout)
+    local tierId = payout and payout.tier or "mini"
+    local col = (payout and payout.col) or GOLD
+    local big = (tierId == "grand") or ((payout and payout.bonus or 1) >= 2)
+    local w, h = self.screenW, self.screenH
+    self:Confetti(big and 90 or 50, 0, w, -10)
+    self:AddFlash(220, col, true)
+    self:AddTrauma(big and 0.85 or 0.55, true)
+    self:AddKick(1.0, true)
+    self.lightFlash = 2.0
+    self.lightCol = col
+    local x, y = self.ancSlotX or w * 0.25, self.ancSlotY or h * 0.85
+    self:CoinFountain(x, y, big and 26 or 16, 1.7)
+    self:CoinFountain(w * 0.5, h * 0.42, big and 22 or 12, 1.5)
+    self:Burst(w * 0.5, h * 0.42, 40, col, 340, 4.2, 10)
+    self:Ring(w * 0.5, h * 0.42, 20, w * 0.7 / max(0.5, self.ws), col, 0.7, 6)
+    self:FlyCoins(w * 0.5, h * 0.42, big and 30 or 18)
+    self.heat = 1
 end
 
 function Fx:OnLightning(x1, y1, x2, y2)

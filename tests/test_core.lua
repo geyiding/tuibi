@@ -85,7 +85,8 @@ assert(#Config.COIN_TIERS == 22, "需有 22 枚渐进币种(16+6)")
 assert(#Config.TECH_UPGRADES == 12, "需有 12 项里程碑黑科技")
 assert(#Config.PRESTIGE_TALENTS == 4, "需有 4 项上市永久天赋")
 assert(#Config.IPO_ROUNDS == 12, "需有 12 轮非重置资本融资上市阶梯")
-assert(#Config.SLOT_SYMBOLS == 6 and Config.SLOT_PRIZES.jackpot_777.mult == 100, "幸运三连机符号与100倍头奖配置必须完整")
+assert(#Config.SLOT_SYMBOLS == 7 and Config.SLOT_SYMBOLS[Config.SLOT_JP_SYMBOL].id == "jp" and Config.SLOT_PRIZES.jackpot_777.mult == 100,
+    "九宫格老虎机 6 个连线符号 + JP 宝箱与100倍头奖配置必须完整")
 assert(#Config.AD_WELFARE_ORDER == 4, "福利站应列出 4 项常驻模拟广告")
 for _, t in ipairs(Config.COIN_TIERS) do
     local cdef = Config.COINS[t.id]
@@ -309,6 +310,86 @@ for _ = 1, 600 do
     tSlot:Update(1 / 60)
 end
 assert(tSlot.luckTimer == 0 and tSlot.luckMult == 1, "倒计时结束后幸运三连倍率应归回 1x")
+
+-- 8.6 九宫格：中奖线显示 reels、其余线绝不意外三连、JP 宝箱不压中奖线
+local tGrid = Tycoon.New(nil, { seed = 2718 })
+for _ = 1, 3000 do
+    local out = tGrid:RollSlotOutcome()
+    local g = out.grid
+    assert(type(g) == "table" and #g == 9, "九宫格必须 9 格")
+    for li, ln in ipairs(Config.SLOT_LINES) do
+        local a, b, c = g[ln[1]], g[ln[2]], g[ln[3]]
+        if li == out.winLine then
+            assert(a == out.reels[1] and b == out.reels[2] and c == out.reels[3], "中奖线必须正好显示 reels")
+        elseif li == out.jpLine then
+            assert(a == Config.SLOT_JP_SYMBOL and b == a and c == a, "宝箱连线必须是 3 个 JP 宝箱")
+        else
+            assert(not (a == b and b == c), "非中奖线绝不可意外连成三连")
+        end
+    end
+    local chests = 0
+    for i = 1, 9 do if g[i] == Config.SLOT_JP_SYMBOL then chests = chests + 1 end end
+    assert(chests == (out.chests or 0) + (out.jpLine and 3 or 0), "宝箱数量必须与点灯数一致")
+    assert((out.prize.mult > 1) == (out.winLine ~= nil), "有奖才有中奖线")
+end
+
+-- 8.7 JP 大奖池：抽成养分 -> 点灯 -> JP CHANCE 跑灯 -> 倾泻到账 + 币瀑布 -> 弹窗 -> 广告再领一份 -> 存档往返
+local jpEv = { lamps = 0, chance = 0, ticks = 0, results = {}, release = nil }
+local jpListener = {
+    OnJpLamp = function(_, lamps) jpEv.lamps = lamps end,
+    OnJpChance = function() jpEv.chance = jpEv.chance + 1 end,
+    OnJpTick = function() jpEv.ticks = jpEv.ticks + 1 end,
+    OnJpResult = function(_, id) jpEv.results[#jpEv.results + 1] = id end,
+    OnJpRelease = function(_, p) jpEv.release = p end,
+}
+local tJp = Tycoon.New(jpListener, { seed = 4242 })
+local cash0 = tJp.cash
+local paid = tJp:AwardCash(10000, 180, 400, "gold", false)
+assert(approxEq(tJp.jpPool, 10000 * tJp:GetTotalMult() * Config.JACKPOT.FEED_TAX, 2.0), "每笔收入必须按 FEED_TAX 抽成注入奖池")
+assert(approxEq(tJp.cash - cash0, paid, 1e-6) and paid < 10000 * tJp:GetTotalMult(), "玩家到手 = 收入扣除抽成")
+-- 宝箱点灯
+tJp:ResolveSlotSpin({ reels = { 1, 2, 3 }, prize = Config.SLOT_PRIZES.miss, chests = 2 })
+assert(tJp.jpLamps == 2 and jpEv.lamps == 2 and not tJp.jpPhase, "2 个宝箱点亮 2 盏灯")
+tJp.jpPool = 5e8
+tJp.jpRefCps = 1e5
+tJp.jpLamps = Config.JACKPOT.LAMPS - 1
+tJp:ResolveSlotSpin({ reels = { 1, 2, 3 }, prize = Config.SLOT_PRIZES.miss, chests = 1 })
+assert(tJp.jpPhase == "intro" and jpEv.chance == 1, "7 盏灯集满必须进入 JP CHANCE")
+assert(tJp:QueueSlotSpin() == true and not tJp.slotSpinning, "JP CHANCE 期间过门只排队，九宫格不开转")
+local wealthBefore = tJp.lifetimeCash
+local guard = 0
+while tJp.jpPhase ~= nil and guard < 60 * 40 do
+    tJp:Update(1 / 60)
+    guard = guard + 1
+end
+assert(tJp.jpPhase == nil and jpEv.release, "JP CHANCE 必须在有限时间内倾泻完毕")
+local pay = jpEv.release
+local tierDef = Config.JACKPOT.TIERS[pay.tier]
+assert(tierDef and tierDef.frac and pay.amount >= 5e8 * tierDef.frac * pay.bonus * 0.999, "派奖 = 奖池 × 档位比例 × NEXT 倍数")
+assert(jpEv.ticks > 8 and #jpEv.results >= 1 and jpEv.results[#jpEv.results] == pay.tier, "跑灯必须逐格移动并停在派奖档位")
+for i = 1, #jpEv.results - 1 do assert(jpEv.results[i] == "next", "非最后一轮只能是 NEXT") end
+assert(pay.bonus == #jpEv.results, "每次 NEXT 倍数 +1")
+assert(tJp.lifetimeCash - wealthBefore >= pay.amount * 0.999, "JP 奖金必须到账")
+assert(tJp.jpLamps == 0 and tJp.jpSince < 1, "倾泻后灯位与天井计时清零")
+assert(tJp.jpPool >= tJp:GetJpBase() * Config.JACKPOT.SEED_SEC * 0.999, "奖池派奖后保底重置为种子值")
+local popup = tJp:TakeJpPopup()
+assert(popup == pay and tJp.jpPendingPopup == nil, "倾泻结束后弹窗结算只取一次")
+local w2 = tJp.lifetimeCash
+assert(tJp:ClaimJpAdDouble(popup) == pay.amount and approxEq(tJp.lifetimeCash - w2, pay.amount, 1.0), "广告再领一份 = 翻倍")
+assert(tJp:ClaimJpAdDouble(popup) == 0, "广告翻倍只能领一次")
+-- GRAND 全部带走奖池 + 保底
+local tG = Tycoon.New(nil, { seed = 77 })
+tG.jpPool = 1e9; tG.jpRefCps = 1e5; tG.jpBonus = 3
+local gAmt = tG:JpRelease("grand")
+assert(approxEq(gAmt, 3e9, 1.0) and tG.jpPool < 1e9 * 0.01, "GRAND ×3 必须带走整个奖池并乘倍数")
+tG.jpPool = 0; tG.jpBonus = 1
+assert(tG:JpRelease("mini") >= tG:GetJpBase() * Config.JACKPOT.TIERS.mini.floorSec * 0.999, "奖池太小时按保底派奖")
+-- 存档往返
+tJp.jpPool = 7.5e9; tJp.jpLamps = 4; tJp.jpRefCps = 3.3e5
+local jsnap = tJp:ExportState(os.time())
+local tJp2 = Tycoon.New(nil, { seed = 1 })
+assert(tJp2:ImportState(jsnap) and approxEq(tJp2.jpPool, 7.5e9, 1) and tJp2.jpLamps == 4 and approxEq(tJp2.jpRefCps, 3.3e5, 1),
+    "JP 奖池 / 灯位 / 计价基准必须随存档往返")
 
 -- 9. 模拟广告系统（UI绑定流 + 无UI单测直发 + 全部广告位 + 空投 + 离线）
 local uiOpened = 0

@@ -576,6 +576,58 @@ Config.SLOT_SYMBOLS = {
     { id = "gem",   name = "红宝", col = { 255, 92, 146 }  },
     { id = "crown", name = "皇冠", col = { 255, 186, 48 }  },
     { id = "seven", name = "星钻", col = { 246, 94, 255 }  },
+    { id = "jp",    name = "JP宝箱", col = { 255, 196, 40 } }, -- 第 7 号：不参与连线，出现即点亮 1 盏 JP 灯
+}
+Config.SLOT_JP_SYMBOL = 7
+
+-- 九宫格老虎机 5 条中奖线（格子编号按行优先 1..9：上行 1 2 3 / 中行 4 5 6 / 下行 7 8 9）
+Config.SLOT_LINES = {
+    { 4, 5, 6 }, -- 中行（主线，最常中）
+    { 1, 2, 3 }, -- 上行
+    { 7, 8, 9 }, -- 下行
+    { 1, 5, 9 }, -- 左上→右下
+    { 7, 5, 3 }, -- 左下→右上
+}
+Config.SLOT_LINE_WEIGHTS = { 40, 18, 18, 12, 12 }
+
+-- 5.6 JP 大奖池（参考日式推币机 JP：平时持续“养分”积累奖池 + JP 灯阶梯，集满进入 JP CHANCE 跑灯抽奖，一次性放出）
+--   · 养分：每笔推币收入抽 10% 注入奖池；侧漏掉落的币 100% 流入奖池；三连没中也往奖池里塞一点
+--   · 灯位：九宫格每出现 1 个 JP 宝箱点亮 1 盏，7 盏全亮 → JP CHANCE；3 个宝箱连成线直接进 JP CHANCE
+--   · 天井：距上次 JP 越久宝箱越容易出现，保证每 4~6 分钟至少来一次
+--   · JP CHANCE：九宫格外圈 8 格跑灯（MINI / MAJOR / GRAND / NEXT），NEXT = 倍数 +1 并以更好的概率再抽一轮
+Config.JACKPOT = {
+    LAMPS = 7,
+    -- 计价基准 = 最近约 2 分钟的真实收入速度（含连击/狂欢/三连等临时倍率），下文“秒”均指这个速度下的秒数
+    REF_TAU = 120.0,
+    FEED_TAX = 0.10,           -- 养分：每笔推币收入抽 10% 注入奖池（玩家到手 90%，GRAND 不中就一直滚雪球）
+    FEED_SEC_PER_SEC = 0.0,    -- 额外的定时养分（默认关闭，数值紧张时可微调）
+    FEED_SIDE_DRAIN = 1.0,     -- 侧漏币按“本该到手的钱” 100% 流入奖池（漏掉的币不是亏，是在养 JP）
+    FEED_SLOT_MISS_SEC = 1.5,  -- 三连没中：额外注入 1.5 秒收入
+    SEED_SEC = 30.0,           -- 派奖后奖池保底重置为 30 秒收入（GRAND 清空后也不是从 0 开始）
+    CHEST_BASE = 0.24,         -- 每次转动出现 JP 宝箱的基础概率（出现 2 个的概率再乘一次）
+    CHEST_CEIL_START = 210.0,  -- 距上次 JP 超过 210 秒后宝箱概率开始上升（天井）
+    CHEST_CEIL_RAMP = 0.006,   -- 每多 1 秒 +0.6%
+    LINE_CHANCE = 0.004,       -- 3 个宝箱直接连成一线（立即进入 JP CHANCE）的概率
+    INTRO_SEC = 1.6,           -- “JP CHANCE!!” 开场
+    SPIN_SEC = 3.4,            -- 跑灯从高速到停下
+    RESULT_SEC = 1.0,          -- 停灯后的定格/揭晓
+    RELEASE_SEC = 3.6,         -- 爆发演出（奖池倾泻 + 金币瀑布），之后弹窗
+    MAX_NEXT = 2,              -- 最多 NEXT 两次（×3）
+    -- 外圈 8 格（顺时针：1 2 3 6 9 8 7 4），中心格显示奖池
+    BOARD = { "mini", "next", "major", "mini", "grand", "mini", "next", "major" },
+    -- 每轮抽中概率（round 1 / NEXT 之后）
+    ODDS = {
+        { mini = 50, major = 26, grand = 6, next = 18 },
+        { mini = 26, major = 38, grand = 22, next = 14 },
+        { mini = 0,  major = 55, grand = 45, next = 0 },
+    },
+    -- frac = 本次带走奖池的比例（GRAND 全部带走，奖池跨多轮滚雪球）；floorSec = 保底（按近 2 分钟真实收入速度的秒数）
+    TIERS = {
+        mini  = { id = "mini",  name = "MINI JP",  frac = 0.15, floorSec = 15,  coins = 14, col = { 82, 224, 255 } },
+        major = { id = "major", name = "MAJOR JP", frac = 0.35, floorSec = 45,  coins = 24, col = { 255, 96, 186 } },
+        grand = { id = "grand", name = "GRAND JP", frac = 1.00, floorSec = 150, coins = 40, col = { 255, 206, 56 } },
+        next  = { id = "next",  name = "NEXT",     col = { 120, 255, 150 } },
+    },
 }
 
 Config.SLOT_PRIZES = {
@@ -630,6 +682,11 @@ Config.AD_PLACEMENTS = {
         iconKind = "relic", iconKey = "clover", inWelfare = false,
         desc = "看广告把 12 面骰倍率翻倍至 ×14~×24，并延长至整整 60 秒！（不看广告仅 8 秒）",
     },
+}
+Config.AD_PLACEMENTS.jackpot_2x = {
+    id = "jackpot_2x", title = "JP 大奖再领一份", short = "JP×2", cooldown = 0,
+    iconKind = "event", iconKey = "vault_crack", inWelfare = false,
+    desc = "看广告把刚刚爆出的 JP 大奖再领一份，直接翻倍落袋！",
 }
 Config.AD_WELFARE_ORDER = { "boost_3x", "instant_fever", "vault_drop", "airdrop_5x" }
 

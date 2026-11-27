@@ -169,6 +169,38 @@ ty.luckTimer = 6.2
 ty.luckDur = 8.0
 stg:Render("nvg_stub")
 
+-- (e) JP 宝藏舱：九宫格听牌转动 / 中奖线 / 宝箱 / JP CHANCE 开场 / 跑灯 / NEXT 定格 / 倾泻巨额数字
+ty.jpPool = 3.21e9
+ty.jpRefCps = 2e6
+ty.jpLamps = 6
+ty.slotSpinning = true
+ty.slotSpinT = 1.2
+ty.slotSpinDur = 2.1
+ty.slotLockAt = { 0.22, 0.40, 0.97 }
+stg:Render("nvg_stub")
+ty.slotSpinning = false
+ty.slotLockAt = nil
+ty.slotGrid = { 7, 2, 3, 5, 5, 5, 1, 7, 4 }
+ty.slotReels = { 5, 5, 5 }
+ty.slotWinLine = 1
+ty.slotFlashT = 0.6
+stg:Render("nvg_stub")
+for _, ln in ipairs({ 2, 3, 4, 5 }) do ty.slotWinLine = ln; stg:Render("nvg_stub") end
+ty:StartJpChance("lamps")
+for _ = 1, 3 do game.time = game.time + 0.4; ty.jpT = ty.jpT + 0.4; stg:Render("nvg_stub") end
+ty:BeginJpSpin()
+for k = 1, 9 do ty.jpT = k * 0.38; ty.jpCell = ty:GetJpSpinCell(ty.jpT); stg:Render("nvg_stub") end
+ty.jpPhase = "result"; ty.jpResult = "next"; ty.jpT = 0.2
+stg:Render("nvg_stub")
+ty.jpResult = "grand"
+stg:Render("nvg_stub")
+ty.jpBonus = 2
+ty:JpRelease("grand")
+for k = 1, 8 do ty.jpT = k * 0.45; stg:Render("nvg_stub") end
+ty.jpPhase = nil
+stg:Render("nvg_stub")
+for sym = 1, #Config.SLOT_SYMBOLS do Stage.DrawSlotSymbol("nvg_stub", sym, 50, 50, 12, "sans") end
+
 -- 4. Fx 全回调与 2D / 3D 投射渲染路径校验
 fx:OnPegHit({ x = 180, y = 120 }, { x = 180, y = 120, kind = "mult" })
 fx:OnScore(2500, 180, 120, true, 12, "drop", 500)
@@ -186,6 +218,12 @@ fx:OnBlackholeBurst(180, 380, 90)
 fx:OnJackpot777(180, 360)
 fx:OnFeverStart(ty)
 fx:OnComboWaveEnd(24, 1.4, 50000)
+fx:OnJpLamp(3, 1)
+fx:OnJpLamp(6, 2)
+fx:OnJpChance(1e9, "lamps")
+for _, id in ipairs({ "mini", "major", "grand", "next" }) do fx:OnJpResult(id, 1, 1) end
+fx:OnJpRelease({ tier = "grand", name = "GRAND JP", amount = 3e9, bonus = 2, col = Config.JACKPOT.TIERS.grand.col })
+fx:OnJpRelease({ tier = "mini", name = "MINI JP", amount = 1e7, bonus = 1, col = Config.JACKPOT.TIERS.mini.col })
 for _, prize in pairs(Config.SLOT_PRIZES) do
     fx:OnSlotWin(prize)
 end

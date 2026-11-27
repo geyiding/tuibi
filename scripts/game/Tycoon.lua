@@ -15,6 +15,11 @@ local S = Config.STAGE
 local Tycoon = {}
 Tycoon.__index = Tycoon
 
+local JP = Config.JACKPOT
+local JP_SYM = Config.SLOT_JP_SYMBOL
+local REACH_LOCK_AT = { 0.22, 0.40, 0.97 }
+local JP_TIER_ORDER = { "mini", "major", "grand", "next" }
+
 local function Emit(fx, name, ...)
     local fn = fx and fx[name]
     if type(fn) == "function" then fn(fx, ...) end
@@ -64,6 +69,30 @@ function Tycoon.New(fxListener, opts)
     self.luckDur = 0
     self.luckName = ""
     self.slotFlashT = 0
+    -- 九宫格（行优先 1..9）、本次中奖线、每列停轮时间点（听牌时第三列拖长）
+    self.slotGrid = { 2, 4, 1, 1, 2, 3, 5, 3, 6 }
+    self.slotWinLine = nil
+    self.slotLockAt = nil
+
+    -- JP 大奖池（养分 -> 灯位 -> JP CHANCE 跑灯 -> 一次性倾泻）
+    self.jpPool = 0.0
+    self.jpRefCps = 0.0     -- 最近 ~2 分钟真实收入速度（EMA），JP 计价基准
+    self.jpLamps = 0
+    self.jpSince = 0.0
+    self.jpPhase = nil      -- nil | "intro" | "spin" | "result" | "release"
+    self.jpT = 0
+    self.jpRound = 1
+    self.jpBonus = 1
+    self.jpCell = 1         -- 外圈 8 格中当前亮灯的格（1..8）
+    self.jpSpinFrom = 1
+    self.jpSpinSteps = 0
+    self.jpResult = nil     -- 本轮停下的格子类型（mini/major/grand/next）
+    self.jpPayout = nil     -- 本次派奖 { tier, name, amount, bonus }
+    self.jpPendingPopup = nil
+    self.jpRainLeft = 0
+    self.jpRainT = 0
+    self.jpWins = 0
+    self.jpBest = 0.0
 
     -- 独立奇遇乘区 & 三重突发惊喜（金袋小人 12 面骰 / 空中黄金气球 / 突发黄金暴走）
     self.surpriseMult = 1
@@ -626,6 +655,13 @@ function Tycoon:AwardCash(baseVal, x, y, sourceTag, canCrit, extraMul)
         end
     end
     local dmg = max(1.0, floor(baseVal * mult + 0.5) + 0.0)
+    -- JP 养分：每笔收入抽成注入奖池（JP CHANCE 时一次性倾泻回来）
+    local tax = JP.FEED_TAX or 0
+    if tax > 0 and dmg >= 10 then
+        local cut = floor(dmg * tax) + 0.0
+        self:FeedJackpot(cut)
+        dmg = dmg - cut
+    end
     if dmg > self.bestHit then self.bestHit = dmg end
     self:AddWealth(dmg, true, tempMul)
     Emit(self.fx, "OnScore", dmg, x, y, crit, self.combo, sourceTag, self:GetBaselineCPS(), mult)
@@ -778,15 +814,106 @@ function Tycoon:RollSlotOutcome()
     end
 
     local prizeDef = Config.SLOT_PRIZES[prizeId] or Config.SLOT_PRIZES.miss
-    return { reels = reels, prize = prizeDef }
+
+    -- 九宫格：中奖线放入 reels，其余格随机且不得意外连成三连；JP 宝箱只放在中奖线外
+    local winLine = nil
+    if prizeId ~= "miss" then
+        winLine = self:PickSlotLine()
+    end
+    local chests, jpLine = self:RollJpChests(winLine)
+    if jpLine then
+        winLine, prizeDef, reels = nil, Config.SLOT_PRIZES.miss, { JP_SYM, JP_SYM, JP_SYM }
+    end
+    local grid = self:BuildSlotGrid(reels, winLine, chests, jpLine)
+    -- 听牌：本次会凑满 JP 灯 / 宝箱连线 / 10 倍以上大奖 -> 第三列拖长停轮
+    local reach = (jpLine ~= nil) or ((self.jpLamps or 0) + chests >= JP.LAMPS) or (prizeDef.mult >= 10)
+    return {
+        reels = reels, prize = prizeDef, grid = grid, winLine = winLine,
+        chests = chests, jpLine = jpLine, reach = reach,
+    }
+end
+
+function Tycoon:PickSlotLine()
+    local w = Config.SLOT_LINE_WEIGHTS
+    local total = 0
+    for i = 1, #w do total = total + w[i] end
+    local u = self.rng() * total
+    for i = 1, #w do
+        u = u - w[i]
+        if u < 0 then return i end
+    end
+    return 1
+end
+
+--- 本次转动出现几个 JP 宝箱（天井：距上次 JP 越久越容易出）；极小概率 3 宝箱直接连线
+function Tycoon:RollJpChests(winLine)
+    if self.jpPhase then return 0, nil end
+    local over = max(0, (self.jpSince or 0) - JP.CHEST_CEIL_START)
+    local p = min(0.85, JP.CHEST_BASE + over * JP.CHEST_CEIL_RAMP)
+    if self.rng() < JP.LINE_CHANCE then
+        local ln = floor(self.rng() * #Config.SLOT_LINES) + 1
+        return 0, ln
+    end
+    local n = 0
+    if self.rng() < p then
+        n = 1
+        if self.rng() < p * 0.30 then n = 2 end
+    end
+    return n, nil
+end
+
+function Tycoon:BuildSlotGrid(reels, winLine, chests, jpLine)
+    local lines = Config.SLOT_LINES
+    local g = {}
+    local fixed = {}
+    local fixLine = winLine or jpLine
+    if fixLine then
+        local ln = lines[fixLine]
+        for k = 1, 3 do
+            g[ln[k]] = (reels and reels[k]) or 1
+            fixed[ln[k]] = true
+        end
+    end
+    local free = {}
+    for i = 1, 9 do
+        if not fixed[i] then free[#free + 1] = i end
+    end
+    for _ = 1, (chests or 0) do
+        if #free == 0 then break end
+        local j = floor(self.rng() * #free) + 1
+        g[free[j]] = JP_SYM
+        table.remove(free, j)
+    end
+    for _ = 1, 24 do
+        for k = 1, #free do g[free[k]] = floor(self.rng() * 6) + 1 end
+        local clean = true
+        for li = 1, #lines do
+            if li ~= fixLine then
+                local ln = lines[li]
+                local a, b, c = g[ln[1]], g[ln[2]], g[ln[3]]
+                if a == b and b == c then clean = false; break end
+            end
+        end
+        if clean then break end
+    end
+    return g
 end
 
 function Tycoon:StartNextSlotSpin()
-    if self.slotQueue <= 0 then return false end
+    if self.slotQueue <= 0 or self.jpPhase then return false end
     self.slotQueue = self.slotQueue - 1
     self.slotSpinning = true
     self.slotSpinT = 0
-    self.slotPending = self:RollSlotOutcome()
+    self.slotWinLine = nil
+    local pending = self:RollSlotOutcome()
+    self.slotPending = pending
+    if pending.reach then
+        self.slotSpinDur = 2.1
+        self.slotLockAt = REACH_LOCK_AT
+    else
+        self.slotSpinDur = 0.85
+        self.slotLockAt = nil
+    end
     return true
 end
 
@@ -796,7 +923,7 @@ function Tycoon:QueueSlotSpin()
     end
     self.slotQueue = min(2, (self.slotQueue or 0) + 1)
     self.slotCd = 9.0
-    if not self.slotSpinning then
+    if not self.slotSpinning and not self.jpPhase then
         self:StartNextSlotSpin()
     end
     return true
@@ -845,6 +972,19 @@ function Tycoon:ResolveSlotSpin(pending)
     end
 
     Emit(self.fx, "OnSlotWin", prize)
+
+    -- JP：宝箱点灯 / 没中奖也往奖池里塞一点养分 / 集满或宝箱连线 -> JP CHANCE
+    if prize.mult <= 1 then
+        self:FeedJackpot(self:GetJpBase() * JP.FEED_SLOT_MISS_SEC)
+    end
+    local chests = pending.chests or 0
+    if chests > 0 and not self.jpPhase then
+        self.jpLamps = min(JP.LAMPS, (self.jpLamps or 0) + chests)
+        Emit(self.fx, "OnJpLamp", self.jpLamps, chests)
+    end
+    if pending.jpLine or (self.jpLamps or 0) >= JP.LAMPS then
+        self:StartJpChance(pending.jpLine and "line" or "lamps")
+    end
 end
 
 function Tycoon:HandleGateWin(coin)
@@ -1017,11 +1157,189 @@ function Tycoon:HandleFrontDrop(coin)
 end
 
 function Tycoon:HandleSideDrain(coin)
+    self:FeedJackpot(self:GetCoinUnitValue(coin.kind, coin.level) * self:GetTotalMult() * JP.FEED_SIDE_DRAIN)
     if self:HasTech("recycler") then
         local val = self:GetCoinUnitValue(coin.kind, coin.level) * 0.5
         self:AwardCash(val, coin.x, coin.y, "recycler", false)
     end
     Emit(self.fx, "OnSideDrain", coin)
+end
+
+-- ----------------------------------------------------------------------------
+-- JP 大奖池：持续养分 -> 7 盏 JP 灯 -> JP CHANCE 九宫格跑灯 -> 一次性倾泻
+-- ----------------------------------------------------------------------------
+function Tycoon:FeedJackpot(amount)
+    local a = tonumber(amount) or 0
+    if a ~= a or a <= 0 or a == math.huge then return 0 end
+    self.jpPool = (self.jpPool or 0) + a
+    return a
+end
+
+--- JP 计价基准：最近约 2 分钟真实收入速度（含临时倍率），冷启动时退回基准产值
+function Tycoon:GetJpBase()
+    return max(1.0, self.jpRefCps or 0, self:GetBaselineCPS())
+end
+
+--- 预估某档 JP 当前能拿多少（不含 NEXT 倍数）
+function Tycoon:GetJpTierAmount(tierId)
+    local tier = JP.TIERS[tierId]
+    if not tier or not tier.frac then return 0.0 end
+    return max((self.jpPool or 0) * tier.frac, self:GetJpBase() * (tier.floorSec or 0))
+end
+
+function Tycoon:IsJpActive()
+    return self.jpPhase ~= nil
+end
+
+function Tycoon:StartJpChance(source)
+    if self.jpPhase then return false end
+    self.jpPhase = "intro"
+    self.jpT = 0
+    self.jpRound = 1
+    self.jpBonus = 1
+    self.jpResult = nil
+    self.jpPayout = nil
+    self.jpLamps = JP.LAMPS
+    self.jpCell = self.jpCell or 1
+    Emit(self.fx, "OnJpChance", self.jpPool, source)
+    return true
+end
+
+local function RollJpTier(self)
+    local odds = JP.ODDS[min(#JP.ODDS, self.jpRound or 1)]
+    if (self.jpRound or 1) > (JP.MAX_NEXT or 2) then odds = JP.ODDS[#JP.ODDS] end
+    local total = 0
+    for _, id in ipairs(JP_TIER_ORDER) do total = total + (odds[id] or 0) end
+    local u = self.rng() * total
+    for _, id in ipairs(JP_TIER_ORDER) do
+        u = u - (odds[id] or 0)
+        if u < 0 then return id end
+    end
+    return "mini"
+end
+
+function Tycoon:BeginJpSpin()
+    local tierId = RollJpTier(self)
+    local cells = {}
+    for i, id in ipairs(JP.BOARD) do
+        if id == tierId then cells[#cells + 1] = i end
+    end
+    local target = cells[floor(self.rng() * #cells) + 1] or 1
+    local from = self.jpCell or 1
+    local laps = 3 + min(2, (self.jpRound or 1) - 1)
+    self.jpSpinFrom = from
+    self.jpSpinSteps = laps * #JP.BOARD + ((target - from) % #JP.BOARD)
+    self.jpResult = tierId
+    self.jpPhase = "spin"
+    self.jpT = 0
+end
+
+--- 跑灯缓动：前段飞快、末段逐格挪动（ease-out quart）
+function Tycoon:GetJpSpinCell(t)
+    local x = max(0, min(1, (t or self.jpT) / JP.SPIN_SEC))
+    local e = 1 - (1 - x) ^ 4
+    local step = floor(e * self.jpSpinSteps + 0.0001)
+    return ((self.jpSpinFrom - 1 + step) % #JP.BOARD) + 1
+end
+
+function Tycoon:UpdateJackpot(dt)
+    self.jpT = (self.jpT or 0) + dt
+    local ph = self.jpPhase
+    if ph == "intro" then
+        if self.jpT >= JP.INTRO_SEC then self:BeginJpSpin() end
+    elseif ph == "spin" then
+        local cell = self:GetJpSpinCell(self.jpT)
+        if cell ~= self.jpCell then
+            self.jpCell = cell
+            Emit(self.fx, "OnJpTick", cell)
+        end
+        if self.jpT >= JP.SPIN_SEC then
+            self.jpCell = self:GetJpSpinCell(JP.SPIN_SEC)
+            self.jpPhase = "result"
+            self.jpT = 0
+            Emit(self.fx, "OnJpResult", self.jpResult, self.jpRound, self.jpBonus)
+        end
+    elseif ph == "result" then
+        if self.jpT >= JP.RESULT_SEC then
+            if self.jpResult == "next" then
+                self.jpRound = self.jpRound + 1
+                self.jpBonus = self.jpBonus + 1
+                self:BeginJpSpin()
+            else
+                self:JpRelease(self.jpResult)
+            end
+        end
+    elseif ph == "release" then
+        -- 奖池倾泻：最高阶币瀑布分批落台
+        if (self.jpRainLeft or 0) > 0 then
+            self.jpRainT = (self.jpRainT or 0) - dt
+            while self.jpRainT <= 0 and self.jpRainLeft > 0 do
+                self.jpRainT = self.jpRainT + 0.06
+                self.jpRainLeft = self.jpRainLeft - 1
+                local hi = self:GetHighestUnlockedCoin()
+                local k = self.jpRainLeft
+                self.physics:SpawnCoin({
+                    kind = (k % 9 == 0) and "vault" or hi, level = self.coinLv[hi] or 1,
+                    x = 84 + self.rng() * 192, y = S.DECK_TOP_Y + 22 + self.rng() * 30,
+                    vx = (self.rng() - 0.5) * 60, vy = 60 + self.rng() * 30,
+                    zone = "deck", gateChecked = true, isRain = true, forceSpawn = true,
+                })
+            end
+        end
+        if self.jpT >= JP.RELEASE_SEC then
+            self.jpPhase = nil
+            self.jpT = 0
+            self.jpLamps = 0
+            self.jpSince = 0
+            self.jpRainLeft = 0
+            self.jpPendingPopup = self.jpPayout
+        end
+    end
+end
+
+function Tycoon:JpRelease(tierId)
+    local tier = JP.TIERS[tierId] or JP.TIERS.mini
+    local base = self:GetJpBase()
+    local pool = self.jpPool or 0
+    local raw = max(pool * tier.frac, base * (tier.floorSec or 0))
+    local bonus = max(1, self.jpBonus or 1)
+    local amt = floor(raw * bonus) + 0.0
+    self.jpPool = max(base * JP.SEED_SEC, pool * (1 - tier.frac)) + 0.0
+    self:AddWealth(amt, false)
+    self.jpWins = (self.jpWins or 0) + 1
+    if amt > (self.jpBest or 0) then self.jpBest = amt end
+    self.jpRainLeft = min(48, floor((tier.coins or 14) * (1 + (bonus - 1) * 0.25)))
+    self.jpRainT = 0.25
+    if tierId == "grand" and not self.feverActive then
+        self:TriggerFever(false)
+    end
+    self.jpPayout = {
+        tier = tier.id, name = tier.name, amount = amt, bonus = bonus,
+        col = tier.col, adClaimed = false,
+    }
+    self.jpPhase = "release"
+    self.jpT = 0
+    Emit(self.fx, "OnJpRelease", self.jpPayout)
+    return amt
+end
+
+--- 取走待弹窗的 JP 结算（HUD 打开弹窗时调用）
+function Tycoon:TakeJpPopup()
+    local p = self.jpPendingPopup
+    self.jpPendingPopup = nil
+    return p
+end
+
+--- 看广告再领一份（JP 翻倍）
+function Tycoon:ClaimJpAdDouble(payout)
+    payout = payout or self.jpPayout
+    if not payout or payout.adClaimed then return 0 end
+    payout.adClaimed = true
+    local amt = (payout.amount or 0) + 0.0
+    self.adWatchCount = (self.adWatchCount or 0) + 1
+    self:AddWealth(amt, false)
+    Emit(self.fx, "OnAdReward", (payout.name or "JP") .. " 翻倍 +" .. Number.FormatCash(amt))
+    return amt
 end
 
 -- ----------------------------------------------------------------------------
@@ -1667,6 +1985,11 @@ function Tycoon:Update(dt)
             end
         end
     end
+    if self.jpPhase then
+        self:UpdateJackpot(dt)
+    else
+        self.jpSince = (self.jpSince or 0) + dt
+    end
     if self.slotSpinning then
         self.slotSpinT = self.slotSpinT + dt
         if self.slotSpinT >= self.slotSpinDur then
@@ -1676,13 +1999,15 @@ function Tycoon:Update(dt)
             self.slotPending = nil
             if pending and pending.reels then
                 self.slotReels = pending.reels
+                if pending.grid then self.slotGrid = pending.grid end
+                self.slotWinLine = pending.winLine
                 self:ResolveSlotSpin(pending)
             end
             if self.slotQueue > 0 then
                 self:StartNextSlotSpin()
             end
         end
-    elseif self.slotQueue > 0 then
+    elseif self.slotQueue > 0 and not self.jpPhase then
         self:StartNextSlotSpin()
     end
 
@@ -1691,6 +2016,17 @@ function Tycoon:Update(dt)
     if self.cpsTick >= 1.0 then
         self.cpsTick = self.cpsTick - 1.0
         self.cpsBuckets[self.cpsIdx] = self.cpsAcc
+        -- JP 计价基准（真实收入 EMA）+ 持续养分
+        local ref = self.jpRefCps or 0
+        if ref <= 0 then
+            ref = max(self.cpsAcc, self:GetBaselineCPS())
+        else
+            ref = ref + (self.cpsAcc - ref) / JP.REF_TAU
+        end
+        self.jpRefCps = ref
+        if not self.jpPhase and (JP.FEED_SEC_PER_SEC or 0) > 0 then
+            self:FeedJackpot(self:GetJpBase() * JP.FEED_SEC_PER_SEC)
+        end
         self.cpsAcc = 0.0
         self.cpsIdx = (self.cpsIdx % 10) + 1
         local sum = 0.0
@@ -1839,6 +2175,12 @@ function Tycoon:ExportState(nowTs)
         surpriseName = self.surpriseName or "",
         lastBaseCps = baseRate + 0.0,
         lastActiveAt = self.lastActiveAt,
+        jpPool = (self.jpPool or 0) + 0.0,
+        jpRefCps = (self.jpRefCps or 0) + 0.0,
+        jpLamps = (self.jpPhase and 0) or (self.jpLamps or 0),
+        jpSince = floor(self.jpSince or 0),
+        jpWins = self.jpWins or 0,
+        jpBest = (self.jpBest or 0) + 0.0,
     }
 end
 
@@ -1942,6 +2284,17 @@ function Tycoon:ImportState(s)
     self.surpriseMult = (self.surpriseTimer > 0) and max(1, tonumber(s.surpriseMult) or 1) or 1
     self.surpriseName = (self.surpriseTimer > 0 and type(s.surpriseName) == "string") and s.surpriseName or ""
     self.pendingDice = nil
+    local jpPool = (tonumber(s.jpPool) or 0) + 0.0
+    self.jpPool = (jpPool == jpPool and jpPool < math.huge) and max(0.0, jpPool) or 0.0
+    local jpRef = (tonumber(s.jpRefCps) or 0) + 0.0
+    self.jpRefCps = (jpRef == jpRef and jpRef < math.huge) and max(0.0, jpRef) or 0.0
+    self.jpLamps = max(0, min(JP.LAMPS - 1, floor(tonumber(s.jpLamps) or 0)))
+    self.jpSince = max(0, tonumber(s.jpSince) or 0)
+    self.jpWins = max(0, floor(tonumber(s.jpWins) or 0))
+    self.jpBest = max(0.0, (tonumber(s.jpBest) or 0) + 0.0)
+    self.jpPhase = nil
+    self.jpPendingPopup = nil
+    self.jpRainLeft = 0
     if self.runner then self.runner.active = false end
     if self.balloon then self.balloon.active = false end
 

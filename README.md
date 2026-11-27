@@ -17,7 +17,12 @@
 3. **稀缺高燃爆发 · 幸运三连 + 冷却狂欢 + 波次连击**：
    - 过幸运门激活 3 轴幸运三连机（9 秒限流、队列上限 2 轮，1.5×~100× 限时爆发与币雨/⚡/45× 金库巨币，低奖不替高倍续命）。
    - **狂欢时刻（Fever）**：狂欢槽充能速率保护 + 结束后 **28 秒冷静冷却**，让每次狂欢爆发与 15 秒 **波次连击结算** 都极具节奏张力。
-4. **节制商业化激励 + 双端可靠存档**：
+4. **JP 大奖池 · 酣畅淋漓的那一瞬间**（参考日式推币机 JP）：
+   - **养分**：每笔推币收入抽 10% 悄悄存进 JP 奖池，侧漏掉的币 100% 流进奖池，三连没中也往里塞一点；机台前沿下方的 **JP 宝藏舱** 实时显示 GRAND 奖池与养分飘字。
+   - **九宫格老虎机**：过幸运门转 3×3 九宫格（5 条中奖线），开出 **JP 宝箱** 点亮 JP 灯；7 盏全亮或 3 宝箱连线进入 **JP CHANCE**（距上次 JP 越久宝箱越容易出，差 1 灯时第三列拖长听牌）。
+   - **JP CHANCE**：九宫格外圈 8 格跑灯抽奖 MINI / MAJOR / GRAND / NEXT（NEXT = 倍数 +1 再抽一轮，最多 ×3）；GRAND 一次带走整个奖池（跨多轮滚雪球）。
+   - **倾泻**：奖金立刻到账 + 全屏巨额数字滚动 + 最高阶币瀑布砸向推台（GRAND 附送狂欢），随后弹窗可 **看广告再领一份（×2）**。
+5. **节制商业化激励 + 双端可靠存档**：
    - 4 项常驻福利激励广告位（×3 印钞冷却 20 分钟上限 300s、超级狂欢、2 枚 45× 金库巨币、风投空投暴富 45 秒基准产值）+ 8 小时离线收益 + 双端本地/云端防覆盖存档。
 
 ---
@@ -32,6 +37,7 @@
 | [`scripts/game/Tycoon.lua`](scripts/game/Tycoon.lua) | 增量核心（浮点财富防 2⁶³ 溢出、9 秒限流幸运三连、28 秒冷却狂欢、波次连击、6 常驻发射池、5 分钟去噪长期 CPS、星际飞升） |
 | [`scripts/game/Physics.lua`](scripts/game/Physics.lua) | 零 GC 空间哈希 2.5D 物理（3 迭代早退分离、`crowdBoost`、`magLip` 磁吸、滞留防卡死、11 颗倍增金钉） |
 | [`scripts/game/Machine3D.lua`](scripts/game/Machine3D.lua) | UrhoX 3D 推币机台（1:1 币槽映射、AlphaMask 探针、四元数缓存、低端机脏阈值节流） |
+| [`scripts/game/JackpotPanel.lua`](scripts/game/JackpotPanel.lua) | JP 宝藏舱：九宫格老虎机 / JP 奖池与 7 盏 JP 灯 / JP CHANCE 跑灯抽奖盘 / 全屏倾泻演出 |
 | [`scripts/game/Stage.lua`](scripts/game/Stage.lua) | NanoVG 顶棚总倍率牌、3 轴幸运三连、带冷却倒计时的狂欢管、手点金环标注 |
 | [`scripts/game/Fx.lua`](scripts/game/Fx.lua) | SoA 零 GC 特效池（近邻合并飘字、波次连击印章、飞币/倍率令牌、`SetQuality(0.5)` 低画质） |
 | [`scripts/game/JuiceWidgets.lua`](scripts/game/JuiceWidgets.lua) | 滚动现金计数器 `CashCounter`（飞币砸击反馈）+ 顶层 `FxLayer` |
