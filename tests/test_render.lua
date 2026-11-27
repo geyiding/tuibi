@@ -217,6 +217,11 @@ ty.jpPhase = nil
 for k, v in pairs(savedSprites) do Skin.SPRITES[k] = v end
 _G.nvgCreateImage = function() return 0 end
 
+-- (f) 真机性能浮窗
+Config.SHOW_PERF_HUD = true
+for _ = 1, 40 do game.time = game.time + 0.016; stg:Render("nvg_stub") end
+Config.SHOW_PERF_HUD = false
+
 -- 4. Fx 全回调与 2D / 3D 投射渲染路径校验
 fx:OnPegHit({ x = 180, y = 120 }, { x = 180, y = 120, kind = "mult" })
 fx:OnScore(2500, 180, 120, true, 12, "drop", 500)

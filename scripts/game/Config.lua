@@ -5,6 +5,8 @@
 local Config = {}
 
 Config.GAME_TITLE = "推币机的狂欢"
+-- 真机调性能时改成 true：左上角显示帧率 / 3D 批次(Draw Call) / 图元数 / Lua 内存（上线前改回 false）
+Config.SHOW_PERF_HUD = false
 Config.WORLD_W = 360
 Config.WORLD_H = 600
 Config.PIXEL = 2

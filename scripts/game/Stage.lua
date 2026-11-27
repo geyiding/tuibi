@@ -1107,6 +1107,37 @@ end
 -- ----------------------------------------------------------------------------
 -- 主渲染
 -- ----------------------------------------------------------------------------
+--- 真机性能浮窗（Config.SHOW_PERF_HUD）：每 0.5 秒刷新一次文字，避免自身产生垃圾
+function Stage:DrawPerfHud(nvg, l, dt, font)
+    local pf = self.perf_
+    if not pf then
+        pf = { acc = 0, frames = 0, worst = 0, txt1 = "", txt2 = "" }
+        self.perf_ = pf
+    end
+    pf.acc = pf.acc + dt
+    pf.frames = pf.frames + 1
+    if dt > pf.worst then pf.worst = dt end
+    if pf.acc >= 0.5 then
+        local fps = pf.frames / pf.acc
+        local batches = (renderer and renderer.numBatches) or -1
+        local prims = (renderer and renderer.numPrimitives) or -1
+        pf.txt1 = string.format("FPS %.0f  最慢帧 %.0fms", fps, pf.worst * 1000)
+        pf.txt2 = string.format("批次 %d  图元 %d  Lua %.1fMB", batches, prims, collectgarbage("count") / 1024)
+        pf.acc, pf.frames, pf.worst = 0, 0, 0
+    end
+    local x, y = l.x + 6, l.y + 6
+    nvgBeginPath(nvg)
+    nvgRoundedRect(nvg, x, y, 206, 38, 6)
+    nvgFillColor(nvg, Col(INK, 200))
+    nvgFill(nvg)
+    nvgFontFace(nvg, font or "sans")
+    nvgFontSize(nvg, 12)
+    nvgTextAlign(nvg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+    nvgFillColor(nvg, Col(C.green, 255))
+    nvgText(nvg, x + 8, y + 11, pf.txt1)
+    nvgText(nvg, x + 8, y + 27, pf.txt2)
+end
+
 function Stage:Render(nvg)
     local g = self.game
     if not g then return end
@@ -1201,6 +1232,8 @@ function Stage:Render(nvg)
         fx.ancComboX, fx.ancComboY = comboX, comboY
         fx.ancAdX, fx.ancAdY = l.x + l.w - 50, l.y + 30
     end
+
+    if Config.SHOW_PERF_HUD then self:DrawPerfHud(nvg, l, dt, g.font) end
 
     -- 首次点按引导
     if g.showTapHint and g.showTapHint() then
