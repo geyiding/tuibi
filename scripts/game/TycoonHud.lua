@@ -833,7 +833,7 @@ local function BuildFormulaModal()
                 children = {
                     UI.Label { text = "1. 钱只涨不花直冲世界第1！达标与排名跃升均赠技能点。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
                     UI.Label { text = "2. 下方页签亮灯即点：用技能点升机台、解新币（可设6枚常驻）与黑科技。", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
-                    UI.Label { text = "3. 过幸运门转九宫格老虎机；砸中拖金袋小人摇12面骰、戳破黄金气球与随机黄金暴走可叠出惊喜高倍！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
+                    UI.Label { text = "3. 过幸运门转九宫格幸运盘；砸中拖金袋小人摇12面骰、戳破黄金气球与随机黄金暴走可叠出惊喜高倍！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
                     UI.Label { text = "4. 每笔收入 10% 存进 JP 奖池；九宫格开出宝箱点亮 JP 灯，7 盏全亮进 JP CHANCE，跑灯停在 GRAND 就把整个奖池一次性倾泻给你！", fontSize = 13, fontColor = U.text, whiteSpace = "normal", width = "100%" },
                 },
             },

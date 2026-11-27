@@ -28,7 +28,7 @@ Skin.AUTO_SPRITES = {
     boss_gatekeeper = IMG_PREFIX .. "boss/boss_gatekeeper.png",
     boss_furnace    = IMG_PREFIX .. "boss/boss_furnace.png",
     boss_vaultbeast = IMG_PREFIX .. "boss/boss_vaultbeast.png",
-    -- 九宫格老虎机符号（1 金币 / 2 四叶草 / 3 闪电 / 4 红宝石 / 5 皇冠 / 6 星钻 / 7 JP 宝箱）+ 格子底板
+    -- 九宫格幸运盘符号（1 金币 / 2 四叶草 / 3 闪电 / 4 红宝石 / 5 皇冠 / 6 星钻 / 7 JP 宝箱）+ 格子底板
     slot_sym_1      = IMG_PREFIX .. "slot/sym_1.png",
     slot_sym_2      = IMG_PREFIX .. "slot/sym_2.png",
     slot_sym_3      = IMG_PREFIX .. "slot/sym_3.png",

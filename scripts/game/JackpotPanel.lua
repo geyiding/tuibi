@@ -1,6 +1,6 @@
 -- ============================================================================
 -- JackpotPanel.lua  JP 宝藏舱（3D 机台前沿下方的空带）
---   · 左：九宫格老虎机（3 列滚轮 × 3 行，5 条中奖线；听牌时第三列拖长停轮）
+--   · 左：九宫格幸运盘（3 列滚轮 × 3 行，5 条中奖线；听牌时第三列拖长停轮）
 --   · 右：JP 奖池（GRAND 大号滚动数字 + MAJOR/MINI 预估 + 7 盏 JP 灯 + 养分飘字）
 --   · JP CHANCE：九宫格外圈 8 格变成跑灯抽奖盘（MINI/MAJOR/GRAND/NEXT），中心格显示倍数
 --   · 全屏层：JP CHANCE 开场横幅、NEXT 升级、倾泻时屏幕中央的巨额数字滚动
@@ -204,17 +204,18 @@ local function DrawSlotGrid(st, nvg, run, gx, gy, cell, gap, u, t, font, drawSym
         if st.reelStop[c] > 0 then st.reelStop[c] = max(0, st.reelStop[c] - 0.06) end
     end
 
-    -- 中奖线高亮（停轮后保持到下一次转动）
+    -- 中奖线高亮（停轮后保持到下一次转动；三连框 3 格，对子小奖仅框选 2 个相同格）
     local wl = (not spin) and run.slotWinLine
     if wl and LINES[wl] then
         local ln = LINES[wl]
         local reels = run.slotReels or {}
-        local prizeCol = C.gold
+        local isTriple = (reels[1] ~= nil and reels[1] == reels[2] and reels[2] == reels[3])
+        local hitN = isTriple and 3 or 2
         local sCfg = Config.SLOT_SYMBOLS[reels[1] or 1]
-        if sCfg and sCfg.col then prizeCol = sCfg.col end
+        local prizeCol = isTriple and ((sCfg and sCfg.col) or C.gold) or C.cyan
         local flash = (run.slotFlashT or 0) > 0 and (0.6 + 0.4 * sin(t * 18)) or 0.75
         local pts = {}
-        for k = 1, 3 do
+        for k = 1, hitN do
             local x, y = CellRect(gx, gy, cell, gap, ln[k])
             pts[k] = { x + cell * 0.5, y + cell * 0.5 }
             SetAdditive(nvg, true)
@@ -225,15 +226,16 @@ local function DrawSlotGrid(st, nvg, run, gx, gy, cell, gap, u, t, font, drawSym
             SetAdditive(nvg, false)
             nvgBeginPath(nvg)
             nvgRoundedRect(nvg, x - 2, y - 2, cell + 4, cell + 4, cell * 0.18)
-            nvgStrokeColor(nvg, Col(C.white, floor(255 * flash)))
+            nvgStrokeColor(nvg, Col(isTriple and C.white or C.cyan, floor(255 * flash)))
             nvgStrokeWidth(nvg, 2.4 * u)
             nvgStroke(nvg)
         end
         SetAdditive(nvg, true)
         nvgBeginPath(nvg)
         nvgMoveTo(nvg, pts[1][1], pts[1][2])
-        nvgLineTo(nvg, pts[2][1], pts[2][2])
-        nvgLineTo(nvg, pts[3][1], pts[3][2])
+        for k = 2, hitN do
+            nvgLineTo(nvg, pts[k][1], pts[k][2])
+        end
         nvgStrokeColor(nvg, Col(prizeCol, floor(200 * flash)))
         nvgStrokeWidth(nvg, 4 * u)
         nvgStroke(nvg)
@@ -417,17 +419,18 @@ function JackpotPanel.Draw(st, nvg, run, l, topY, u, t, dt, font, drawSym)
     local sCol = (jpOn or (spin and run.slotLockAt ~= nil)) and ((floor(t * 8) % 2 == 0) and C.gold or C.magenta) or C.muted
     OutlinedText(nvg, rx + rw, ty0, st.sideTxt, sCol, 255, 1.1)
 
-    -- (2) GRAND 奖池大数字（显示值追随实际值；养分时轻微脉冲）
-    local pool = run.jpPool or 0
+    -- (2) GRAND 奖池大数字（与 MAJOR/MINI 同口径取含保底可领额，杜绝 GRAND 显示小于 MAJOR；养分飘字仍统计裸池注入）
+    local rawPool = run.jpPool or 0
+    local displayGrand = (run.GetJpTierAmount and run:GetJpTierAmount("grand")) or rawPool
     local shown = st.shownPool
-    if pool < shown * 0.5 or shown <= 0 then
-        shown = pool
+    if displayGrand < shown * 0.5 or shown <= 0 then
+        shown = displayGrand
     else
-        shown = shown + (pool - shown) * min(1, dt * 4)
+        shown = shown + (displayGrand - shown) * min(1, dt * 4)
     end
     st.shownPool = shown
-    local grow = pool - (st.lastPool or pool)
-    st.lastPool = pool
+    local grow = rawPool - (st.lastPool or rawPool)
+    st.lastPool = rawPool
     if grow > 0 then st.feedAcc = st.feedAcc + grow end
     local key = floor(shown / max(1, 10 ^ max(0, floor(math.log(max(shown, 1), 10)) - 3)))
     if key ~= st.poolKey then
@@ -597,7 +600,8 @@ function JackpotPanel.DrawOverlay(st, nvg, run, l, u, t, dt, font)
             elseif (run.jpRound or 1) > 1 then
                 st.bannerTxt = string.format("第 %d 轮 · 倍数 ×%d · 冲 GRAND!", run.jpRound, run.jpBonus or 1)
             else
-                st.bannerTxt = "GRAND " .. Money(run.jpPool) .. " 等你来拿"
+                local grandAmt = (run.GetJpTierAmount and run:GetJpTierAmount("grand")) or run.jpPool
+                st.bannerTxt = "GRAND " .. Money(grandAmt) .. " 等你来拿"
             end
         end
         nvgFontSize(nvg, 14 * u * pop)

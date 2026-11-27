@@ -86,7 +86,7 @@ assert(#Config.TECH_UPGRADES == 12, "需有 12 项里程碑黑科技")
 assert(#Config.PRESTIGE_TALENTS == 4, "需有 4 项上市永久天赋")
 assert(#Config.IPO_ROUNDS == 12, "需有 12 轮非重置资本融资上市阶梯")
 assert(#Config.SLOT_SYMBOLS == 7 and Config.SLOT_SYMBOLS[Config.SLOT_JP_SYMBOL].id == "jp" and Config.SLOT_PRIZES.jackpot_777.mult == 100,
-    "九宫格老虎机 6 个连线符号 + JP 宝箱与100倍头奖配置必须完整")
+    "九宫格幸运盘 6 个连线符号 + JP 宝箱与100倍头奖配置必须完整")
 assert(#Config.AD_WELFARE_ORDER == 4, "福利站应列出 4 项常驻模拟广告")
 for _, t in ipairs(Config.COIN_TIERS) do
     local cdef = Config.COINS[t.id]
