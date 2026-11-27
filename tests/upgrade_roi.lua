@@ -6,7 +6,7 @@ local floor, max = math.floor, math.max
 
 local STAGE = os.getenv("ROI_STAGE") or "mid"
 local SEC = tonumber(os.getenv("ROI_SEC") or "") or 300
-local SEEDS = { 11, 22, 33, 44 }
+local SEEDS = { 11, 22, 33, 44, 55, 66 }
 
 -- 三个阶段的典型构筑（技能点按机台/币种/科技大致均衡分配）
 local BUILDS = {
@@ -79,12 +79,26 @@ for _, t in ipairs(Config.TECH_UPGRADES) do
     end }
 end
 
+-- 统计口径：剔除幸运三连 / 奇遇（骰子、气球、黄金暴走）这两个纯运气倍率，降低 5 分钟窗口内的随机噪声；
+-- 狂欢、连击、暴击等升级会影响的部分照常计入；JP 抽成按到手前金额计（抽成本身最终会返还）
 local function Run(ty)
     ty:ResetPhysics(true)
     for _ = 1, 600 do ty:Update(1 / 60) end -- 预热 10 秒
-    local w0 = ty.lifetimeCash + ty.jpPool
+    local sum = 0.0
+    local origAdd = ty.AddWealth
+    ty.AddWealth = function(self, amt, toCps, tempMul)
+        local luck = math.max(1, self.luckMult or 1) * math.max(1, self.surpriseMult or 1)
+        if toCps then sum = sum + (tonumber(amt) or 0) / luck end
+        return origAdd(self, amt, toCps, tempMul)
+    end
+    local origFeed = ty.FeedJackpot
+    ty.FeedJackpot = function(self, a)
+        local luck = math.max(1, self.luckMult or 1) * math.max(1, self.surpriseMult or 1)
+        sum = sum + (tonumber(a) or 0) / luck
+        return origFeed(self, a)
+    end
     for _ = 1, SEC * 60 do ty:Update(1 / 60) end
-    return (ty.lifetimeCash + ty.jpPool) - w0 -- 计入 JP 抽成，避免抽成造成偏差
+    return sum
 end
 
 local base = 0
