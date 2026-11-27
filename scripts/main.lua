@@ -21,6 +21,7 @@ local Music = require("game/Music")
 local Widgets = require("game/Widgets")
 local RankLadder = require("game/RankLadder")
 local OvertakePopup = require("game/OvertakePopup")
+local Leaderboard = require("game/Leaderboard")
 
 --- 竖屏适配缩放：按 390 设计宽度铺满手机（横屏/桌面窗口按 760 设计高度），
 --- 取代 UI.Scale.DEFAULT 的“小屏密度自适应”（它会在手机上把整套 UI 再缩小约 26%，文字看不清）
@@ -274,6 +275,14 @@ local function MakeListener()
         game.fx:OnTowerTopple(x, y, label)
         Sfx.Play("jackpot", 1.0)
         game.hudDirty = true
+    end
+    function l:OnWorld1Record(sec)
+        if game.tycoon then
+            Leaderboard.Submit(game.tycoon, true)
+        end
+        if game.fx then
+            game.fx:AddBanner("登顶世界第1! 用时 " .. Number.FormatClock(sec), Skin.C.gold, "已记入全服最快登顶榜")
+        end
     end
     return l
 end
@@ -640,6 +649,7 @@ local callbacks = {
         _G.__TYCOON = game.tycoon
 
         TycoonHud.ResetState()
+        Leaderboard.ResetSession()
         SaveManager.ResetAll(game.tycoon:ExportState(os.time()), function()
             if TycoonHud.GetCurModal() == "settings" then
                 SettingsHud.Refresh(SaveManager.GetPrefs(), SaveManager.GetStatus(), true)
@@ -665,6 +675,7 @@ local callbacks = {
         game.tycoon = Tycoon.New(listener, { seed = os.time() })
         _G.__TYCOON = game.tycoon
         TycoonHud.ResetState()
+        Leaderboard.ResetSession()
         Machine3D.ForceResync()
         if Machine3D.IsActive() then
             Machine3D.Update(0, game.tycoon, game.fx, game.time)
@@ -675,6 +686,32 @@ local callbacks = {
     OnCloudRetry = function()
         Sfx.Play("click")
         SaveManager.RetryCloudSync()
+    end,
+    OnOpenGlobalRank = function()
+        Sfx.Play("click")
+        TycoonHud.OpenModal("globalRank")
+        Leaderboard.Fetch(TycoonHud.GetGlobalRankTab(), game.tycoon, false, function()
+            if TycoonHud.GetCurModal() == "globalRank" then
+                TycoonHud.RefreshGlobalRank()
+            end
+        end)
+    end,
+    OnSelectGlobalRankTab = function(tabId)
+        Sfx.Play("click")
+        TycoonHud.SetGlobalRankTab(tabId)
+        Leaderboard.Fetch(TycoonHud.GetGlobalRankTab(), game.tycoon, false, function()
+            if TycoonHud.GetCurModal() == "globalRank" then
+                TycoonHud.RefreshGlobalRank()
+            end
+        end)
+    end,
+    OnRefreshGlobalRank = function()
+        Sfx.Play("click")
+        Leaderboard.Fetch(TycoonHud.GetGlobalRankTab(), game.tycoon, true, function()
+            if TycoonHud.GetCurModal() == "globalRank" then
+                TycoonHud.RefreshGlobalRank()
+            end
+        end)
     end,
 }
 
@@ -764,6 +801,9 @@ function Start()
         if TycoonHud.GetCurModal() == "cloudFail" then
             TycoonHud.CloseModal()
         end
+        if game.tycoon then
+            Leaderboard.Submit(game.tycoon, false)
+        end
         TycoonHud.RefreshMain(game.tycoon)
     end, function(reason)
         SettingsHud.SetCloudFailReason(reason)
@@ -785,6 +825,9 @@ end
 
 function Stop()
     PersistTycoon(false)
+    if game.tycoon then
+        Leaderboard.Submit(game.tycoon, false)
+    end
     Machine3D.Shutdown()
     Music.Shutdown()
     Sfx.Shutdown()
@@ -840,6 +883,7 @@ function HandleUpdate(eventType, eventData)
         end
         local gdt = dt * (fx and fx:TimeScale() or 1)
         ty:Update(gdt)
+        Leaderboard.Tick(dt, ty)
     end
     if ty and ty.pendingDice and not curModal then
         TycoonHud.OpenDiceModal(ty.pendingDice)

@@ -182,6 +182,8 @@ function Tycoon.New(fxListener, opts)
     self.longTermBaseCps = 0.0
     self.interestTick = 0
     self.clock = 0
+    self.playSeconds = 0.0
+    self.world1TimeSec = 0
     self.lastActiveAt = 0
 
     self.physics = Physics.New({
@@ -526,6 +528,11 @@ function Tycoon:CheckRankUp()
             wealthNow = self.lifetimeCash,
             worldRank = self:GetWorldRank(),
         })
+    end
+
+    if self.rankIdx >= #Config.RANKS and (self.world1TimeSec or 0) <= 0 and not self._importing then
+        self.world1TimeSec = max(1, floor((self.playSeconds or 0) + 0.5))
+        Emit(self.fx, "OnWorld1Record", self.world1TimeSec)
     end
 end
 
@@ -1889,6 +1896,7 @@ end
 function Tycoon:Update(dt)
     dt = min(0.05, max(0, dt or 0))
     self.clock = self.clock + dt
+    self.playSeconds = (self.playSeconds or 0) + dt
     self._permMult = nil
     self._avgVal = nil
     if self.manualCd > 0 then self.manualCd = max(0, self.manualCd - dt) end
@@ -2180,6 +2188,8 @@ function Tycoon:ExportState(nowTs)
         surpriseName = self.surpriseName or "",
         lastBaseCps = baseRate + 0.0,
         lastActiveAt = self.lastActiveAt,
+        playSeconds = floor((self.playSeconds or 0) * 10) / 10,
+        world1TimeSec = max(0, floor(tonumber(self.world1TimeSec) or 0)),
         jpPool = (self.jpPool or 0) + 0.0,
         jpRefCps = (self.jpRefCps or 0) + 0.0,
         jpLamps = (self.jpPhase and 0) or (self.jpLamps or 0),
@@ -2278,6 +2288,8 @@ function Tycoon:ImportState(s)
     self.maxCombo = max(0, floor(tonumber(s.maxCombo) or 0))
     self.longTermBaseCps = max(0.0, (tonumber(s.lastBaseCps) or 0) + 0.0)
     self.lastActiveAt = max(0, floor(tonumber(s.lastActiveAt) or 0))
+    self.playSeconds = max(0.0, (tonumber(s.playSeconds) or 0) + 0.0)
+    self.world1TimeSec = max(0, floor(tonumber(s.world1TimeSec) or 0))
     self.slotCd = 0
     self.feverCd = 0
     self.feverExtended = false
@@ -2305,7 +2317,9 @@ function Tycoon:ImportState(s)
 
     self:RebuildCoinCache()
     self:CheckSpMilestones()
+    self._importing = true
     self:CheckRankUp()
+    self._importing = nil
     self:SyncPhysicsMods()
     self:ResetPhysics(true)
     return true

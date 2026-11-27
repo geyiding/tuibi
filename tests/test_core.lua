@@ -9,6 +9,7 @@ local RedeemCodes = require("game/RedeemCodes")
 local MockAd = require("game/MockAd")
 local Tycoon = require("game/Tycoon")
 local SaveManager = require("game/SaveManager")
+local Leaderboard = require("game/Leaderboard")
 
 local function approxEq(a, b, tol)
     return math.abs(a - b) <= (tol or 1e-6)
@@ -736,6 +737,168 @@ assert(#tTw.physics.towers == 1 and tTw.physics.towers[1].total == 22, "风投�
 for _ = 1, 180 do tTw:Update(1 / 60) end
 assert(#tTw.physics.towers == 0 and twStats.avCoins == 20 and twStats.avVaults == 4 and twStats.topples == 1,
     string.format("满台风投巨塔需零吞币爆发 20高阶币 + 4金库巨币 (got %d + %d)", twStats.avCoins, twStats.avVaults))
+
+-- 12. 全服双排行榜：万亿/兆/京大数单位、32位排序编码、累计时长/首次登顶、clientCloud + 昵称全链路与离线降级
+assert(Number.FormatRankWealth(0) == "0")
+assert(Number.FormatRankWealth(9500) == "9,500")
+assert(Number.FormatRankWealth(9999.5) == "1.00万", "万位进位预舍入应为 1.00万, got " .. Number.FormatRankWealth(9999.5))
+assert(Number.FormatRankWealth(15000) == "1.50万")
+assert(Number.FormatRankWealth(3.5e8) == "3.50亿")
+assert(Number.FormatRankWealth(8.2e12) == "8.20万亿")
+assert(Number.FormatRankWealth(9.9999e15) == "1.00兆", "万亿进位应转为 1.00兆, got " .. Number.FormatRankWealth(9.9999e15))
+assert(Number.FormatRankWealth(4.1e16) == "4.10兆", "万亿后必须接 兆, got " .. Number.FormatRankWealth(4.1e16))
+assert(Number.FormatRankWealth(9.9999e19) == "1.00京", "兆进位应转为 1.00京, got " .. Number.FormatRankWealth(9.9999e19))
+assert(Number.FormatRankWealth(6.7e20) == "6.70京", "兆后必须接 京, got " .. Number.FormatRankWealth(6.7e20))
+assert(Number.FormatRankWealth(9.3e24) == "9.30垓", "京后必须接 垓, got " .. Number.FormatRankWealth(9.3e24))
+assert(Number.FormatRankWealth(0 / 0) == "NaN")
+assert(Number.FormatRankWealth(1 / 0) == "∞")
+assert(Number.FormatRankCash(4.1e16) == "¥4.10兆")
+assert(Number.FormatRankCash(6.7e20) == "¥6.70京")
+
+local wealthSamples = { 1, 1e4, 1e8, 1e12, 1e16, 1e20, 1e24, 1e35, 1e50 }
+local prevEnc = 0
+for _, w in ipairs(wealthSamples) do
+    local enc = Leaderboard.EncodeWealthScore(w)
+    assert(math.type(enc) == "integer" and enc > 0 and enc <= 2147483647, "财富排序分必须为32位正整数: " .. tostring(enc))
+    assert(enc > prevEnc, "财富排序分必须严格单调递增: " .. tostring(w))
+    prevEnc = enc
+end
+
+local prevSp = 2147483647
+for _, sec in ipairs({ 60, 600, 3600, 86400 }) do
+    local enc = Leaderboard.EncodeSpeedScore(sec)
+    assert(math.type(enc) == "integer" and enc > 0 and enc <= 2147483647)
+    assert(enc < prevSp, "耗时越短排序分必须越高: " .. tostring(sec))
+    assert(Leaderboard.DecodeSpeedScore(enc) == sec, "登顶秒数编解码必须无损往返")
+    prevSp = enc
+end
+
+local w1Rec = 0
+local tSpeed = Tycoon.New({
+    OnWorld1Record = function(_, sec) w1Rec = sec end,
+}, { seed = 2050 })
+for _ = 1, 125 do tSpeed:Update(0.05) end
+assert(tSpeed.playSeconds >= 6.0 and tSpeed.world1TimeSec == 0 and w1Rec == 0)
+local topTarget = Config.RANKS[#Config.RANKS].target
+tSpeed:AddWealth(topTarget + 1000, false)
+assert(tSpeed.rankIdx == #Config.RANKS and tSpeed.world1TimeSec == math.floor(tSpeed.playSeconds + 0.5) and w1Rec == tSpeed.world1TimeSec,
+    "首次登顶世界第1必须锁定累计游戏耗时并触发 OnWorld1Record")
+local lockedRec = tSpeed.world1TimeSec
+for _ = 1, 80 do tSpeed:Update(0.05) end
+assert(tSpeed.world1TimeSec == lockedRec, "后续继续游玩绝不可改写已锁定的首次登顶记录")
+local snapSpeed = tSpeed:ExportState(os.time())
+local tSpeed2 = Tycoon.New(nil, { seed = 2051 })
+assert(tSpeed2:ImportState(snapSpeed))
+assert(approxEq(tSpeed2.playSeconds, snapSpeed.playSeconds, 0.2) and tSpeed2.world1TimeSec == lockedRec,
+    "Export/Import 必须完整恢复累计时长与世界第1耗时")
+
+-- 老存档回归防护：旧版本没有 playSeconds/world1TimeSec 但身价已超越马斯克，读档严禁伪造 1 秒登顶成绩
+local legacyEvents = 0
+local tLegacy = Tycoon.New({ OnWorld1Record = function() legacyEvents = legacyEvents + 1 end }, { seed = 2052 })
+assert(tLegacy:ImportState({ lifetimeCash = topTarget * 2, cash = topTarget * 2 }))
+assert(tLegacy.rankIdx == #Config.RANKS and tLegacy.world1TimeSec == 0 and legacyEvents == 0,
+    "老存档导入已登顶财富时严禁伪造世界第1用时")
+
+-- Mock clientCloud + GetUserNickname 测试上传、双榜读取（含兆/京附加字段）、个人排名、总人数及离线降级
+local prevCC, prevNick = _G.clientCloud, _G.GetUserNickname
+Leaderboard.ResetSession()
+_G.clientCloud = nil
+local offBoard = Leaderboard.Fetch("speed", tSpeed2, true)
+assert(offBoard.status == "offline" and #offBoard.items == 0, "未登录云端时必须安全降级为 offline 状态")
+
+local mockCloudStore = {
+    [1001] = {
+        iscore = {
+            [Leaderboard.KEY_SPEED] = Leaderboard.EncodeSpeedScore(725),
+            [Leaderboard.KEY_WEALTH_RANK] = Leaderboard.EncodeWealthScore(3.5e20),
+        },
+        score = {
+            [Leaderboard.KEY_SPEED_EXACT] = 725,
+            [Leaderboard.KEY_WEALTH_EXACT] = 3.5e20,
+        },
+    },
+    [2002] = {
+        iscore = {
+            [Leaderboard.KEY_WEALTH_RANK] = Leaderboard.EncodeWealthScore(4.2e16),
+        },
+        score = {
+            [Leaderboard.KEY_WEALTH_EXACT] = 4.2e16,
+        },
+    },
+}
+_G.clientCloud = {
+    userId = 3003,
+    BatchSet = function(_)
+        local pending = { iscore = {}, score = {} }
+        local b = {}
+        function b:SetInt(k, v) pending.iscore[k] = math.floor(v); return self end
+        function b:Set(k, v) pending.score[k] = v; return self end
+        function b:Save(_, ev)
+            mockCloudStore[3003] = mockCloudStore[3003] or { iscore = {}, score = {} }
+            for k, v in pairs(pending.iscore) do mockCloudStore[3003].iscore[k] = v end
+            for k, v in pairs(pending.score) do mockCloudStore[3003].score[k] = v end
+            if ev and ev.ok then ev.ok() end
+        end
+        return b
+    end,
+    GetRankList = function(_, key, start, count, ev)
+        local rows = {}
+        for uid, data in pairs(mockCloudStore) do
+            if data.iscore[key] then
+                rows[#rows + 1] = { userId = uid, iscore = data.iscore, score = data.score }
+            end
+        end
+        table.sort(rows, function(a, b) return a.iscore[key] > b.iscore[key] end)
+        local sliced = {}
+        for i = (start or 0) + 1, math.min(#rows, (start or 0) + (count or 20)) do
+            sliced[#sliced + 1] = rows[i]
+        end
+        if ev and ev.ok then ev.ok(sliced) end
+    end,
+    GetUserRank = function(_, uid, key, ev)
+        local rows = {}
+        for id, data in pairs(mockCloudStore) do
+            if data.iscore[key] then rows[#rows + 1] = { uid = id, val = data.iscore[key] } end
+        end
+        table.sort(rows, function(a, b) return a.val > b.val end)
+        for i, r in ipairs(rows) do
+            if r.uid == uid then
+                if ev and ev.ok then ev.ok(i, r.val) end
+                return
+            end
+        end
+        if ev and ev.ok then ev.ok(nil, 0) end
+    end,
+    GetRankTotal = function(_, key, ev)
+        local n = 0
+        for _, data in pairs(mockCloudStore) do if data.iscore[key] then n = n + 1 end end
+        if ev and ev.ok then ev.ok(n) end
+    end,
+}
+_G.GetUserNickname = function(req)
+    local map = { [1001] = "京级大佬", [2002] = "兆亿新星", [3003] = "我方首富" }
+    local out = {}
+    for _, uid in ipairs(req.userIds or {}) do
+        out[#out + 1] = { userId = uid, nickname = map[uid] or ("玩家" .. tostring(uid)) }
+    end
+    if req.onSuccess then req.onSuccess(out) end
+end
+
+local spUpdates, wlUpdates = 0, 0
+local bSpeed = Leaderboard.Fetch("speed", tSpeed2, true, function() spUpdates = spUpdates + 1 end)
+assert(bSpeed.status == "ready" and #bSpeed.items == 2 and spUpdates >= 2, "最快登顶榜应回读全服列表与昵称")
+assert(bSpeed.items[1].userId == 3003 and bSpeed.items[1].value == lockedRec and bSpeed.items[1].name == "我方首富")
+assert(bSpeed.items[2].userId == 1001 and bSpeed.items[2].value == 725 and bSpeed.items[2].name == "京级大佬")
+assert(bSpeed.myRank == 1 and bSpeed.total == 2)
+
+local bWealth = Leaderboard.Fetch("wealth", tSpeed2, true, function() wlUpdates = wlUpdates + 1 end)
+assert(bWealth.status == "ready" and #bWealth.items == 3 and wlUpdates >= 2, "总财富榜应返回 3 名玩家")
+assert(bWealth.items[1].userId == 1001 and Number.FormatRankCash(bWealth.items[1].value) == "¥3.50京")
+assert(bWealth.items[2].userId == 2002 and Number.FormatRankCash(bWealth.items[2].value) == "¥4.20兆")
+assert(bWealth.items[3].userId == 3003 and bWealth.myRank == 3 and bWealth.total == 3)
+
+Leaderboard.ResetSession()
+_G.clientCloud, _G.GetUserNickname = prevCC, prevNick
 
 print(string.format("[test_core] ALL PASS! prestiges=%d ranks=%d unlocks=%d slotWins=%d spGains=%d ads=%d",
     tIpo.totalPrestiges, #events.ranks, #events.unlocks, #events.slotWins, events.spGains, ty.adWatchCount))

@@ -21,6 +21,23 @@ local UNITS = {
     { sym = "极",   val = 1e48 },
 }
 
+-- 全服总财富榜专用单位阶梯（万亿后依次为 兆 -> 京 -> 垓 ...）
+local RANK_UNITS = {
+    { sym = "万",   val = 1e4  },
+    { sym = "亿",   val = 1e8  },
+    { sym = "万亿", val = 1e12 },
+    { sym = "兆",   val = 1e16 },
+    { sym = "京",   val = 1e20 },
+    { sym = "垓",   val = 1e24 },
+    { sym = "秭",   val = 1e28 },
+    { sym = "穰",   val = 1e32 },
+    { sym = "沟",   val = 1e36 },
+    { sym = "涧",   val = 1e40 },
+    { sym = "正",   val = 1e44 },
+    { sym = "载",   val = 1e48 },
+    { sym = "极",   val = 1e52 },
+}
+
 local function AddCommas(digits)
     if #digits <= 3 then return digits end
     local res = digits:reverse():gsub("(%d%d%d)", "%1,"):reverse()
@@ -80,8 +97,7 @@ function Number.FormatExactInt(n)
     return neg .. AddCommas(raw)
 end
 
---- 中文大数缩写（仅用于超大倍率等紧凑展示）
-function Number.FormatCompact(n)
+local function FormatWithUnits(n, units, oneDecSmallWan)
     if n == nil then return "0" end
     n = tonumber(n)
     if not n then return "0" end
@@ -101,26 +117,27 @@ function Number.FormatCompact(n)
     if n < 0 then neg = "-"; n = -n end
     if n < 10000 then
         local r = floor(n + 0.5)
+        if r == 0 then return "0" end
         if r >= 10000 then
-            return neg .. "1.0万"
+            return neg .. (oneDecSmallWan and "1.0万" or "1.00万")
         end
-        return neg .. tostring(r)
+        return neg .. (oneDecSmallWan and tostring(r) or AddCommas(tostring(r)))
     end
 
-    local idx = #UNITS
-    for i = 1, #UNITS do
-        if i == #UNITS or n < UNITS[i + 1].val then
+    local idx = #units
+    for i = 1, #units do
+        if i == #units or n < units[i + 1].val then
             idx = i
             break
         end
     end
 
-    while idx <= #UNITS do
-        local u = UNITS[idx]
+    while idx <= #units do
+        local u = units[idx]
         local scaled = n / u.val
         local txt, carry = FormatScaled3Sig(scaled)
         if not carry then
-            if u.sym == "万" and scaled < 10 then
+            if oneDecSmallWan and u.sym == "万" and scaled < 10 then
                 local r1 = floor(scaled * 10 + 0.5) / 10
                 return neg .. string.format("%.1f", r1) .. u.sym
             end
@@ -129,6 +146,21 @@ function Number.FormatCompact(n)
         idx = idx + 1
     end
     return neg .. string.format("%.2e", n)
+end
+
+--- 中文大数缩写（仅用于超大倍率等紧凑展示）
+function Number.FormatCompact(n)
+    return FormatWithUnits(n, UNITS, true)
+end
+
+--- 全服总财富榜大数单位（万 -> 亿 -> 万亿 -> 兆 -> 京 -> 垓...）
+function Number.FormatRankWealth(n)
+    return FormatWithUnits(n, RANK_UNITS, false)
+end
+
+--- 全服总财富榜带货币符号格式："¥1.25兆" / "¥8.90京"
+function Number.FormatRankCash(n)
+    return "¥" .. Number.FormatRankWealth(n)
 end
 
 --- 格式化数值：默认精确到个位（带千分位逗号，视觉冲击更震撼）

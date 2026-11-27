@@ -12,6 +12,7 @@ local Number = require("game/Number")
 local JuiceWidgets = require("game/JuiceWidgets")
 local RankLadder = require("game/RankLadder")
 local OvertakePopup = require("game/OvertakePopup")
+local Leaderboard = require("game/Leaderboard")
 
 local C, U = Skin.C, Skin.UI
 local NeoFrame, NeoButton, NeoIcon, NeoBar, AvatarIcon =
@@ -33,6 +34,7 @@ local st = {
     talentSel = 1,
     welfareSel = 1,
     rankPage = 24,
+    globalRankTab = "speed",
     -- 弹窗瞬态上下文
     offlineAmt = 0,
     offlineSec = 0,
@@ -61,6 +63,18 @@ end
 
 local function SetCellOp(w, op)
     if w and w.props.opacity ~= op then w:SetStyle({ opacity = op }) end
+end
+
+local function TruncateUtf8(str, maxChars)
+    if type(str) ~= "string" then return "" end
+    local ok, len = pcall(utf8.len, str)
+    if ok and len then
+        if len <= maxChars then return str end
+        local off = utf8.offset(str, maxChars + 1)
+        return off and (str:sub(1, off - 1) .. "…") or str
+    end
+    if #str <= maxChars then return str end
+    return str:sub(1, maxChars) .. "…"
 end
 
 local function MakeGrid(cols, gap, nodes)
@@ -229,9 +243,16 @@ local function BuildMainPage(stageWidget, cb)
         text = "风投空投", variant = "primary", minHeight = 38, paddingHorizontal = 10, fontSize = 12, visible = false,
         onClick = function() TycoonHud.OpenModal("airdrop") end,
     }
+    r.globalRankPill = NeoButton {
+        text = "全服排行", variant = "cyan", minHeight = 38, paddingHorizontal = 10, fontSize = 12,
+        onClick = function()
+            if cb.OnOpenGlobalRank then cb.OnOpenGlobalRank()
+            else TycoonHud.OpenModal("globalRank") end
+        end,
+    }
     local floatRack = UI.Column {
         position = "absolute", top = 10, right = 10, alignItems = "flex-end", gap = 8, pointerEvents = "box-none",
-        children = { r.adBoostPill, r.airdropPill },
+        children = { r.adBoostPill, r.airdropPill, r.globalRankPill },
     }
 
     -- 财富榜超越即时炫耀弹窗（显示卡通人物头像 + 财富阈值 + 被超越人物 + 赏金3倍）
@@ -759,6 +780,119 @@ local function BuildRanksModal()
 end
 
 -- ----------------------------------------------------------------------------
+-- 7B. 全服双排行榜弹窗（最快登顶时间榜 + 带万亿/兆/京单位的总财富排行榜）
+-- ----------------------------------------------------------------------------
+local function BuildGlobalRankModal(cb)
+    local r = st.refs
+    r.grRefreshBtn = NeoButton {
+        text = "刷新", variant = "dark", minHeight = 34, height = 34, minWidth = 56, paddingHorizontal = 8, fontSize = 12,
+        onClick = function()
+            if cb.OnRefreshGlobalRank then cb.OnRefreshGlobalRank() end
+        end,
+    }
+    local header = UI.Row {
+        width = "100%", height = 38, flexShrink = 0, alignItems = "center", gap = 8,
+        children = {
+            UI.Label { text = "全服排行榜", fontSize = 17, fontWeight = "bold", fontColor = U.gold },
+            UI.Spacer(),
+            r.grRefreshBtn,
+            MakeCloseBtn(function() TycoonHud.CloseModal() end),
+        },
+    }
+
+    r.grTabSpeed = NeoButton {
+        text = "最快登顶", variant = "primary", flexGrow = 1, flexBasis = 0, minHeight = 36, height = 36, fontSize = 14,
+        onClick = function()
+            if cb.OnSelectGlobalRankTab then cb.OnSelectGlobalRankTab("speed")
+            else TycoonHud.SetGlobalRankTab("speed") end
+        end,
+    }
+    r.grTabWealth = NeoButton {
+        text = "总财富榜", variant = "dark", flexGrow = 1, flexBasis = 0, minHeight = 36, height = 36, fontSize = 14,
+        onClick = function()
+            if cb.OnSelectGlobalRankTab then cb.OnSelectGlobalRankTab("wealth")
+            else TycoonHud.SetGlobalRankTab("wealth") end
+        end,
+    }
+    local tabRow = UI.Row {
+        width = "100%", height = 38, flexShrink = 0, gap = 8, alignItems = "center",
+        children = { r.grTabSpeed, r.grTabWealth },
+    }
+
+    r.grRuleLbl = UI.Label { text = "累计游戏时间冲刺世界第1", fontSize = 11, fontColor = U.textDim, width = "100%" }
+    r.grMetaLbl = UI.Label { text = "", fontSize = 11, fontWeight = "bold", fontColor = U.cyan, flexShrink = 0, textAlign = "right" }
+    local infoRow = UI.Row {
+        width = "100%", height = 22, flexShrink = 0, alignItems = "center", gap = 6, overflow = "hidden",
+        children = {
+            UI.Panel { flexGrow = 1, flexBasis = 0, minWidth = 0, overflow = "hidden", children = { r.grRuleLbl } },
+            r.grMetaLbl,
+        },
+    }
+
+    r.grEmptyLbl = UI.Label {
+        text = "正在同步全服排行...", fontSize = 13, lineHeight = 1.45, fontColor = U.textDim,
+        whiteSpace = "normal", textAlign = "center", width = "100%",
+    }
+    r.grEmptyWrap = UI.Panel {
+        width = "100%", paddingVertical = 28, paddingHorizontal = 10,
+        children = { r.grEmptyLbl },
+    }
+
+    r.grRows = {}
+    local listChildren = { r.grEmptyWrap }
+    for i = 1, Leaderboard.TOP_COUNT do
+        local rankLbl = UI.Label { text = tostring(i), fontSize = 14, fontWeight = "bold", fontColor = U.textDim, width = 34, flexShrink = 0, textAlign = "center" }
+        local nameLbl = UI.Label { text = "玩家", fontSize = 13, fontWeight = "bold", fontColor = U.text, width = "100%" }
+        local valLbl  = UI.Label { text = "0", fontSize = 13, fontWeight = "bold", fontColor = U.gold, width = 96, flexShrink = 0, textAlign = "right" }
+        local row = NeoFrame {
+            style = "card", skin = { rarity = "common", selected = false },
+            width = "100%", height = 44, minHeight = 44, flexShrink = 0,
+            paddingHorizontal = 8, flexDirection = "row", alignItems = "center", gap = 6,
+            overflow = "hidden", visible = false,
+            children = {
+                rankLbl,
+                UI.Panel { flexGrow = 1, flexBasis = 0, minWidth = 0, overflow = "hidden", children = { nameLbl } },
+                valLbl,
+            },
+        }
+        r.grRows[i] = { row = row, rankLbl = rankLbl, nameLbl = nameLbl, valLbl = valLbl }
+        listChildren[#listChildren + 1] = row
+    end
+
+    local listScroll = UI.ScrollView {
+        width = "100%", flexGrow = 1, flexBasis = 0, minHeight = 0, scrollY = true, overflow = "hidden",
+        children = {
+            UI.Column { width = "100%", gap = 5, paddingBottom = 4, children = listChildren },
+        },
+    }
+
+    r.grMyRankLbl = UI.Label { text = "未上榜", fontSize = 13, fontWeight = "bold", fontColor = U.cyan, width = 50, flexShrink = 0, textAlign = "center" }
+    r.grMyNameLbl = UI.Label { text = "我", fontSize = 13, fontWeight = "bold", fontColor = U.gold, width = "100%" }
+    r.grMySubLbl  = UI.Label { text = "累计 00:00", fontSize = 11, fontColor = U.textDim, width = "100%" }
+    r.grMyValLbl  = UI.Label { text = "00:00", fontSize = 14, fontWeight = "bold", fontColor = U.gold, width = 96, flexShrink = 0, textAlign = "right" }
+    local myCard = NeoFrame {
+        style = "slot", width = "100%", height = 66, minHeight = 66, flexShrink = 0,
+        paddingHorizontal = 10, paddingVertical = 6,
+        flexDirection = "row", alignItems = "center", gap = 6, overflow = "hidden",
+        children = {
+            r.grMyRankLbl,
+            UI.Column {
+                flexGrow = 1, flexBasis = 0, minWidth = 0, gap = 2, overflow = "hidden",
+                children = { r.grMyNameLbl, r.grMySubLbl },
+            },
+            r.grMyValLbl,
+        },
+    }
+
+    local panel = NeoFrame {
+        style = "panel", width = "92%", maxWidth = 390, height = 560, padding = 10, gap = 6,
+        flexDirection = "column",
+        children = { header, tabRow, infoRow, listScroll, myCard },
+    }
+    return MakeModalWrap(panel, true)
+end
+
+-- ----------------------------------------------------------------------------
 -- 8. 离线收益 / 商业风投空投 / 玩法公式 / 模拟广告播放器 / 转生确认弹窗
 -- ----------------------------------------------------------------------------
 local function BuildOfflineModal(cb)
@@ -985,6 +1119,7 @@ function TycoonHud.Build(stageWidget, cb, settingsModal, cloudFailModal, confirm
     st.modals.prestige        = BuildPrestigeModal(st.cb)
     st.modals.welfare         = BuildWelfareModal(st.cb)
     st.modals.ranks           = BuildRanksModal()
+    st.modals.globalRank      = BuildGlobalRankModal(st.cb)
     st.modals.offline         = BuildOfflineModal(st.cb)
     st.modals.airdrop         = BuildAirdropModal(st.cb)
     st.modals.formula         = BuildFormulaModal()
@@ -1076,6 +1211,7 @@ function TycoonHud.ResetState()
     st.talentSel = 1
     st.welfareSel = 1
     st.rankPage = max(1, ceil(RankLadder.COUNT / 5))
+    st.globalRankTab = "speed"
     st.shown = {}
     st.offlineAmt = 0
     st.offlineSec = 0
@@ -1718,6 +1854,152 @@ function TycoonHud.RefreshFormula()
     ))
 end
 
+function TycoonHud.GetGlobalRankTab()
+    return (st.globalRankTab == "wealth") and "wealth" or "speed"
+end
+
+function TycoonHud.SetGlobalRankTab(tabId)
+    st.globalRankTab = (tabId == "wealth") and "wealth" or "speed"
+    TycoonHud.RefreshGlobalRank()
+end
+
+function TycoonHud.RefreshGlobalRank()
+    local r = st.refs
+    if not r.grRows then return end
+    local tab = TycoonHud.GetGlobalRankTab()
+    local isWealth = (tab == "wealth")
+    local board = Leaderboard.GetState(tab)
+
+    if r.grTabSpeed then r.grTabSpeed:SetVariant(isWealth and "dark" or "primary") end
+    if r.grTabWealth then r.grTabWealth:SetVariant(isWealth and "primary" or "dark") end
+    if r.grRefreshBtn then r.grRefreshBtn:SetDisabled(board.status == "loading") end
+
+    SetLbl(r.grRuleLbl, isWealth
+        and "全服总身价（含万亿/兆/京）"
+        or "累计游玩突破世界第1排行")
+
+    local metaTxt = ""
+    local items = board.items or {}
+    if board.status == "loading" then
+        metaTxt = "同步中..."
+    elseif board.status == "offline" then
+        metaTxt = "离线预览"
+    elseif board.status == "error" then
+        metaTxt = "拉取失败"
+    elseif board.status == "ready" then
+        local total = max(#items, board.total or 0)
+        metaTxt = "共 " .. Number.FormatNum(total) .. " 人"
+    end
+    SetLbl(r.grMetaLbl, metaTxt)
+
+    for i = 1, Leaderboard.TOP_COUNT do
+        local slot = r.grRows[i]
+        local item = items[i]
+        if slot and item then
+            SetCellVis(slot.row, true)
+            SetLbl(slot.rankLbl, "#" .. tostring(item.rank or i))
+            local rCol = (i == 1 and U.gold) or (i == 2 and U.cyan) or (i == 3 and U.magenta) or U.textDim
+            SetLblCol(slot.rankLbl, rCol)
+
+            local rawName = item.name or (item.isMe and "我" or "匿名首富")
+            local dispName
+            if item.isMe then
+                dispName = (rawName == "我") and "我" or (TruncateUtf8(rawName, 6) .. "(我)")
+            else
+                dispName = TruncateUtf8(rawName, 8)
+            end
+            SetLbl(slot.nameLbl, dispName)
+            SetLblCol(slot.nameLbl, item.isMe and U.gold or U.text)
+
+            local valTxt = isWealth and Number.FormatRankCash(item.value or 0) or Number.FormatClock(item.value or 0)
+            SetLbl(slot.valLbl, valTxt)
+            SetLblCol(slot.valLbl, isWealth and U.gold or U.cyan)
+
+            slot.row.skin_.selected = (item.isMe == true)
+            slot.row.skin_.rarity = (i == 1 and "legendary") or (i == 2 and "epic") or (i == 3 and "rare") or "common"
+        elseif slot then
+            SetCellVis(slot.row, false)
+        end
+    end
+
+    local hasItems = (#items > 0)
+    SetCellVis(r.grEmptyWrap, not hasItems)
+    if not hasItems then
+        local emptyMsg
+        if board.status == "loading" then
+            emptyMsg = "正在从云端同步全服排行榜..."
+        elseif board.status == "offline" then
+            emptyMsg = "当前处于离线或本地预览模式\n登录后即可查看全服最快登顶与万亿/兆/京总财富榜\n下方卡片已实时记录您的本地成绩"
+        elseif board.status == "error" then
+            emptyMsg = (board.message and board.message ~= "") and board.message or "全服排行拉取失败，点击右上角【刷新】重试"
+        elseif isWealth then
+            emptyMsg = "全服总财富榜虚位以待！\n推进金币机积累总身价即可上榜"
+        else
+            emptyMsg = "全服暂无人登顶世界第 1！\n累计游戏时间最短突破世界第 1 即可夺得榜首"
+        end
+        SetLbl(r.grEmptyLbl, emptyMsg)
+    end
+
+    local ty = st.lastTycoon
+    local playSec = ty and (ty.playSeconds or 0) or 0
+    local w1 = ty and (ty.world1TimeSec or 0) or 0
+    local hasRank1 = ty and ((ty.rankIdx or 0) >= #Config.RANKS)
+    local myNick = Leaderboard.GetMyNickname()
+    SetLbl(r.grMyNameLbl, (myNick == "我") and "我的当前记录" or (TruncateUtf8(myNick, 8) .. "（我）"))
+
+    local online = Leaderboard.IsAvailable()
+    if isWealth then
+        if board.myRank then
+            SetLbl(r.grMyRankLbl, "第 " .. tostring(board.myRank) .. " 名")
+            SetLblCol(r.grMyRankLbl, U.gold)
+        elseif not online then
+            SetLbl(r.grMyRankLbl, "本地")
+            SetLblCol(r.grMyRankLbl, U.textDim)
+        else
+            SetLbl(r.grMyRankLbl, "未上榜")
+            SetLblCol(r.grMyRankLbl, U.cyan)
+        end
+        SetLbl(r.grMySubLbl, "累计游戏 " .. Number.FormatClock(playSec))
+        SetLbl(r.grMyValLbl, Number.FormatRankCash(ty and (ty.lifetimeCash or 0) or 0))
+        SetLblCol(r.grMyValLbl, U.gold)
+    else
+        if board.myRank then
+            SetLbl(r.grMyRankLbl, "第 " .. tostring(board.myRank) .. " 名")
+            SetLblCol(r.grMyRankLbl, U.gold)
+        elseif not online then
+            SetLbl(r.grMyRankLbl, hasRank1 and "本地" or "未登顶")
+            SetLblCol(r.grMyRankLbl, hasRank1 and U.textDim or U.cyan)
+        elseif hasRank1 and w1 > 0 then
+            SetLbl(r.grMyRankLbl, "未进榜")
+            SetLblCol(r.grMyRankLbl, U.textDim)
+        else
+            SetLbl(r.grMyRankLbl, "未登顶")
+            SetLblCol(r.grMyRankLbl, U.cyan)
+        end
+
+        if w1 > 0 then
+            SetLbl(r.grMySubLbl, "已登顶 · 总玩 " .. Number.FormatClock(playSec))
+            SetLbl(r.grMyValLbl, Number.FormatClock(w1))
+            SetLblCol(r.grMyValLbl, U.gold)
+        elseif hasRank1 then
+            local cloudVal = board.myCloudValue
+            if cloudVal and cloudVal > 0 then
+                SetLbl(r.grMySubLbl, "云端最佳 · 总玩 " .. Number.FormatClock(playSec))
+                SetLbl(r.grMyValLbl, Number.FormatClock(cloudVal))
+                SetLblCol(r.grMyValLbl, U.gold)
+            else
+                SetLbl(r.grMySubLbl, "历史档已登顶(未计时)")
+                SetLbl(r.grMyValLbl, "--:--")
+                SetLblCol(r.grMyValLbl, U.textDim)
+            end
+        else
+            SetLbl(r.grMySubLbl, "已玩 " .. Number.FormatClock(playSec) .. " · 冲第1")
+            SetLbl(r.grMyValLbl, Number.FormatClock(playSec))
+            SetLblCol(r.grMyValLbl, U.cyan)
+        end
+    end
+end
+
 function TycoonHud.RefreshCurrentModal()
     local c = st.curModal
     if c == "machine" then TycoonHud.RefreshMachine()
@@ -1726,6 +2008,7 @@ function TycoonHud.RefreshCurrentModal()
     elseif c == "prestige" then TycoonHud.RefreshPrestige()
     elseif c == "welfare" then TycoonHud.RefreshWelfare()
     elseif c == "ranks" then TycoonHud.RefreshRanks()
+    elseif c == "globalRank" then TycoonHud.RefreshGlobalRank()
     elseif c == "airdrop" then TycoonHud.RefreshAirdrop()
     elseif c == "formula" then TycoonHud.RefreshFormula()
     end
