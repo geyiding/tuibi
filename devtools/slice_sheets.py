@@ -452,6 +452,11 @@ def _find_white_splits(img: Image.Image, count: int, axis: int) -> list[int]:
     return cuts
 
 
+def _is_legacy_coin(spec: CellSpec) -> bool:
+    """币面已改由 devtools/slice_coins_hd.py 从高清正俯视图切出，这里不再覆盖。"""
+    return spec.rel_out.startswith("coins/")
+
+
 def _slice_one_sheet(src_path: Path, sheet: SheetSpec, out_root: Path) -> int:
     img = Image.open(src_path)
     sw, sh = img.size
@@ -469,6 +474,8 @@ def _slice_one_sheet(src_path: Path, sheet: SheetSpec, out_root: Path) -> int:
 
     written = 0
     for idx, spec in enumerate(sheet.cells):
+        if _is_legacy_coin(spec):
+            continue
         col = idx % sheet.cols
         row = idx // sheet.cols
         x_cuts = row_x_cuts[row]
@@ -568,13 +575,16 @@ def run_self_test() -> None:
             img.convert("RGB").save(raw / sheet.filename, format="PNG")
 
         sheets_n, files_n = slice_all(raw, out)
-        expected_base = sum(len(s.cells) for s in SHEETS)
+        expected_base = sum(1 for s in SHEETS for c in s.cells if not _is_legacy_coin(c))
         expected_total = expected_base + len(BUTTON_VARIANTS)
         assert sheets_n == len(SHEETS), f"expected {len(SHEETS)} sheets, got {sheets_n}"
-        assert files_n == expected_total == 72, f"expected 72 outputs, got {files_n}"
+        assert files_n == expected_total == 47, f"expected 47 outputs, got {files_n}"
         for sheet in SHEETS:
             for spec in sheet.cells:
                 p = out / spec.rel_out
+                if _is_legacy_coin(spec):
+                    assert not p.exists(), f"legacy coin should be skipped: {p}"
+                    continue
                 assert p.is_file(), f"missing {p}"
                 im = Image.open(p)
                 assert im.size == (spec.width, spec.height), f"{p} size {im.size} != {(spec.width, spec.height)}"

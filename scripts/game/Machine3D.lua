@@ -99,6 +99,8 @@ end
 -- 机位俯角约 31°，平躺的币面在屏幕上纵向被压扁约一半；普通三线性过滤按“压得最狠”的方向选 mip，
 -- 会把整张 256 贴图降到 ~45px 级别再采样，横向也一起糊掉。各向异性过滤沿压缩方向多次采样，保留横向清晰度。
 local COIN_TEX_ANISOTROPY = 8
+-- 币面亮度倍率：新版高光贴图本身已足够亮，1.0 = 按原图颜色显示；觉得暗可在 1.0~1.2 之间微调（过高会让高光过曝发白）
+local COIN_FACE_BRIGHTNESS = 1.0
 local function EnableAnisotropic(tex)
     if not tex then return end
     if FILTER_ANISOTROPIC ~= nil then
@@ -121,7 +123,7 @@ local function MakeTexturedUnlit(texPath, alphaMode, tintCol)
             mat:SetSurfaceTexture("albedo_map", tex)
         end
         if Variant then
-            mat:SetShaderParameter("brightness", Variant(alphaMode and 1.28 or 1.12))
+            mat:SetShaderParameter("brightness", Variant(alphaMode and COIN_FACE_BRIGHTNESS or 1.12))
         end
         mat.cullMode = CULL_NONE
         return mat, true
