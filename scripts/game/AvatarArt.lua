@@ -7,6 +7,24 @@
 local Skin = require("game/Skin")
 local C = Skin.C
 local Col = Skin.Col
+-- 颜色常量（Skin.Col 按表缓存，绘制时严禁现写颜色字面量）
+local AV_COL_1 = { 122, 46, 48 }
+local AV_COL_2 = { 128, 28, 42 }
+local AV_COL_3 = { 14, 18, 30 }
+local AV_COL_4 = { 168, 22, 36 }
+local AV_COL_5 = { 18, 24, 44 }
+local AV_COL_6 = { 180, 194, 214 }
+local AV_COL_7 = { 196, 34, 52 }
+local AV_COL_8 = { 22, 112, 136 }
+local AV_COL_9 = { 22, 24, 34 }
+local AV_COL_10 = { 22, 30, 52 }
+local AV_COL_11 = { 226, 92, 136 }
+local AV_COL_12 = { 242, 128, 36 }
+local AV_COL_13 = { 255, 118, 132 }
+local AV_COL_14 = { 255, 146, 178 }
+local AV_COL_15 = { 28, 34, 48 }
+local AV_COL_16 = { 34, 42, 62 }
+local AV_COL_17 = { 44, 186, 92 }
 local min, max, sin, cos, pi = math.min, math.max, math.sin, math.cos, math.pi
 
 local AvatarArt = {}
@@ -67,7 +85,7 @@ local function DrawPropBadge(nvg, prop, bx, by, br, tierCol)
     elseif prop == "gpu" then
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, -s * 0.95, -s * 0.52, s * 1.9, s * 1.04, 2)
-        nvgFillColor(nvg, Col({ 44, 186, 92 }, 255))
+        nvgFillColor(nvg, Col(AV_COL_17, 255))
         nvgFill(nvg)
         nvgBeginPath(nvg)
         nvgCircle(nvg, -s * 0.38, 0, s * 0.32)
@@ -104,7 +122,7 @@ local function DrawPropBadge(nvg, prop, bx, by, br, tierCol)
     elseif prop == "penguin" then
         nvgBeginPath(nvg)
         nvgEllipse(nvg, 0, s * 0.08, s * 0.65, s * 0.82)
-        nvgFillColor(nvg, Col({ 28, 34, 48 }, 255))
+        nvgFillColor(nvg, Col(AV_COL_15, 255))
         nvgFill(nvg)
         nvgBeginPath(nvg)
         nvgEllipse(nvg, 0, s * 0.22, s * 0.42, s * 0.55)
@@ -137,7 +155,7 @@ local function DrawPropBadge(nvg, prop, bx, by, br, tierCol)
     elseif prop == "ball" then
         nvgBeginPath(nvg)
         nvgCircle(nvg, 0, 0, s * 0.82)
-        nvgFillColor(nvg, Col({ 242, 128, 36 }, 255))
+        nvgFillColor(nvg, Col(AV_COL_12, 255))
         nvgFill(nvg)
         nvgBeginPath(nvg)
         nvgMoveTo(nvg, -s * 0.8, 0); nvgLineTo(nvg, s * 0.8, 0)
@@ -178,16 +196,16 @@ local function DrawPropBadge(nvg, prop, bx, by, br, tierCol)
     elseif prop == "pig" then
         nvgBeginPath(nvg)
         nvgEllipse(nvg, 0, s * 0.05, s * 0.78, s * 0.62)
-        nvgFillColor(nvg, Col({ 255, 146, 178 }, 255))
+        nvgFillColor(nvg, Col(AV_COL_14, 255))
         nvgFill(nvg)
         nvgBeginPath(nvg)
         nvgCircle(nvg, 0, s * 0.14, s * 0.25)
-        nvgFillColor(nvg, Col({ 226, 92, 136 }, 255))
+        nvgFillColor(nvg, Col(AV_COL_11, 255))
         nvgFill(nvg)
     elseif prop == "phone" then
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, -s * 0.48, -s * 0.82, s * 0.96, s * 1.64, s * 0.18)
-        nvgFillColor(nvg, Col({ 34, 42, 62 }, 255))
+        nvgFillColor(nvg, Col(AV_COL_16, 255))
         nvgFill(nvg)
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, -s * 0.36, -s * 0.64, s * 0.72, s * 1.24, 1)
@@ -368,7 +386,7 @@ local function DrawAnonMedal(nvg, entry, av, cx, cy, r, opts)
         local bw, bh = r * 0.92, max(12, r * 0.36)
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, -bw * 0.5, -bh * 0.5, bw, bh, 3)
-        nvgFillColor(nvg, Col({ 196, 34, 52 }, 240))
+        nvgFillColor(nvg, Col(AV_COL_7, 240))
         nvgFill(nvg)
         nvgStrokeColor(nvg, Col(C.white, 245))
         nvgStrokeWidth(nvg, 1.3)
@@ -455,7 +473,7 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
         nvgBezierTo(nvg, cx - r * 0.44, cy + r * 0.24, cx + r * 0.44, cy + r * 0.24, cx + r * 0.62, cy + r * 0.60)
         nvgBezierTo(nvg, cx + r * 0.40, cy + r * 0.90, cx - r * 0.40, cy + r * 0.90, cx - r * 0.62, cy + r * 0.60)
         nvgClosePath(nvg)
-        nvgFillColor(nvg, Col({ 18, 24, 44 }, 235))
+        nvgFillColor(nvg, Col(AV_COL_5, 235))
         nvgFill(nvg)
         nvgStrokeColor(nvg, Col(tierCol, 220))
         nvgStrokeWidth(nvg, max(1.3, r * 0.055))
@@ -464,7 +482,7 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
         -- 剪影头部
         nvgBeginPath(nvg)
         nvgCircle(nvg, cx, cy - r * 0.14, r * 0.28)
-        nvgFillColor(nvg, Col({ 22, 30, 52 }, 245))
+        nvgFillColor(nvg, Col(AV_COL_10, 245))
         nvgFill(nvg)
         nvgStrokeColor(nvg, Col(tierCol, 235))
         nvgStrokeWidth(nvg, max(1.4, r * 0.06))
@@ -499,7 +517,7 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
             local bw, bh = r * 0.92, max(12, r * 0.36)
             nvgBeginPath(nvg)
             nvgRoundedRect(nvg, -bw * 0.5, -bh * 0.5, bw, bh, 3)
-            nvgFillColor(nvg, Col({ 22, 112, 136 }, 235))
+            nvgFillColor(nvg, Col(AV_COL_8, 235))
             nvgFill(nvg)
             nvgStrokeColor(nvg, Col(C.cyan, 245))
             nvgStrokeWidth(nvg, 1.3)
@@ -549,7 +567,7 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
         nvgMoveTo(nvg, cx - r * 0.20, shY - r * 0.08)
         nvgLineTo(nvg, cx, cy + r * 0.72)
         nvgLineTo(nvg, cx + r * 0.20, shY - r * 0.08)
-        nvgStrokeColor(nvg, Col({ 180, 194, 214 }, 230))
+        nvgStrokeColor(nvg, Col(AV_COL_6, 230))
         nvgStrokeWidth(nvg, max(1.2, r * 0.05))
         nvgStroke(nvg)
     elseif av.outfit == "jersey" or av.outfit == "glam" then
@@ -617,7 +635,7 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
     nvgBeginPath(nvg)
     nvgEllipse(nvg, cx - hRx * 0.56, hCy + r * 0.12, r * 0.11, r * 0.06)
     nvgEllipse(nvg, cx + hRx * 0.56, hCy + r * 0.12, r * 0.11, r * 0.06)
-    nvgFillColor(nvg, Col({ 255, 118, 132 }, shocked and 130 or 85))
+    nvgFillColor(nvg, Col(AV_COL_13, shocked and 130 or 85))
     nvgFill(nvg)
 
     -- 8. 胡须（腮/山羊胡/八字胡/满脸银须）
@@ -685,7 +703,7 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
         nvgBeginPath(nvg)
         nvgCircle(nvg, cx - eyeX, eyeY, r * 0.068)
         nvgCircle(nvg, cx + eyeX, eyeY, r * 0.068)
-        nvgFillColor(nvg, Col({ 22, 24, 34 }, 255))
+        nvgFillColor(nvg, Col(AV_COL_9, 255))
         nvgFill(nvg)
         nvgBeginPath(nvg)
         nvgCircle(nvg, cx - eyeX - r * 0.02, eyeY - r * 0.02, r * 0.022)
@@ -708,7 +726,7 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
     nvgBeginPath(nvg)
     if shocked then
         nvgEllipse(nvg, cx, mouthY, r * 0.11, r * 0.13)
-        nvgFillColor(nvg, Col({ 128, 28, 42 }, 255))
+        nvgFillColor(nvg, Col(AV_COL_2, 255))
         nvgFill(nvg)
         nvgStrokeColor(nvg, Col(Darker(skinCol, 0.55), 240))
         nvgStrokeWidth(nvg, max(1.0, r * 0.04))
@@ -716,7 +734,7 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
     else
         nvgMoveTo(nvg, cx - r * 0.14, mouthY - r * 0.01)
         nvgQuadTo(nvg, cx, mouthY + r * 0.10, cx + r * 0.16, mouthY - r * 0.04)
-        nvgStrokeColor(nvg, Col({ 122, 46, 48 }, 245))
+        nvgStrokeColor(nvg, Col(AV_COL_1, 245))
         nvgStrokeWidth(nvg, max(1.2, r * 0.05))
         nvgStroke(nvg)
     end
@@ -727,7 +745,7 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, cx - eyeX - glW * 0.5, eyeY - glH * 0.5, glW, glH, r * 0.04)
         nvgRoundedRect(nvg, cx + eyeX - glW * 0.5, eyeY - glH * 0.5, glW, glH, r * 0.04)
-        nvgFillColor(nvg, Col({ 14, 18, 30 }, 248))
+        nvgFillColor(nvg, Col(AV_COL_3, 248))
         nvgFill(nvg)
         nvgStrokeColor(nvg, Col(C.gold, 240))
         nvgStrokeWidth(nvg, max(1.0, r * 0.045))
@@ -850,7 +868,7 @@ function AvatarArt.Draw(nvg, entry, cx, cy, radius, opts)
         local bw, bh = r * 0.92, max(12, r * 0.36)
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, -bw * 0.5, -bh * 0.5, bw, bh, 3)
-        nvgFillColor(nvg, Col({ 168, 22, 36 }, 235))
+        nvgFillColor(nvg, Col(AV_COL_4, 235))
         nvgFill(nvg)
         nvgStrokeColor(nvg, Col(C.gold, 245))
         nvgStrokeWidth(nvg, 1.3)

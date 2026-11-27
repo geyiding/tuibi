@@ -33,6 +33,17 @@ local ORANGE = { 255, 132, 44 }
 local GLASS = { 140, 200, 255 }
 local SLOT_WELL_COL = { 8, 10, 26 }
 
+-- 2D 兜底机台颜色常量（避免每帧新建颜色表）
+local M2D_COL_1 = { 12, 24, 54 }
+local M2D_COL_2 = { 16, 18, 42 }
+local M2D_COL_3 = { 18, 22, 46 }
+local M2D_COL_4 = { 22, 18, 52 }
+local M2D_COL_5 = { 22, 26, 56 }
+local M2D_COL_6 = { 34, 42, 82 }
+local M2D_COL_7 = { 52, 66, 124 }
+local M2D_COL_8 = { 78, 96, 164 }
+local M2D_COL_9 = { 9, 11, 24 }
+
 local Stage = UI.Widget:Extend("Stage")
 
 local function PickEvent(a, b)
@@ -225,7 +236,7 @@ function Stage:DrawMachine2D(nvg, run, phys, t, accent, trim, themeIdx, boostOn,
     -- 机台外壳 + 跑马灯
     nvgBeginPath(nvg)
     nvgRoundedRect(nvg, 10, 6, W - 20, H - 12, 16)
-    nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, 6, 0, H - 6, Col({ 18, 22, 46 }, 250), Col({ 9, 11, 24 }, 255)))
+    nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, 6, 0, H - 6, Col(M2D_COL_3, 250), Col(M2D_COL_9, 255)))
     nvgFill(nvg)
     nvgStrokeColor(nvg, Col((run.feverActive or boostOn) and C.gold or accent, 220))
     nvgStrokeWidth(nvg, 2.5)
@@ -236,7 +247,7 @@ function Stage:DrawMachine2D(nvg, run, phys, t, accent, trim, themeIdx, boostOn,
     if not Art.DrawSprite(nvg, bgKey, slotX, S.SLOT_TOP, slotW, S.DECK_TOP_Y - S.SLOT_TOP, 0.85) then
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, slotX, S.SLOT_TOP, slotW, S.DECK_TOP_Y - S.SLOT_TOP + 6, 10)
-        nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, S.SLOT_TOP, 0, S.DECK_TOP_Y, Col({ 22, 18, 52 }, 255), Col({ 12, 24, 54 }, 255)))
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, S.SLOT_TOP, 0, S.DECK_TOP_Y, Col(M2D_COL_4, 255), Col(M2D_COL_1, 255)))
         nvgFill(nvg)
     end
 
@@ -268,7 +279,7 @@ function Stage:DrawMachine2D(nvg, run, phys, t, accent, trim, themeIdx, boostOn,
     nvgLineTo(nvg, botR, S.DECK_BOT_Y + 14)
     nvgLineTo(nvg, botL, S.DECK_BOT_Y + 14)
     nvgClosePath(nvg)
-    nvgFillColor(nvg, Col({ 16, 18, 42 }, 255))
+    nvgFillColor(nvg, Col(M2D_COL_2, 255))
     nvgFill(nvg)
 
     nvgBeginPath(nvg)
@@ -278,7 +289,7 @@ function Stage:DrawMachine2D(nvg, run, phys, t, accent, trim, themeIdx, boostOn,
     nvgLineTo(nvg, botL, S.DECK_BOT_Y)
     nvgClosePath(nvg)
     nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, S.DECK_TOP_Y, 0, S.DECK_BOT_Y,
-        Col({ 34, 42, 82 }, 255), Col({ 22, 26, 56 }, 255)))
+        Col(M2D_COL_6, 255), Col(M2D_COL_5, 255)))
     nvgFill(nvg)
 
     nvgBeginPath(nvg)
@@ -348,7 +359,7 @@ function Stage:DrawMachine2D(nvg, run, phys, t, accent, trim, themeIdx, boostOn,
     if not drawnPusher then
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, px, pBack, pW, py - pBack, 6)
-        nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, pBack, 0, py, Col({ 52, 66, 124 }, 255), Col({ 78, 96, 164 }, 255)))
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, pBack, 0, py, Col(M2D_COL_7, 255), Col(M2D_COL_8, 255)))
         nvgFill(nvg)
         nvgBeginPath(nvg)
         nvgRect(nvg, px + 2, py - 9, pW - 4, 9)

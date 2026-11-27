@@ -28,6 +28,11 @@ local CELL_TOP = { 232, 234, 250 }
 local CELL_BOT = { 170, 176, 208 }
 local WELL = { 8, 10, 26 }
 local GOLD_DEEP = { 196, 120, 20 }
+-- 颜色常量（Skin.Col 按表缓存 NVG 颜色，绘制循环里严禁现写 { r, g, b } 字面量，否则每帧产生垃圾）
+local CHEST_BODY_TOP, CHEST_BODY_BOT = { 176, 92, 40 }, { 110, 52, 22 }
+local CHEST_LID_TOP = { 255, 226, 110 }
+local CENTER_TOP = { 70, 24, 120 }
+local LAMP_OFF, LAMP_NEXT, LAMP_RIM_OFF = { 44, 40, 70 }, { 120, 90, 20 }, { 90, 86, 130 }
 local DEFAULT_LOCK_AT = { 0.45, 0.72, 0.95 }
 -- 外圈 8 格（顺时针）对应的九宫格编号
 local RING = { 1, 2, 3, 6, 9, 8, 7, 4 }
@@ -49,6 +54,7 @@ function JackpotPanel.New()
         relShown = 0.0, relKey = -1, relTxt = "",
         bannerKey = "", bannerTxt = "",
         hintKey = -2, hintTxt = "",
+        linePts = { { 0, 0 }, { 0, 0 }, { 0, 0 } },
         rect = { x = 0, y = 0, w = 0, h = 0 },
     }
 end
@@ -79,12 +85,12 @@ function JackpotPanel.DrawChest(nvg, cx, cy, r, glow)
     -- 箱体
     nvgBeginPath(nvg)
     nvgRoundedRect(nvg, x0, y0, w, h * 0.72, r * 0.16)
-    nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, y0, 0, y0 + h * 0.72, Col({ 176, 92, 40 }, 255), Col({ 110, 52, 22 }, 255)))
+    nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, y0, 0, y0 + h * 0.72, Col(CHEST_BODY_TOP, 255), Col(CHEST_BODY_BOT, 255)))
     nvgFill(nvg)
     -- 箱盖
     nvgBeginPath(nvg)
     nvgRoundedRect(nvg, x0 - r * 0.06, y0 - h * 0.30, w + r * 0.12, h * 0.36, r * 0.22)
-    nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, y0 - h * 0.30, 0, y0 + h * 0.06, Col({ 255, 226, 110 }, 255), Col(GOLD_DEEP, 255)))
+    nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, y0 - h * 0.30, 0, y0 + h * 0.06, Col(CHEST_LID_TOP, 255), Col(GOLD_DEEP, 255)))
     nvgFill(nvg)
     -- 金箍
     nvgBeginPath(nvg)
@@ -208,15 +214,15 @@ local function DrawSlotGrid(st, nvg, run, gx, gy, cell, gap, u, t, font, drawSym
     local wl = (not spin) and run.slotWinLine
     if wl and LINES[wl] then
         local ln = LINES[wl]
-        local reels = run.slotReels or {}
+        local reels = run.slotReels or LINES[1]
         local prizeCol = C.gold
         local sCfg = Config.SLOT_SYMBOLS[reels[1] or 1]
         if sCfg and sCfg.col then prizeCol = sCfg.col end
         local flash = (run.slotFlashT or 0) > 0 and (0.6 + 0.4 * sin(t * 18)) or 0.75
-        local pts = {}
+        local pts = st.linePts
         for k = 1, 3 do
             local x, y = CellRect(gx, gy, cell, gap, ln[k])
-            pts[k] = { x + cell * 0.5, y + cell * 0.5 }
+            pts[k][1], pts[k][2] = x + cell * 0.5, y + cell * 0.5
             SetAdditive(nvg, true)
             nvgBeginPath(nvg)
             nvgRoundedRect(nvg, x, y, cell, cell, cell * 0.16)
@@ -309,7 +315,7 @@ local function DrawLotteryBoard(st, nvg, run, gx, gy, cell, gap, u, t, font)
     if not (HasSprite("slot_center") and Art.DrawSprite(nvg, "slot_center", x, y, cell, cell, 1.0)) then
         nvgBeginPath(nvg)
         nvgRoundedRect(nvg, x, y, cell, cell, cell * 0.16)
-        nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, y, 0, y + cell, Col({ 70, 24, 120 }, 255), Col(INK, 255)))
+        nvgFillPaint(nvg, nvgLinearGradient(nvg, 0, y, 0, y + cell, Col(CENTER_TOP, 255), Col(INK, 255)))
         nvgFill(nvg)
     end
     nvgBeginPath(nvg)
@@ -517,10 +523,10 @@ function JackpotPanel.Draw(st, nvg, run, l, topY, u, t, dt, font, drawSym)
             nvgFillPaint(nvg, nvgRadialGradient(nvg, lx - lampR * 0.3, lampY - lampR * 0.3, 0, lampR * 1.3, Col(C.white, 255), Col(lc, 255)))
         else
             local blinkNext = nearFull and li == lamps + 1 and (floor(t * 6) % 2 == 0)
-            nvgFillColor(nvg, Col(blinkNext and { 120, 90, 20 } or { 44, 40, 70 }, 255))
+            nvgFillColor(nvg, Col(blinkNext and LAMP_NEXT or LAMP_OFF, 255))
         end
         nvgFill(nvg)
-        nvgStrokeColor(nvg, Col(on and C.white or { 90, 86, 130 }, 200))
+        nvgStrokeColor(nvg, Col(on and C.white or LAMP_RIM_OFF, 200))
         nvgStrokeWidth(nvg, 1)
         nvgStroke(nvg)
     end

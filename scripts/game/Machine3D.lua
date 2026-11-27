@@ -161,7 +161,7 @@ end
 -- ----------------------------------------------------------------------------
 -- 逻辑坐标 (360×600) <-> 3D 世界坐标 (米, +X右 +Y上 +Z向机台内部, 相机在 -Z 看向 +Z)
 -- ----------------------------------------------------------------------------
-local function LogicToWorld3D(lx, ly, zone, lz, onPusher)
+local function LogicToWorldXYZ(lx, ly, zone, lz, onPusher)
     lz = lz or 0
     -- Physics 的坠落态叫 "falling"：越过前沿的进前方出币槽，侧漏的从台面两侧翻落
     if zone == "falling" then
@@ -174,21 +174,21 @@ local function LogicToWorld3D(lx, ly, zone, lz, onPusher)
             local wx = nx * 1.40
             local wz = 1.50 - (ly - S.DECK_TOP_Y) * 0.01
             local wy = 0.036 - over * 3.2 - max(0, ly - S.SIDE_GAP_Y) * 0.004
-            return Vector3(wx, wy, wz)
+            return wx, wy, wz
         end
     end
     if zone == "slot" then
         local wx = ((lx - 180) / 124.0) * 1.36
         local wy = 0.28 + (S.DECK_TOP_Y - ly) * 0.0101
         local wz = 1.37 + lz * 0.004
-        return Vector3(wx, wy, wz)
+        return wx, wy, wz
     elseif zone == "dropping" then
         local progress = max(0, (ly - S.DECK_BOT_Y) / max(1, (S.DROP_END_Y - S.DECK_BOT_Y)))
         local nx = (lx - 180) / S.DECK_BOT_HALF
         local wx = nx * 1.40
         local wy = 0.045 - progress * 0.88 + lz * 0.008
         local wz = -1.52 - progress * 0.34
-        return Vector3(wx, wy, wz)
+        return wx, wy, wz
     else
         local hw = Physics.TrapezoidHalfW(ly)
         local nx = (lx - 180) / max(1, hw)
@@ -196,7 +196,22 @@ local function LogicToWorld3D(lx, ly, zone, lz, onPusher)
         local wz = 1.50 - (ly - S.DECK_TOP_Y) * 0.01
         local baseY = onPusher and 0.245 or 0.036
         local wy = baseY + lz * 0.009
-        return Vector3(wx, wy, wz)
+        return wx, wy, wz
+    end
+end
+
+local function LogicToWorld3D(lx, ly, zone, lz, onPusher)
+    return Vector3(LogicToWorldXYZ(lx, ly, zone, lz, onPusher))
+end
+
+--- 把坐标写进节点位置：引擎支持改 Vector3 字段时复用同一个对象（每帧上百枚硬币零新建），否则退回新建
+local function SetNodePos(node, x, y, z)
+    local v = M.tmpPos
+    if v then
+        v.x, v.y, v.z = x, y, z
+        node.position = v
+    else
+        node.position = Vector3(x, y, z)
     end
 end
 
@@ -591,6 +606,17 @@ function Machine3D.Init(tycoon)
     end
     M.models = { box = box, cyl = cyl, sphere = sphere, plane = plane }
 
+    -- 探测能否原地改写 Vector3 字段（可以则复用临时向量，避免每帧新建上百个引擎对象引发 GC 卡顿）
+    M.tmpPos = nil
+    local okMut = pcall(function()
+        local v = Vector3(0, 0, 0)
+        v.x, v.y, v.z = 1.25, -2.5, 3.75
+        if math.abs(v.x - 1.25) > 1e-5 or math.abs(v.y + 2.5) > 1e-5 or math.abs(v.z - 3.75) > 1e-5 then
+            error("Vector3 fields are read-only")
+        end
+    end)
+    if okMut then M.tmpPos = Vector3(0, 0, 0) end
+
     local scene = Scene()
     scene:CreateComponent("Octree")
     M.scene = scene
@@ -869,15 +895,15 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
 
     -- 5. 往复推板、发射器角度、移动幸运门位置同步
     local pusherFrontZ = 1.50 - ((phys.pusherY or S.PUSHER_Y_MIN) - S.DECK_TOP_Y) * 0.01
-    M.pusherNode.position = Vector3(0, 0.0, pusherFrontZ)
+    SetNodePos(M.pusherNode, 0, 0.0, pusherFrontZ)
 
     M.launcherNode.rotation = Quaternion(phys.launchAngleDeg or 0, Vector3.FORWARD)
 
     local gx = (((phys.gateX or 180) - 180) / 124.0) * 1.36
     local gHalfWorld = ((phys.gateClosed and 4 or (S.GATE_BASE_HALF * (phys.gateWidthScale or 1))) / 124.0) * 1.36
-    M.gateNode.position = Vector3(gx, 0.51, 1.31)
-    M.gateLeftNode.position = Vector3(-gHalfWorld - 0.09, 0, 0)
-    M.gateRightNode.position = Vector3(gHalfWorld + 0.09, 0, 0)
+    SetNodePos(M.gateNode, gx, 0.51, 1.31)
+    SetNodePos(M.gateLeftNode, -gHalfWorld - 0.09, 0, 0)
+    SetNodePos(M.gateRightNode, gHalfWorld + 0.09, 0, 0)
     M.gateBeamNode:SetEnabled(not phys.gateClosed)
     if not phys.gateClosed then
         M.gateBeamNode.scale = Vector3(max(0.15, gHalfWorld * 2.0), 0.14, 0.06)
@@ -903,7 +929,7 @@ function Machine3D.Update(dt, tycoon, fx, timeSec)
             if czZone ~= slot.lastZone or cOnPush ~= slot.lastOnPusher
                 or (cx - slot.lastX) * (cx - slot.lastX) + (cy - slot.lastY) * (cy - slot.lastY) + (cz - slot.lastZ) * (cz - slot.lastZ) > posThresh then
                 slot.lastX, slot.lastY, slot.lastZ = cx, cy, cz
-                slot.node.position = LogicToWorld3D(cx, cy, czZone, cz, cOnPush)
+                SetNodePos(slot.node, LogicToWorldXYZ(cx, cy, czZone, cz, cOnPush))
             end
 
             local dia = (c.r or S.COIN_RADIUS) * 2.0 * 0.0096
