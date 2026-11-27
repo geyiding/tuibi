@@ -451,7 +451,7 @@ Config.MACHINE_UPGRADES = {
     { id = "auto_rate",    name = "自动投币",   short = "自动射速", relic = "double_barrel", baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 25,
       desc = "每秒自动持续投币，等级越高永动射速越快。" },
     { id = "pusher_turbo", name = "涡轮推板",   short = "推板马力", relic = "turbo_pusher",  baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 20,
-      desc = "加快推板往复速度并加大前推力，金币瀑布更猛。" },
+      multPerLv = 1.010, desc = "加快推板往复速度并加大前推力，金币瀑布更猛；全币收益每级 ×1.01。" },
     { id = "global_mult",  name = "印钞倍率",   short = "全币倍率", relic = "vip_card",      baseSp = 2, spStep = 0.020, spQuad = 0, maxLv = 300,
       desc = "全场所有掉落与特效收益每级永久 ×1.0205。" },
     { id = "multi_shot",   name = "多管齐射",   short = "双发齐射", relic = "first_surge",   baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 15,
@@ -459,11 +459,11 @@ Config.MACHINE_UPGRADES = {
     { id = "crit_power",   name = "暴击增幅",   short = "暴击爆伤", relic = "crit_seal",     baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 20,
       desc = "大幅提升暴击触发率与金光暴击伤害倍数。" },
     { id = "gate_master",  name = "黄金幸运门", short = "幸运门",   relic = "wide_gate",     baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 20,
-      desc = "加宽移动幸运门，提升过门币雨与幸运三连高倍概率。" },
+      multPerLv = 1.010, desc = "加宽移动幸运门，提升过门币雨与幸运三连高倍概率；全币收益每级 ×1.01。" },
     { id = "peg_gold",     name = "黄金钉阵",   short = "黄金钉阵", relic = "golden_pegs",   baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 11,
-      desc = "每级转化 1 颗金色倍增钉并提升撞钉收益（上限 11 级全覆盖）。" },
+      multPerLv = 1.010, desc = "每级转化 1 颗金色倍增钉并提升撞钉收益（上限 11 级全覆盖）；全币收益每级 ×1.01。" },
     { id = "fever_drive",  name = "狂欢超频",   short = "狂欢超频", relic = "fever_amp",     baseSp = 2, spStep = 0.032, spQuad = 0, maxLv = 20,
-      desc = "加快狂欢充能速度，小幅延长狂欢时间并增加金币雨。" },
+      multPerLv = 1.010, desc = "加快狂欢充能速度，小幅延长狂欢时间并增加金币雨；全币收益每级 ×1.01。" },
 }
 Config.MACHINE_BY_ID = {}
 for _, m in ipairs(Config.MACHINE_UPGRADES) do Config.MACHINE_BY_ID[m.id] = m end

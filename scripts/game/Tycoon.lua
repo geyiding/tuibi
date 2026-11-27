@@ -308,6 +308,11 @@ end
 --- 永久乘区（机台印钞 × 黑科技 × 传奇股/黄金基因 × 星际纪元），帧内缓存
 function Tycoon:GetPermParts()
     local machine = pow(1.0205, self.machineLv.global_mult or 0)
+    -- 功能型机台（推板/幸运门/钉阵/狂欢）每级附带小幅全币收益，避免沦为白买项
+    for _, m in ipairs(Config.MACHINE_UPGRADES) do
+        local mpl = m.multPerLv
+        if mpl then machine = machine * pow(mpl, self.machineLv[m.id] or 0) end
+    end
     local tech = 1.0
     for _, t in ipairs(Config.TECH_UPGRADES) do
         if self.techOwned[t.id] then tech = tech * t.mult end

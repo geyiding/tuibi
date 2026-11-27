@@ -230,6 +230,15 @@ local function spendSmartSP(ty, isAds)
         if msCnt > 0 then
             cands[#cands + 1] = { tp = "mach", id = "multi_shot", cost = msCost, roi = 0.035 / max(1, msCost) }
         end
+        -- 功能型机台：按每级附带的全币倍率估值（自身玩法效果实测很小，忽略）
+        for _, m in ipairs(Config.MACHINE_UPGRADES) do
+            if m.multPerLv then
+                local fc, fcnt = ty:GetMachineCost(m.id, 1)
+                if fcnt > 0 then
+                    cands[#cands + 1] = { tp = "mach", id = m.id, cost = fc, roi = (m.multPerLv - 1.0) / max(1, fc) }
+                end
+            end
+        end
         local crCost, crCnt = ty:GetMachineCost("crit_power", 1)
         if crCnt > 0 then
             cands[#cands + 1] = { tp = "mach", id = "crit_power", cost = crCost, roi = 0.04 / max(1, crCost) }
